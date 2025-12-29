@@ -1,4 +1,3 @@
-
 {
   "name": "payment-order-system",
   "private": true,
@@ -9,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
+    "mobile": "npm run build && npx cap sync && npx cap open android",
     "postinstall": "npx puppeteer browsers install chrome",
     "fix-browser": "npx puppeteer browsers install chrome",
     "install-service": "node install-service.js",
