@@ -250,8 +250,9 @@ export interface SystemSettings {
     defaultSalesManager?: string; 
     dailySecurityMeta?: Record<string, DailySecurityMeta>; 
     printTemplates?: PrintTemplate[]; 
-    activeFiscalYearId?: string; // سال مالی فعال
-    fiscalYears?: FiscalYear[]; // لیست سال‌های مالی
+    // فیلدهای جدید سال مالی
+    activeFiscalYearId?: string;
+    fiscalYears?: FiscalYear[];
 }
 export interface DashboardStats { totalPending: number; totalApproved: number; totalAmount: number; }
 export interface ChatMessage { id: string; sender: string; senderUsername: string; recipient?: string; groupId?: string; role: string; message: string; timestamp: number; attachment?: { fileName: string; url: string; }; audioUrl?: string; isEdited?: boolean; replyTo?: { id: string; sender: string; message: string; }; }

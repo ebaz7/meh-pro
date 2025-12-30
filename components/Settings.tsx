@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { SystemSettings, Company, Contact, CompanyBank, User, PrintTemplate } from '../types';
 import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, Package, AppWindow, Calendar, LayoutTemplate, MessageCircle, RefreshCw, FolderSync } from 'lucide-react';
-import { FiscalYearManager } from './FiscalModule'; // وارد کردن مدیریت سال مالی
+import { FiscalYearManager } from './FiscalModule';
 
 const Settings: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<'system' | 'fiscal' | 'data' | 'templates' | 'permissions'>('system');
@@ -48,11 +48,14 @@ const Settings: React.FC = () => {
                     {activeCategory === 'system' && (
                         <div className="space-y-6">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><AppWindow size={20}/> تنظیمات سیستمی</h3>
-                            {/* ... سایر تنظیمات سیستم ... */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div><label className="text-sm font-bold block mb-1">نام پیش‌فرض شرکت</label><input className="w-full border rounded-lg p-2 bg-white" value={settings.defaultCompany} onChange={e=>setSettings({...settings, defaultCompany: e.target.value})}/></div>
+                                <div><label className="text-sm font-bold block mb-1">توکن ربات تلگرام</label><input className="w-full border rounded-lg p-2 bg-white font-mono text-xs" value={settings.telegramBotToken} onChange={e=>setSettings({...settings, telegramBotToken: e.target.value})}/></div>
+                            </div>
                         </div>
                     )}
                     
-                    {/* ... سایر تب‌های تنظیمات ... */}
+                    {/* ... سایر تب‌ها ... */}
 
                     <div className="flex justify-end pt-4 border-t sticky bottom-0 bg-white p-4">
                         <button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all disabled:opacity-70">

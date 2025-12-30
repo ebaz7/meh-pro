@@ -6,7 +6,7 @@ import { logout, hasPermission, getRolePermissions, updateUser } from '../servic
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp, sendNotification } from '../services/notificationService';
 import { getSettings, uploadFile } from '../services/storageService';
 import { apiCall } from '../services/apiService';
-import { FiscalYearSwitcher } from './FiscalModule'; // وارد کردن ماژول جدید
+import { FiscalYearSwitcher } from './FiscalModule';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -41,7 +41,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
                   <div className="bg-blue-500 p-2 rounded-lg"><FileText className="w-6 h-6 text-white" /></div>
                   <div><h1 className="text-lg font-bold">سیستم مالی</h1><span className="text-xs text-slate-400">پنل مدیریتی</span></div>
               </div>
-              <FiscalYearSwitcher /> {/* انتخاب‌گر سال مالی در سایدبار */}
+              {/* تزریق انتخاب‌گر سال مالی */}
+              <FiscalYearSwitcher />
           </div>
           
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
@@ -59,7 +60,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
         <header className="bg-white shadow-sm p-4 md:hidden no-print flex items-center justify-between shrink-0 z-40 safe-pt">
             <div className="flex items-center gap-2">
                 <div className="bg-blue-500 p-1.5 rounded-lg"><FileText size={18} className="text-white"/></div>
-                <FiscalYearSwitcher /> {/* انتخاب‌گر سال مالی در هدر موبایل */}
+                <FiscalYearSwitcher />
             </div>
             <div className="flex items-center gap-2">
                 <button onClick={() => setShowNotifDropdown(!showNotifDropdown)} className="p-2 rounded-full hover:bg-gray-100">
