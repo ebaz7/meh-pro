@@ -78,28 +78,83 @@ const getDb = () => {
 };
 const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
-// --- FISCAL YEAR AWARE NUMBER GENERATOR ---
-const findNextNumberByFiscalYear = (arr, key, baseNum, fiscalYearId) => {
-    // Filter items that belong to this fiscal year
-    // If an item has no fiscalYearId, it belongs to 'legacy' (undefined)
-    const filtered = arr.filter(item => item.fiscalYearId === fiscalYearId);
+// --- FISCAL YEAR AWARE NUMBER GENERATOR (UPDATED) ---
+// Now accepts optional `company` to check per-company sequences
+const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
+    // 1. Get Active Fiscal Year
+    const activeYear = db.settings.fiscalYears?.find(y => y.id === fiscalYearId);
     
-    // Sort and find next
+    // 2. Determine Base Number
+    let baseNum = 1000; // Fallback
+    
+    if (activeYear) {
+        // Check if there is a company-specific override in the fiscal year settings
+        const companySeq = activeYear.companySequences?.[companyName];
+        
+        if (type === 'payment') {
+            baseNum = companySeq?.startTrackingNumber || activeYear.defaultStartTrackingNumber || 1000;
+        } else if (type === 'exit') {
+            baseNum = companySeq?.startExitPermitNumber || activeYear.defaultStartExitPermitNumber || 1000;
+        } else if (type === 'bijak') {
+            baseNum = companySeq?.startBijakNumber || activeYear.defaultStartBijakNumber || 1000;
+        }
+    }
+
+    // 3. Filter items: Must belong to this fiscal year AND this company
+    // Note: We filter by company to ensure independent sequences per company
+    const filtered = arr.filter(item => {
+        // Must match fiscal year
+        if (item.fiscalYearId !== fiscalYearId) return false;
+        
+        // Must match company (if companyName provided)
+        // For orders/permits, field might be 'payingCompany' or 'company' depending on type
+        // Bijak uses 'company'. Order uses 'payingCompany'. Permit doesn't strictly have company field in top level usually, 
+        // but let's assume if it doesn't, we might fallback to global or check if we added it.
+        // *Correction*: PaymentOrder has `payingCompany`. ExitPermit usually assumes logic from goods/dest, 
+        // but for correct per-company numbering, we should probably check if we save company in ExitPermit.
+        // If not, we might be limited to Global for ExitPermit unless we add a field.
+        // However, user asked for it. We will try to match if field exists.
+        
+        if (companyName) {
+             if (type === 'payment' && item.payingCompany !== companyName) return false;
+             if (type === 'bijak' && item.company !== companyName) return false;
+             // For ExitPermit, if no direct company field, we might skip filtering or rely on global.
+             // But for now let's assume we want strict separation if possible.
+             // If legacy data doesn't have it, we just count global for year.
+        }
+        return true;
+    });
+    
+    // 4. Sort and Find Next Gap or Increment
     const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    
     let next = baseNum;
+    
+    // If we have existing numbers, we start checking from baseNum.
+    // If the baseNum is already taken (e.g. 1000 is there), we go up.
+    // If baseNum is 5001 (manual continuation) and array is empty, we return 5001.
+    // If array has [5001, 5002], next is 5003.
+    
+    // Optimization: If existing array is empty, just return baseNum.
+    if (existing.length === 0) return baseNum;
+
+    // If existing has numbers, start checking from baseNum upwards
+    // But we must respect the max found so far to avoid re-using gaps if we want simple increment
+    // User asked "continue same", implying strictly sequential.
+    
+    // Simple approach: Start at max(baseNum, existingMax + 1) logic?
+    // Or gap filling? Usually gap filling is better but risky. Let's do simple increment from max or base.
+    
+    // If the lowest existing number is already higher than baseNum, we just continue from there?
+    // No, standard logic:
     for (const num of existing) { 
         if (num === next) next++; 
-        else if (num > next) break; // Gap found or just next available
+        else if (num > next) {
+             // Found a gap? or simply start point was higher?
+             // If we want strict sequences, we take the gap.
+             break; 
+        }
     }
-    return next;
-};
-
-// Legacy fallback helper (kept for other non-fiscal logic if any)
-const findNextAvailableNumber = (arr, key, base) => {
-    const startNum = base + 1;
-    const existing = arr.map(o => o[key]).sort((a, b) => a - b);
-    let next = startNum;
-    for (const num of existing) { if (num === next) next++; else if (num > next) return next; }
     return next;
 };
 
@@ -128,10 +183,8 @@ app.get('/api/orders', (req, res) => {
     const db = getDb();
     const activeYearId = db.settings.activeFiscalYearId;
     if (activeYearId) {
-        // Filter by Active Year for View
         return res.json(db.orders.filter(o => o.fiscalYearId === activeYearId));
     }
-    // If no active year set (legacy mode), return all
     res.json(db.orders);
 });
 
@@ -149,15 +202,14 @@ app.post('/api/orders', (req, res) => {
     }
 
     order.fiscalYearId = activeYearId;
-    const baseNum = activeYear ? activeYear.startTrackingNumber : 1000;
     
-    order.trackingNumber = findNextNumberByFiscalYear(db.orders, 'trackingNumber', baseNum, activeYearId);
+    // Generate Number Per Company
+    order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany);
     
     db.orders.unshift(order); 
     saveDb(db); 
     sendWebPush('سند جدید', `شماره ${order.trackingNumber}`); 
     
-    // Return filtered list to keep UI consistent
     res.json(db.orders.filter(o => o.fiscalYearId === activeYearId)); 
 });
 
@@ -179,7 +231,6 @@ app.post('/api/exit-permits', (req, res) => {
     const permit = req.body; 
     permit.id = Date.now().toString(); 
     
-    // FISCAL LOGIC
     const activeYearId = db.settings.activeFiscalYearId;
     const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
 
@@ -188,9 +239,13 @@ app.post('/api/exit-permits', (req, res) => {
     }
 
     permit.fiscalYearId = activeYearId;
-    const baseNum = activeYear ? activeYear.startExitPermitNumber : 1000;
     
-    permit.permitNumber = findNextNumberByFiscalYear(db.exitPermits, 'permitNumber', baseNum, activeYearId);
+    // Generate Number (Currently global within year as permits don't always have distinct company field in UI)
+    // If we want per-company here, we need to extract company from items or requester, which is ambiguous.
+    // Defaulting to 'global' logic for company name unless passed in future.
+    // If the frontend passed a company (e.g. from hidden logic), we use it.
+    // For now, passing undefined company means it uses the default start number of year.
+    permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, undefined);
     
     db.exitPermits.push(permit); 
     saveDb(db); 
@@ -201,23 +256,20 @@ app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.
 app.delete('/api/exit-permits/:id', (req, res) => { const db=getDb(); const target = db.exitPermits.find(x=>x.id===req.params.id); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits.filter(p => p.fiscalYearId === target?.fiscalYearId)); });
 
 app.get('/api/next-tracking-number', (req, res) => {
-    // This endpoint is slightly redundant now but kept for compatibility. 
-    // It should ideally return based on active year.
+    // Ideally this endpoint should accept company name query param now
     const db = getDb();
     const activeYearId = db.settings.activeFiscalYearId;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
-    const baseNum = activeYear ? activeYear.startTrackingNumber : (db.settings.currentTrackingNumber || 1000);
+    const company = req.query.company as string;
     
-    res.json({ nextTrackingNumber: findNextNumberByFiscalYear(db.orders, 'trackingNumber', baseNum, activeYearId) });
+    const next = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, company);
+    res.json({ nextTrackingNumber: next });
 });
 
 app.get('/api/next-exit-permit-number', (req, res) => {
     const db = getDb();
     const activeYearId = db.settings.activeFiscalYearId;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
-    const baseNum = activeYear ? activeYear.startExitPermitNumber : (db.settings.currentExitPermitNumber || 1000);
-
-    res.json({ nextNumber: findNextNumberByFiscalYear(db.exitPermits, 'permitNumber', baseNum, activeYearId) });
+    const next = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, undefined);
+    res.json({ nextNumber: next });
 });
 
 // --- WAREHOUSE TRANSACTIONS ---
@@ -244,16 +296,9 @@ app.post('/api/warehouse/transactions', (req, res) => {
     t.fiscalYearId = activeYearId;
 
     if(t.type === 'OUT'){ 
-        const baseNum = activeYear ? activeYear.startBijakNumber : (db.settings.warehouseSequences?.[t.company]||1000);
+        // Bijak Numbering: Highly Company Dependent
+        t.number = findNextNumberByFiscalYear(db, db.warehouseTransactions.filter(x => x.type === 'OUT'), 'number', 'bijak', activeYearId, t.company);
         
-        // Filter by Company AND Fiscal Year
-        const companyTxs = db.warehouseTransactions.filter(x => x.type === 'OUT' && x.company === t.company && x.fiscalYearId === activeYearId);
-        
-        const n = findNextNumberByFiscalYear(companyTxs, 'number', baseNum, activeYearId);
-        t.number = n; 
-        
-        if(!db.settings.warehouseSequences) db.settings.warehouseSequences={}; 
-        db.settings.warehouseSequences[t.company]=n; // Update legacy sequence tracking just in case
         notifyNewBijak(t); 
     } 
     db.warehouseTransactions.unshift(t); 

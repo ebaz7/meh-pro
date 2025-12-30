@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { FiscalYear, SystemSettings } from '../types';
+import { FiscalYear, SystemSettings, Company } from '../types';
 import { getSettings, saveSettings } from '../services/storageService';
 import { generateUUID } from '../constants';
-import { Calendar, Plus, Lock, Unlock, CheckCircle2, AlertTriangle, ListOrdered, ChevronDown } from 'lucide-react';
+import { Calendar, Plus, Lock, Unlock, CheckCircle2, AlertTriangle, ListOrdered, ChevronDown, Building2, Save } from 'lucide-react';
 
 /**
  * FiscalModule
@@ -66,14 +66,43 @@ export const FiscalYearSwitcher: React.FC = () => {
 // --- MANAGER COMPONENT (FOR SETTINGS) ---
 export const FiscalYearManager: React.FC = () => {
     const [settings, setSettings] = useState<SystemSettings | null>(null);
-    const [newYearLabel, setNewYearLabel] = useState('');
+    const [newYearLabel, setNewYearLabel] = useState('1404');
     const [startPayNum, setStartPayNum] = useState('1');
     const [startExitNum, setStartExitNum] = useState('1');
     const [startBijakNum, setStartBijakNum] = useState('1');
+    
+    // Config editing state
+    const [editingYearId, setEditingYearId] = useState<string | null>(null);
+    const [companyConfig, setCompanyConfig] = useState<Record<string, { pay: string, exit: string, bijak: string }>>({});
 
     useEffect(() => {
-        getSettings().then(setSettings);
+        getSettings().then(s => {
+            setSettings(s);
+            if (s.activeFiscalYearId) {
+                // Pre-load active year config if available
+                loadCompanyConfig(s.activeFiscalYearId, s);
+            }
+        });
     }, []);
+
+    const loadCompanyConfig = (yearId: string, currentSettings: SystemSettings) => {
+        const year = currentSettings.fiscalYears?.find(y => y.id === yearId);
+        if (!year) return;
+        setEditingYearId(yearId);
+        
+        const configMap: Record<string, { pay: string, exit: string, bijak: string }> = {};
+        const companies = currentSettings.companies || [];
+        
+        companies.forEach(c => {
+            const seq = year.companySequences?.[c.name] || {};
+            configMap[c.name] = {
+                pay: seq.startTrackingNumber ? String(seq.startTrackingNumber) : '',
+                exit: seq.startExitPermitNumber ? String(seq.startExitPermitNumber) : '',
+                bijak: seq.startBijakNumber ? String(seq.startBijakNumber) : ''
+            };
+        });
+        setCompanyConfig(configMap);
+    };
 
     const handleAddYear = async () => {
         if (!newYearLabel.trim() || !settings) return;
@@ -82,23 +111,24 @@ export const FiscalYearManager: React.FC = () => {
             id: generateUUID(),
             label: newYearLabel,
             isClosed: false,
-            startTrackingNumber: parseInt(startPayNum) || 1,
-            startExitPermitNumber: parseInt(startExitNum) || 1,
-            startBijakNumber: parseInt(startBijakNum) || 1,
+            defaultStartTrackingNumber: parseInt(startPayNum) || 1,
+            defaultStartExitPermitNumber: parseInt(startExitNum) || 1,
+            defaultStartBijakNumber: parseInt(startBijakNum) || 1,
+            companySequences: {}, // Empty initially
             createdAt: Date.now()
         };
 
         const updated = {
             ...settings,
             fiscalYears: [...(settings.fiscalYears || []), newYear],
-            // If no active year, set this one
             activeFiscalYearId: settings.activeFiscalYearId || newYear.id
         };
         
         await saveSettings(updated);
         setSettings(updated);
         setNewYearLabel('');
-        alert('سال مالی جدید ایجاد شد.');
+        alert('سال مالی جدید ایجاد شد. اکنون می‌توانید تنظیمات هر شرکت را ویرایش کنید.');
+        loadCompanyConfig(newYear.id, updated);
     };
 
     const handleCloseYear = async (id: string) => {
@@ -111,10 +141,40 @@ export const FiscalYearManager: React.FC = () => {
         setSettings(updated);
     };
 
+    const handleSaveCompanyConfig = async () => {
+        if (!settings || !editingYearId) return;
+        
+        // Convert UI config back to data structure
+        const sequences: Record<string, { startTrackingNumber?: number; startExitPermitNumber?: number; startBijakNumber?: number; }> = {};
+        
+        Object.entries(companyConfig).forEach(([compName, vals]) => {
+            const config = vals as { pay: string, exit: string, bijak: string };
+            if (config.pay || config.exit || config.bijak) {
+                sequences[compName] = {
+                    startTrackingNumber: config.pay ? parseInt(config.pay) : undefined,
+                    startExitPermitNumber: config.exit ? parseInt(config.exit) : undefined,
+                    startBijakNumber: config.bijak ? parseInt(config.bijak) : undefined,
+                };
+            }
+        });
+
+        const updatedYears = settings.fiscalYears?.map(y => 
+            y.id === editingYearId ? { ...y, companySequences: sequences } : y
+        );
+
+        const updatedSettings = { ...settings, fiscalYears: updatedYears };
+        await saveSettings(updatedSettings);
+        setSettings(updatedSettings);
+        alert('تنظیمات اختصاصی شرکت‌ها ذخیره شد.');
+    };
+
     if (!settings) return null;
 
+    const editingYear = settings.fiscalYears?.find(y => y.id === editingYearId);
+
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-8 animate-fade-in">
+            {/* Create New Year Section */}
             <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Plus size={20}/> تعریف سال مالی جدید</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
@@ -123,39 +183,108 @@ export const FiscalYearManager: React.FC = () => {
                         <input className="w-full border rounded-xl p-2 text-sm" value={newYearLabel} onChange={e => setNewYearLabel(e.target.value)} placeholder="1404"/>
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-1">شروع شماره پرداخت</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-1">شروع پرداخت (پیش‌فرض)</label>
                         <input type="number" className="w-full border rounded-xl p-2 text-sm text-center dir-ltr" value={startPayNum} onChange={e => setStartPayNum(e.target.value)}/>
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-1">شروع شماره خروج</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-1">شروع خروج (پیش‌فرض)</label>
                         <input type="number" className="w-full border rounded-xl p-2 text-sm text-center dir-ltr" value={startExitNum} onChange={e => setStartExitNum(e.target.value)}/>
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-1">شروع شماره بیجک</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-1">شروع بیجک (پیش‌فرض)</label>
                         <input type="number" className="w-full border rounded-xl p-2 text-sm text-center dir-ltr" value={startBijakNum} onChange={e => setStartBijakNum(e.target.value)}/>
                     </div>
                 </div>
                 <button onClick={handleAddYear} className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition-colors w-full md:w-auto">ثبت سال مالی</button>
             </div>
 
+            {/* List Years */}
             <div className="space-y-3">
                 <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><ListOrdered size={20}/> لیست سال‌های مالی</h3>
                 {settings.fiscalYears?.map(y => (
-                    <div key={y.id} className={`p-4 rounded-xl border flex justify-between items-center ${y.id === settings.activeFiscalYearId ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
-                        <div className="flex items-center gap-3">
+                    <div key={y.id} className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-center gap-4 transition-all ${y.id === settings.activeFiscalYearId ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-200' : 'bg-white border-gray-200'} ${editingYearId === y.id ? 'shadow-md border-indigo-300' : ''}`}>
+                        <div className="flex items-center gap-3 w-full md:w-auto">
                             {y.isClosed ? <Lock size={18} className="text-gray-400"/> : <Unlock size={18} className="text-green-500"/>}
                             <div>
-                                <div className="font-bold text-sm">{y.label} {y.id === settings.activeFiscalYearId && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded">فعال</span>}</div>
-                                <div className="text-[10px] text-gray-500 mt-1">شروع پرداخت: {y.startTrackingNumber} | شروع خروج: {y.startExitPermitNumber} | شروع بیجک: {y.startBijakNumber}</div>
+                                <div className="font-bold text-sm flex items-center gap-2">
+                                    {y.label} 
+                                    {y.id === settings.activeFiscalYearId && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded">فعال</span>}
+                                </div>
+                                <div className="text-[10px] text-gray-500 mt-1">پیش‌فرض‌ها: پ {y.defaultStartTrackingNumber} | خ {y.defaultStartExitPermitNumber} | ب {y.defaultStartBijakNumber}</div>
                             </div>
                         </div>
-                        {!y.isClosed && (
-                            <button onClick={() => handleCloseYear(y.id)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors">بستن سال</button>
-                        )}
+                        <div className="flex gap-2 w-full md:w-auto justify-end">
+                            <button onClick={() => loadCompanyConfig(y.id, settings)} className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${editingYearId === y.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+                                تنظیم شماره شرکت‌ها
+                            </button>
+                            {!y.isClosed && (
+                                <button onClick={() => handleCloseYear(y.id)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors">بستن سال</button>
+                            )}
+                        </div>
                     </div>
                 ))}
                 {(!settings.fiscalYears || settings.fiscalYears.length === 0) && <div className="text-center text-gray-400 py-8">هنوز سال مالی تعریف نشده است.</div>}
             </div>
+
+            {/* Detailed Company Config Editor */}
+            {editingYear && (
+                <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 animate-scale-in">
+                    <div className="flex justify-between items-center mb-4 border-b pb-2">
+                        <h3 className="font-bold text-indigo-800 flex items-center gap-2"><Building2 size={20}/> تنظیم شماره‌های اختصاصی شرکت‌ها - سال {editingYear.label}</h3>
+                        <button onClick={handleSaveCompanyConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-indigo-700 shadow-sm"><Save size={16}/> ذخیره تغییرات</button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-right bg-white rounded-xl border overflow-hidden">
+                            <thead className="bg-gray-100 text-gray-600">
+                                <tr>
+                                    <th className="p-3 border-b">نام شرکت</th>
+                                    <th className="p-3 border-b w-40">شروع پرداخت</th>
+                                    <th className="p-3 border-b w-40">شروع خروج</th>
+                                    <th className="p-3 border-b w-40">شروع بیجک</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {settings.companies?.map(c => {
+                                    const conf = companyConfig[c.name] || { pay: '', exit: '', bijak: '' };
+                                    return (
+                                        <tr key={c.id} className="hover:bg-indigo-50/30">
+                                            <td className="p-3 font-bold">{c.name}</td>
+                                            <td className="p-3">
+                                                <input 
+                                                    type="number" 
+                                                    className="w-full border rounded p-1 text-center dir-ltr focus:border-indigo-500 outline-none"
+                                                    placeholder={`(پیش‌فرض: ${editingYear.defaultStartTrackingNumber})`}
+                                                    value={conf.pay}
+                                                    onChange={e => setCompanyConfig({...companyConfig, [c.name]: { ...conf, pay: e.target.value }})}
+                                                />
+                                            </td>
+                                            <td className="p-3">
+                                                <input 
+                                                    type="number" 
+                                                    className="w-full border rounded p-1 text-center dir-ltr focus:border-indigo-500 outline-none"
+                                                    placeholder={`(پیش‌فرض: ${editingYear.defaultStartExitPermitNumber})`}
+                                                    value={conf.exit}
+                                                    onChange={e => setCompanyConfig({...companyConfig, [c.name]: { ...conf, exit: e.target.value }})}
+                                                />
+                                            </td>
+                                            <td className="p-3">
+                                                <input 
+                                                    type="number" 
+                                                    className="w-full border rounded p-1 text-center dir-ltr focus:border-indigo-500 outline-none"
+                                                    placeholder={`(پیش‌فرض: ${editingYear.defaultStartBijakNumber})`}
+                                                    value={conf.bijak}
+                                                    onChange={e => setCompanyConfig({...companyConfig, [c.name]: { ...conf, bijak: e.target.value }})}
+                                                />
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-2 px-2">* نکته: اگر فیلدی خالی رها شود، سیستم از شماره پیش‌فرض تعریف شده برای سال مالی استفاده می‌کند. برای ادامه شماره‌های سال قبل، عدد بعدی را دستی وارد کنید (مثلاً اگر سال قبل تا ۵۰۰ رفته، اینجا ۵۰۱ بزنید).</p>
+                </div>
+            )}
         </div>
     );
 };

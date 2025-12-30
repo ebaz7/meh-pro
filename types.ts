@@ -1,11 +1,22 @@
 
 export interface FiscalYear {
   id: string;
-  label: string; // نام سال مثلا 1403
+  label: string; // نام سال مثلا 1404
   isClosed: boolean;
-  startTrackingNumber: number; // شروع دستور پرداخت
-  startExitPermitNumber: number; // شروع مجوز خروج
-  startBijakNumber: number; // شروع بیجک
+  
+  // تنظیمات پیش‌فرض (اگر برای شرکتی تنظیم خاصی نبود)
+  defaultStartTrackingNumber: number; 
+  defaultStartExitPermitNumber: number; 
+  defaultStartBijakNumber: number; 
+
+  // تنظیمات اختصاصی به تفکیک شرکت
+  // Key: نام شرکت, Value: تنظیمات
+  companySequences: Record<string, {
+      startTrackingNumber?: number; // شروع پرداخت این شرکت
+      startExitPermitNumber?: number; // شروع خروج این شرکت
+      startBijakNumber?: number; // شروع بیجک این شرکت
+  }>;
+  
   createdAt: number;
 }
 
