@@ -26,7 +26,7 @@ export const FiscalYearSwitcher: React.FC = () => {
         if (!settings) return;
         const updated = { ...settings, activeFiscalYearId: yearId };
         await saveSettings(updated);
-        // Force reload to apply new context globally (easiest way to ensure all data fetchers use new ID)
+        // Force reload to apply new context globally
         window.location.reload(); 
     };
 
@@ -67,7 +67,7 @@ export const FiscalYearSwitcher: React.FC = () => {
 // --- MANAGER COMPONENT (FOR SETTINGS) ---
 export const FiscalYearManager: React.FC = () => {
     const [settings, setSettings] = useState<SystemSettings | null>(null);
-    const [newYearLabel, setNewYearLabel] = useState('1405'); // Default hint next year
+    const [newYearLabel, setNewYearLabel] = useState('1405'); 
     
     // Config editing state
     const [editingYearId, setEditingYearId] = useState<string | null>(null);
@@ -93,13 +93,23 @@ export const FiscalYearManager: React.FC = () => {
         const configMap: Record<string, { pay: string, exit: string, bijak: string }> = {};
         const companies = currentSettings.companies || [];
         
+        // GLOBAL DEFAULTS (Current System State)
+        // If year config is missing, we suggest the current system numbers + 1 or existing
+        const defaultPay = currentSettings.currentTrackingNumber ? currentSettings.currentTrackingNumber + 1 : 1000;
+        const defaultExit = currentSettings.currentExitPermitNumber ? currentSettings.currentExitPermitNumber + 1 : 1000;
+
         companies.forEach(c => {
-            // Read from existing sequences, defaulting to '1' only if absolutely nothing is set
             const seq = year.companySequences?.[c.name] || {};
+            
+            // Warehouse Bijak: Use specific company sequence if available in settings, else 1
+            const currentBijak = currentSettings.warehouseSequences?.[c.name];
+            const defaultBijak = currentBijak ? currentBijak + 1 : 1000;
+
             configMap[c.name] = {
-                pay: seq.startTrackingNumber ? String(seq.startTrackingNumber) : '1',
-                exit: seq.startExitPermitNumber ? String(seq.startExitPermitNumber) : '1',
-                bijak: seq.startBijakNumber ? String(seq.startBijakNumber) : '1'
+                // Priority: 1. Existing Fiscal Config, 2. Current System Counter, 3. Default 1000
+                pay: seq.startTrackingNumber ? String(seq.startTrackingNumber) : String(defaultPay),
+                exit: seq.startExitPermitNumber ? String(seq.startExitPermitNumber) : String(defaultExit),
+                bijak: seq.startBijakNumber ? String(seq.startBijakNumber) : String(defaultBijak)
             };
         });
         setCompanyConfig(configMap);
@@ -112,7 +122,6 @@ export const FiscalYearManager: React.FC = () => {
             id: generateUUID(),
             label: newYearLabel,
             isClosed: false,
-            // Init with empty map, logic will fallback to 1 if missing
             companySequences: {}, 
             createdAt: Date.now()
         };
@@ -120,7 +129,6 @@ export const FiscalYearManager: React.FC = () => {
         const updated = {
             ...settings,
             fiscalYears: [...(settings.fiscalYears || []), newYear],
-            // Auto switch? Maybe not, let user decide.
         };
         
         await saveSettings(updated);
@@ -220,6 +228,8 @@ export const FiscalYearManager: React.FC = () => {
                             <h3 className="font-bold text-indigo-800 flex items-center gap-2"><Building2 size={20}/> تنظیم شماره‌های شروع - سال {editingYear.label}</h3>
                             <span className="text-[10px] text-gray-500 mt-1">
                                 شماره شروع اسناد برای هر شرکت در این سال مالی را وارد کنید. اگر می‌خواهید ادامه سال قبل باشد، آخرین شماره سال قبل + ۱ را وارد کنید.
+                                <br/>
+                                <span className="text-green-600 font-bold">نکته: شماره‌های فعلی سیستم به صورت پیش‌فرض در فیلدها قرار گرفته‌اند.</span>
                             </span>
                         </div>
                         <button onClick={handleSaveCompanyConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-indigo-700 shadow-sm"><Save size={16}/> ذخیره تغییرات</button>

@@ -8,7 +8,7 @@ import { requestNotificationPermission, setNotificationPreference, isNotificatio
 import { getUsers, updateUser } from '../services/authService';
 import { generateUUID } from '../constants';
 import PrintTemplateDesigner from './PrintTemplateDesigner';
-import { FiscalYearManager } from './FiscalModule'; // Import Fiscal Manager
+import { FiscalYearManager } from './FiscalModule'; 
 
 // Internal QRCode Component
 const QRCode = ({ value, size }: { value: string, size: number }) => { 
@@ -613,6 +613,230 @@ const Settings: React.FC = () => {
                         </div>
                     )}
 
+                    {activeCategory === 'warehouse' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
+                                <h3 className="font-bold text-orange-800 mb-3 flex items-center gap-2"><Truck size={20}/> تنظیمات خروج کارخانه</h3>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-700 block mb-1">شماره موبایل سرپرست انبار (جهت مجوز خروج)</label>
+                                    <select 
+                                        className="w-full border rounded-lg p-2 text-sm bg-white" 
+                                        value={settings.exitPermitNotificationGroup || ''} 
+                                        onChange={e => setSettings({...settings, exitPermitNotificationGroup: e.target.value})}
+                                    >
+                                        <option value="">-- ارسال نشود --</option>
+                                        {getMergedContactOptions().map(c => (
+                                            <option key={`exit_group_${c.number}`} value={c.number}>
+                                                {c.name} {c.isGroup ? '(گروه)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-500 mt-1">پس از تایید مجوز خروج توسط مدیرعامل، تصویر مجوز به این شخص/گروه (سرپرست انبار) ارسال خواهد شد.</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار و ارسال خودکار</h3>
+                                <div className="space-y-6">
+                                    {settings.companies?.filter(c => c.showInWarehouse !== false).map(company => (
+                                        <div key={company.id} className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                            <h4 className="font-bold text-base text-gray-800 mb-3 border-b pb-2 flex justify-between"><span>شرکت: {company.name}</span>{company.logo && <img src={company.logo} className="h-6 object-contain"/>}</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div><label className="text-xs font-bold text-blue-700 block mb-1">مدیر فروش (جهت ارسال با قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.salesManager || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], salesManager: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_sm_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
+                                                <div><label className="text-xs font-bold text-orange-700 block mb-1">گروه انبار (جهت ارسال بدون قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.warehouseGroup || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], warehouseGroup: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_wg_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeCategory === 'commerce' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><ShieldCheck size={18}/> شرکت‌های بیمه</h3>
+                                <p className="text-xs text-gray-500 mb-2">لیست شرکت‌های بیمه جهت انتخاب در پرونده‌های بازرگانی</p>
+                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام شرکت بیمه..." value={newInsuranceCompany} onChange={(e) => setNewInsuranceCompany(e.target.value)} /><button type="button" onClick={handleAddInsuranceCompany} className="bg-rose-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
+                                <div className="flex flex-wrap gap-2">{(settings.insuranceCompanies || []).map((comp, idx) => (<div key={idx} className="bg-rose-50 text-rose-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-rose-100"><span>{comp}</span><button type="button" onClick={() => handleRemoveInsuranceCompany(comp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
+                            </div>
+                            
+                            {/* Operating Banks */}
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Landmark size={18}/> بانک‌های عامل</h3>
+                                <p className="text-xs text-gray-500 mb-2">بانک‌هایی که در پروسه بازرگانی (تخصیص ارز و ...) استفاده می‌شوند</p>
+                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام بانک..." value={newOperatingBank} onChange={(e) => setNewOperatingBank(e.target.value)} /><button type="button" onClick={handleAddOperatingBank} className="bg-indigo-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
+                                <div className="flex flex-wrap gap-2">{(settings.operatingBankNames || []).map((bank, idx) => (<div key={idx} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-indigo-100"><span>{bank}</span><button type="button" onClick={() => handleRemoveOperatingBank(bank)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
+                            </div>
+
+                            {/* Commodity Groups */}
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Container size={18}/> گروه‌های کالایی</h3>
+                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام گروه..." value={newCommodity} onChange={(e) => setNewCommodity(e.target.value)} /><button type="button" onClick={handleAddCommodity} className="bg-teal-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
+                                <div className="flex flex-wrap gap-2">{(settings.commodityGroups || []).map((grp, idx) => (<div key={idx} className="bg-teal-50 text-teal-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-teal-100"><span>{grp}</span><button type="button" onClick={() => handleRemoveCommodity(grp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeCategory === 'data' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Building size={20}/> مدیریت شرکت‌ها و بانک‌ها</h3>
+                                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                        <div><label className="text-xs font-bold block mb-1 text-gray-500">نام شرکت</label><input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="نام شرکت..." value={newCompanyName} onChange={(e) => setNewCompanyName(e.target.value)} /></div>
+                                        <div className="flex items-end gap-2">
+                                            <div className="w-10 h-10 border rounded bg-white flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => companyLogoInputRef.current?.click()} title="لوگو">{newCompanyLogo ? <img src={newCompanyLogo} className="w-full h-full object-cover"/> : <ImageIcon size={16} className="text-gray-300"/>}</div>
+                                            <div className={`flex items-center gap-2 bg-white px-2 py-2 rounded border cursor-pointer flex-1 h-[42px] ${newCompanyShowInWarehouse ? 'border-green-200 bg-green-50 text-green-700' : ''}`} onClick={() => setNewCompanyShowInWarehouse(!newCompanyShowInWarehouse)}><input type="checkbox" checked={newCompanyShowInWarehouse} onChange={e => setNewCompanyShowInWarehouse(e.target.checked)} className="w-4 h-4"/><span className="text-xs font-bold select-none">نمایش در انبار</span></div>
+                                            <input type="file" ref={companyLogoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload}/>
+                                        </div>
+                                    </div>
+                                    {/* Additional Company Fields */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                        <div><label className="text-xs font-bold block mb-1 text-gray-500">شماره ثبت</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyRegNum} onChange={e => setNewCompanyRegNum(e.target.value)} /></div>
+                                        <div><label className="text-xs font-bold block mb-1 text-gray-500">شناسه ملی</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyNatId} onChange={e => setNewCompanyNatId(e.target.value)} /></div>
+                                        <div><label className="text-xs font-bold block mb-1 text-gray-500">کد اقتصادی</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyEcoCode} onChange={e => setNewCompanyEcoCode(e.target.value)} /></div>
+                                        <div className="md:col-span-3"><label className="text-xs font-bold block mb-1 text-gray-500">آدرس</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyAddress} onChange={e => setNewCompanyAddress(e.target.value)} /></div>
+                                        <div><label className="text-xs font-bold block mb-1 text-gray-500">کد پستی</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyPostalCode} onChange={e => setNewCompanyPostalCode(e.target.value)} /></div>
+                                        <div><label className="text-xs font-bold block mb-1 text-gray-500">تلفن</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyPhone} onChange={e => setNewCompanyPhone(e.target.value)} /></div>
+                                        <div><label className="text-xs font-bold block mb-1 text-gray-500">فکس</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyFax} onChange={e => setNewCompanyFax(e.target.value)} /></div>
+                                    </div>
+
+                                    {/* Letterhead Upload */}
+                                    <div className="mb-4">
+                                        <label className="text-xs font-bold block mb-1 text-gray-500 flex items-center gap-1">
+                                            <FileText size={14}/> تصویر کامل سربرگ A4 (زمینه نامه)
+                                        </label>
+                                        <p className="text-[10px] text-gray-400 mb-2">
+                                            لطفا تصویر کامل یک صفحه A4 (شامل هدر، فوتر، حاشیه‌ها و پس‌زمینه) را آپلود کنید. این تصویر به عنوان زمینه کل صفحه در چاپ‌ها استفاده می‌شود.
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <input type="file" ref={companyLetterheadInputRef} className="hidden" accept="image/*" onChange={handleLetterheadUpload} />
+                                            <button type="button" onClick={() => companyLetterheadInputRef.current?.click()} className="bg-white border text-gray-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-100 flex items-center gap-2" disabled={isUploadingLetterhead}>
+                                                {isUploadingLetterhead ? <Loader2 size={14} className="animate-spin"/> : <UploadCloud size={14}/>}
+                                                {newCompanyLetterhead ? 'تغییر فایل سربرگ' : 'آپلود تصویر کامل A4 (JPG/PNG)'}
+                                            </button>
+                                            {newCompanyLetterhead && <span className="text-xs text-green-600 font-bold flex items-center gap-1"><Check size={14}/> آپلود شد</span>}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Bank Management for this Company */}
+                                    <div className="bg-white border rounded-xl p-3 mb-4">
+                                        <label className="text-xs font-bold block mb-2 text-blue-600 flex items-center gap-1"><Landmark size={14}/> تعریف بانک‌های این شرکت</label>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2 items-end">
+                                            <input className="border rounded p-1.5 text-sm" placeholder="نام بانک (مثال: بانک رفاه)" value={tempBankName} onChange={e => setTempBankName(e.target.value)} />
+                                            <input className="border rounded p-1.5 text-sm dir-ltr text-left" placeholder="شماره حساب" value={tempAccountNum} onChange={e => setTempAccountNum(e.target.value)} />
+                                            <input className="border rounded p-1.5 text-sm dir-ltr text-left md:col-span-2" placeholder="شماره شبا (اختیاری)" value={tempBankSheba} onChange={e => setTempBankSheba(e.target.value)} />
+                                            
+                                            <div className="md:col-span-2 flex flex-col gap-2 bg-gray-50 p-2 rounded border border-gray-200">
+                                                {/* Default Template */}
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs font-bold">قالب چاپ پیش‌فرض (چک، ساتنا و ...):</label>
+                                                    <select className="border rounded p-1.5 text-sm bg-white" value={tempBankLayout} onChange={e => setTempBankLayout(e.target.value)}>
+                                                        <option value="">استاندارد (ساده)</option>
+                                                        <optgroup label="قالب‌های طراحی شده">
+                                                            {settings.printTemplates?.map(t => (
+                                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                    </select>
+                                                </div>
+
+                                                {/* Dual Print Toggle */}
+                                                <label className="flex items-center gap-2 cursor-pointer mt-1 mb-1">
+                                                    <input type="checkbox" checked={tempDualPrint} onChange={e => setTempDualPrint(e.target.checked)} className="w-4 h-4 text-blue-600 rounded"/>
+                                                    <span className="text-xs font-bold text-gray-700">فعال‌سازی چاپ دوگانه (واریز/برداشت) برای حواله داخلی</span>
+                                                </label>
+
+                                                {/* Internal Transfer Template (Legacy or Specific) */}
+                                                {tempDualPrint ? (
+                                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-red-600 block mb-1">قالب نسخه برداشت (حساب):</label>
+                                                            <select className="border rounded p-1.5 text-sm bg-white w-full" value={tempInternalWithdrawalLayout} onChange={e => setTempInternalWithdrawalLayout(e.target.value)}>
+                                                                <option value="">-- انتخاب --</option>
+                                                                <optgroup label="قالب‌های طراحی شده">
+                                                                    {settings.printTemplates?.map(t => (
+                                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                                    ))}
+                                                                </optgroup>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-green-600 block mb-1">قالب نسخه واریز (مقصد):</label>
+                                                            <select className="border rounded p-1.5 text-sm bg-white w-full" value={tempInternalDepositLayout} onChange={e => setTempInternalDepositLayout(e.target.value)}>
+                                                                <option value="">-- انتخاب --</option>
+                                                                <optgroup label="قالب‌های طراحی شده">
+                                                                    {settings.printTemplates?.map(t => (
+                                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                                    ))}
+                                                                </optgroup>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col gap-1">
+                                                        <label className="text-xs font-bold text-indigo-700">قالب چاپ حواله داخلی (اختیاری):</label>
+                                                        <select className="border rounded p-1.5 text-sm bg-white" value={tempInternalLayout} onChange={e => setTempInternalLayout(e.target.value)}>
+                                                            <option value="">-- همانند پیش‌فرض --</option>
+                                                            <optgroup label="قالب‌های طراحی شده">
+                                                                {settings.printTemplates?.map(t => (
+                                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                        </select>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="md:col-span-2 flex justify-end gap-2 mt-2">
+                                                {editingBankId && <button type="button" onClick={resetBankForm} className="bg-gray-200 text-gray-700 p-1.5 rounded-lg hover:bg-gray-300 text-xs font-bold">انصراف</button>}
+                                                <button type="button" onClick={addOrUpdateCompanyBank} className="bg-blue-600 text-white p-1.5 px-4 rounded-lg border border-blue-600 hover:bg-blue-700 flex items-center gap-1 font-bold text-xs">
+                                                    {editingBankId ? <Pencil size={16}/> : <Plus size={16}/>} {editingBankId ? 'بروزرسانی بانک' : 'افزودن بانک'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1 mt-2">
+                                            {newCompanyBanks.map((bank, idx) => (
+                                                <div key={bank.id || idx} className={`flex justify-between items-center px-2 py-1.5 rounded text-xs border ${editingBankId === bank.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50'}`}>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="font-bold">{bank.bankName}</span>
+                                                        <span className="font-mono text-gray-500">{bank.accountNumber}</span>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button type="button" onClick={() => editCompanyBank(bank)} className="text-blue-500 hover:text-blue-700"><Pencil size={14}/></button>
+                                                        <button type="button" onClick={() => removeCompanyBank(bank.id)} className="text-red-400 hover:text-red-600"><X size={14}/></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    <button type="button" onClick={handleSaveCompany} className={`w-full text-white px-4 py-2 rounded-lg text-sm h-10 font-bold shadow-sm ${editingCompanyId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{editingCompanyId ? 'ذخیره تغییرات شرکت' : 'افزودن شرکت'}</button>
+                                    
+                                    {/* List */}
+                                    <div className="space-y-2 mt-6 max-h-64 overflow-y-auto border-t pt-4">
+                                        {settings.companies?.map(c => (
+                                            <div key={c.id} className="flex flex-col bg-white p-3 rounded border shadow-sm gap-2">
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2">
+                                                        {c.logo && <img src={c.logo} className="w-6 h-6 object-contain"/>}
+                                                        <span className="text-sm font-bold">{c.name}</span>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        <button type="button" onClick={() => handleEditCompany(c)} className="text-blue-500 p-1 hover:bg-blue-50 rounded"><Pencil size={14}/></button>
+                                                        <button type="button" onClick={() => handleRemoveCompany(c.id)} className="text-red-500 p-1 hover:bg-red-50 rounded"><Trash2 size={14}/></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {activeCategory === 'permissions' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col md:flex-row gap-4 items-end">
@@ -705,9 +929,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
 
-                    {/* ... (Existing Tabs: Data, Integrations, Whatsapp, Commerce, Warehouse, Templates) ... */}
-                    {/* Re-injecting full content for completeness as requested */}
-
                     {activeCategory === 'integrations' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="space-y-4">
@@ -791,7 +1012,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* ... Other Tabs remain structurally implicitly included or handled by other changes ... */}
                     {activeCategory === 'templates' && (
                         <div className="space-y-6 animate-fade-in">
                             <div className="flex justify-between items-center border-b pb-2">
@@ -821,7 +1041,6 @@ const Settings: React.FC = () => {
                             </div>
                         </div>
                     )}
-                    {/* ... (Warehouse, Commerce, Data kept same logic) ... */}
 
                     <div className="flex justify-end pt-4 border-t sticky bottom-0 bg-white p-4 shadow-inner md:shadow-none md:static">
                         <button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all disabled:opacity-70">
