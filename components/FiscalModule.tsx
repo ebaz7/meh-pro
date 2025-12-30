@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { FiscalYear, SystemSettings, Company, CompanySequenceConfig } from '../types';
 import { getSettings, saveSettings } from '../services/storageService';
@@ -26,7 +25,7 @@ export const FiscalYearSwitcher: React.FC = () => {
         if (!settings) return;
         const updated = { ...settings, activeFiscalYearId: yearId };
         await saveSettings(updated);
-        // Force reload to apply new context globally
+        // Force reload to apply new context globally (easiest way to ensure all data fetchers use new ID)
         window.location.reload(); 
     };
 
@@ -67,7 +66,7 @@ export const FiscalYearSwitcher: React.FC = () => {
 // --- MANAGER COMPONENT (FOR SETTINGS) ---
 export const FiscalYearManager: React.FC = () => {
     const [settings, setSettings] = useState<SystemSettings | null>(null);
-    const [newYearLabel, setNewYearLabel] = useState('1405'); 
+    const [newYearLabel, setNewYearLabel] = useState('1405'); // Default hint next year
     
     // Config editing state
     const [editingYearId, setEditingYearId] = useState<string | null>(null);
@@ -78,8 +77,8 @@ export const FiscalYearManager: React.FC = () => {
     useEffect(() => {
         getSettings().then(s => {
             setSettings(s);
-            // Automatically load configuration for the active year if one exists
             if (s.activeFiscalYearId) {
+                // Pre-load active year config if available
                 loadCompanyConfig(s.activeFiscalYearId, s);
             }
         });
@@ -94,7 +93,6 @@ export const FiscalYearManager: React.FC = () => {
         const companies = currentSettings.companies || [];
         
         companies.forEach(c => {
-            // Read from existing sequences, defaulting to '1' only if absolutely nothing is set
             const seq = year.companySequences?.[c.name] || {};
             configMap[c.name] = {
                 pay: seq.startTrackingNumber ? String(seq.startTrackingNumber) : '1',
@@ -112,6 +110,7 @@ export const FiscalYearManager: React.FC = () => {
             id: generateUUID(),
             label: newYearLabel,
             isClosed: false,
+            // Init with empty map, logic will fallback to 1 if missing
             companySequences: {}, 
             createdAt: Date.now()
         };
@@ -119,14 +118,13 @@ export const FiscalYearManager: React.FC = () => {
         const updated = {
             ...settings,
             fiscalYears: [...(settings.fiscalYears || []), newYear],
+            // Auto switch? Maybe not, let user decide.
         };
         
         await saveSettings(updated);
         setSettings(updated);
         setNewYearLabel('');
         alert('سال مالی جدید ایجاد شد. اکنون می‌توانید تنظیمات شماره‌گذاری هر شرکت را ویرایش کنید.');
-        
-        // Auto select the new year for editing
         loadCompanyConfig(newYear.id, updated);
     };
 
@@ -217,7 +215,7 @@ export const FiscalYearManager: React.FC = () => {
                         <div className="flex flex-col">
                             <h3 className="font-bold text-indigo-800 flex items-center gap-2"><Building2 size={20}/> تنظیم شماره‌های شروع - سال {editingYear.label}</h3>
                             <span className="text-[10px] text-gray-500 mt-1">
-                                شماره شروع اسناد برای هر شرکت در این سال مالی را وارد کنید. اگر می‌خواهید ادامه سال قبل باشد، آخرین شماره سال قبل + ۱ را وارد کنید.
+                                شماره شروع اسناد برای هر شرکت در این سال مالی را وارد کنید. اگر می‌خواهید ادامه سال قبل باشد، آخرین شماره سال قبل + ۱ را وارد کنید. اگر می‌خواهید از ۱ شروع شود، عدد ۱ را وارد کنید.
                             </span>
                         </div>
                         <button onClick={handleSaveCompanyConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-indigo-700 shadow-sm"><Save size={16}/> ذخیره تغییرات</button>
