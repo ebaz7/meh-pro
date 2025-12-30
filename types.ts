@@ -1,11 +1,11 @@
 
 export interface FiscalYear {
   id: string;
-  label: string; // مثال: 1403
+  label: string; // مثلا 1403
   isClosed: boolean;
-  startTrackingNumber: number;
-  startExitPermitNumber: number;
-  startBijakNumber: number;
+  startTrackingNumber: number; // شروع دستور پرداخت
+  startExitPermitNumber: number; // شروع مجوز خروج
+  startBijakNumber: number; // شروع بیجک انبار
   createdAt: number;
 }
 
@@ -112,7 +112,7 @@ export interface PaymentOrder {
   attachments?: { fileName: string; data: string; }[];
   createdAt: number;
   updatedAt?: number;
-  fiscalYearId?: string; // فیلد جدید برای انتساب به سال مالی
+  fiscalYearId?: string; // آیدی سال مالی
 }
 
 export interface PrintField {
@@ -181,12 +181,46 @@ export interface ExitPermit {
   sentToGroup?: boolean; 
   createdAt: number;
   updatedAt?: number;
-  fiscalYearId?: string; // فیلد جدید
+  fiscalYearId?: string; // آیدی سال مالی
 }
 
 export interface WarehouseItem { id: string; code: string; name: string; unit: string; containerCapacity?: number; description?: string; }
 export interface WarehouseTransactionItem { itemId: string; itemName: string; quantity: number; weight: number; unitPrice?: number; }
 export interface WarehouseTransaction { id: string; type: 'IN' | 'OUT'; date: string; company: string; number: number; proformaNumber?: string; recipientName?: string; driverName?: string; plateNumber?: string; destination?: string; items: WarehouseTransactionItem[]; description?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED'; approvedBy?: string; rejectionReason?: string; rejectedBy?: string; createdAt: number; createdBy: string; updatedAt?: number; fiscalYearId?: string; }
+
+export interface SystemSettings { 
+    currentTrackingNumber: number; 
+    currentExitPermitNumber: number; 
+    companyNames: string[]; 
+    companies?: Company[]; 
+    defaultCompany: string; 
+    bankNames: string[]; 
+    operatingBankNames?: string[]; 
+    commodityGroups: string[]; 
+    rolePermissions: Record<string, RolePermissions>; 
+    customRoles?: CustomRole[]; 
+    savedContacts?: Contact[]; 
+    pwaIcon?: string; 
+    activeFiscalYearId?: string; // سال مالی فعال
+    fiscalYears?: FiscalYear[]; // لیست سال‌های مالی
+    warehouseSequences?: Record<string, number>; 
+    exitPermitNotificationGroup?: string; 
+    companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
+    defaultWarehouseGroup?: string; 
+    defaultSalesManager?: string; 
+    dailySecurityMeta?: Record<string, DailySecurityMeta>; 
+    printTemplates?: PrintTemplate[]; 
+    // Add missing integration and trade properties used in Settings.tsx
+    telegramBotToken?: string;
+    telegramAdminId?: string;
+    smsApiKey?: string;
+    smsSenderNumber?: string;
+    googleCalendarId?: string;
+    whatsappNumber?: string;
+    geminiApiKey?: string;
+    insuranceCompanies?: string[];
+}
+
 export interface DailySecurityMeta { dailyDescription?: string; morningGuard?: { name: string; entry: string; exit: string }; eveningGuard?: { name: string; entry: string; exit: string }; nightGuard?: { name: string; entry: string; exit: string }; isFactoryDailyApproved?: boolean; isCeoDailyApproved?: boolean; isDelaySupervisorApproved?: boolean; isDelayFactoryApproved?: boolean; isDelayCeoApproved?: boolean; }
 export interface SecurityLog { id: string; rowNumber: number; date: string; shift: string; origin: string; entryTime: string; exitTime: string; driverName: string; plateNumber: string; goodsName: string; quantity: string; destination: string; receiver: string; workDescription: string; permitProvider: string; registrant: string; status: SecurityStatus; approverSupervisor?: string; approverFactory?: string; approverCeo?: string; rejectionReason?: string; createdAt: number; }
 export interface PersonnelDelay { id: string; date: string; personnelName: string; unit: string; arrivalTime: string; delayAmount: string; repeatCount?: string; instruction?: string; registrant: string; status: SecurityStatus; approverSupervisor?: string; approverFactory?: string; approverCeo?: string; rejectionReason?: string; createdAt: number; }
@@ -222,29 +256,6 @@ export interface Company {
 }
 export interface Contact { id: string; name: string; number: string; isGroup?: boolean; }
 export interface CustomRole { id: string; label: string; }
-export interface SystemSettings { 
-  currentTrackingNumber: number; 
-  currentExitPermitNumber: number; 
-  companyNames: string[]; 
-  companies?: Company[]; 
-  defaultCompany: string; 
-  bankNames: string[]; 
-  operatingBankNames?: string[]; 
-  commodityGroups: string[]; 
-  rolePermissions: Record<string, RolePermissions>; 
-  customRoles?: CustomRole[]; 
-  savedContacts?: Contact[]; 
-  pwaIcon?: string; 
-  activeFiscalYearId?: string; // آیدی سال مالی انتخاب شده
-  fiscalYears?: FiscalYear[]; // لیست سال‌های مالی تعریف شده
-  warehouseSequences?: Record<string, number>; 
-  exitPermitNotificationGroup?: string; 
-  companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
-  defaultWarehouseGroup?: string; 
-  defaultSalesManager?: string; 
-  dailySecurityMeta?: Record<string, DailySecurityMeta>; 
-  printTemplates?: PrintTemplate[]; 
-}
 export interface DashboardStats { totalPending: number; totalApproved: number; totalAmount: number; }
 export interface ChatMessage { id: string; sender: string; senderUsername: string; recipient?: string; groupId?: string; role: string; message: string; timestamp: number; attachment?: { fileName: string; url: string; }; audioUrl?: string; isEdited?: boolean; replyTo?: { id: string; sender: string; message: string; }; }
 export interface ChatGroup { id: string; name: string; members: string[]; createdBy: string; icon?: string; }

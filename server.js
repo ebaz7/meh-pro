@@ -34,7 +34,7 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 
 const getDb = () => {
     if (!fs.existsSync(DB_FILE)) {
-        const initial = { settings: { currentTrackingNumber: 1000, fiscalYears: [], activeFiscalYearId: '' }, orders: [], exitPermits: [], warehouseItems: [], warehouseTransactions: [], users: [{ id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم', role: 'admin' }], messages: [], pushSubscriptions: [] };
+        const initial = { settings: { currentTrackingNumber: 1000, currentExitPermitNumber: 1000 }, orders: [], exitPermits: [], warehouseItems: [], warehouseTransactions: [], users: [{ id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم', role: 'admin' }], pushSubscriptions: [] };
         fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
         return initial;
     }
@@ -43,17 +43,16 @@ const getDb = () => {
 
 const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
-// تابع هوشمند پیدا کردن شماره بعدی بر اساس فیلتر سال مالی
-const findNextAvailableNumberByYear = (arr, key, base, fiscalYearId) => {
-    const startNum = base;
-    // فیلتر کردن اسنادی که مربوط به همین سال مالی هستند
+// تابع تولید شماره هوشمند بر اساس سال مالی
+const findNextAvailableNumberByYear = (arr, key, baseNum, fiscalYearId) => {
+    // فیلتر کردن اسناد مربوط به سال مالی انتخابی
     const existing = arr
         .filter(o => o.fiscalYearId === fiscalYearId)
         .map(o => Number(o[key]))
         .filter(n => !isNaN(n))
         .sort((a, b) => a - b);
         
-    let next = startNum;
+    let next = baseNum;
     for (const num of existing) { 
         if (num === next) next++; 
         else if (num > next) break; 
@@ -63,12 +62,12 @@ const findNextAvailableNumberByYear = (arr, key, base, fiscalYearId) => {
 
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
-// دریافت لیست بر اساس سال مالی فعال
+// دریافت اسناد با فیلتر سال مالی فعال
 app.get('/api/orders', (req, res) => {
     const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    if (activeYearId) {
-        return res.json(db.orders.filter(o => o.fiscalYearId === activeYearId));
+    const yearId = db.settings.activeFiscalYearId;
+    if (yearId) {
+        return res.json(db.orders.filter(o => o.fiscalYearId === yearId));
     }
     res.json(db.orders);
 });
@@ -79,12 +78,12 @@ app.post('/api/orders', (req, res) => {
     const activeYearId = db.settings.activeFiscalYearId;
     const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
     
-    if (activeYear?.isClosed) return res.status(403).json({ error: "این سال مالی بسته شده است." });
+    if (activeYear?.isClosed) return res.status(403).json({ error: "سال مالی بسته شده است." });
 
     const baseNum = activeYear ? activeYear.startTrackingNumber : 1001;
     order.id = Date.now().toString();
     order.fiscalYearId = activeYearId;
-    order.trackingNumber = findNextAvailableNumberByYear(db.orders, 'trackingNumber', baseNum, order.fiscalYearId);
+    order.trackingNumber = findNextAvailableNumberByYear(db.orders, 'trackingNumber', baseNum, activeYearId);
     
     db.orders.unshift(order);
     saveDb(db);
@@ -93,9 +92,9 @@ app.post('/api/orders', (req, res) => {
 
 app.get('/api/exit-permits', (req, res) => {
     const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    if (activeYearId) {
-        return res.json(db.exitPermits.filter(o => o.fiscalYearId === activeYearId));
+    const yearId = db.settings.activeFiscalYearId;
+    if (yearId) {
+        return res.json(db.exitPermits.filter(o => o.fiscalYearId === yearId));
     }
     res.json(db.exitPermits);
 });
@@ -111,7 +110,7 @@ app.post('/api/exit-permits', (req, res) => {
     const baseNum = activeYear ? activeYear.startExitPermitNumber : 2001;
     permit.id = Date.now().toString();
     permit.fiscalYearId = activeYearId;
-    permit.permitNumber = findNextAvailableNumberByYear(db.exitPermits, 'permitNumber', baseNum, permit.fiscalYearId);
+    permit.permitNumber = findNextAvailableNumberByYear(db.exitPermits, 'permitNumber', baseNum, activeYearId);
     
     db.exitPermits.push(permit);
     saveDb(db);
@@ -120,9 +119,9 @@ app.post('/api/exit-permits', (req, res) => {
 
 app.get('/api/warehouse/transactions', (req, res) => {
     const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    if (activeYearId) {
-        return res.json(db.warehouseTransactions.filter(o => o.fiscalYearId === activeYearId));
+    const yearId = db.settings.activeFiscalYearId;
+    if (yearId) {
+        return res.json(db.warehouseTransactions.filter(o => o.fiscalYearId === yearId));
     }
     res.json(db.warehouseTransactions);
 });
@@ -138,8 +137,8 @@ app.post('/api/warehouse/transactions', (req, res) => {
     t.fiscalYearId = activeYearId;
     if(t.type === 'OUT'){
         const baseNum = activeYear ? activeYear.startBijakNumber : 5001;
-        const companyTxs = db.warehouseTransactions.filter(x => x.type === 'OUT' && x.company === t.company && x.fiscalYearId === t.fiscalYearId);
-        t.number = findNextAvailableNumberByYear(companyTxs, 'number', baseNum, t.fiscalYearId);
+        const companyTxs = db.warehouseTransactions.filter(x => x.type === 'OUT' && x.company === t.company && x.fiscalYearId === activeYearId);
+        t.number = findNextAvailableNumberByYear(companyTxs, 'number', baseNum, activeYearId);
     }
     db.warehouseTransactions.unshift(t);
     saveDb(db);
