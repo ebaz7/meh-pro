@@ -1,4 +1,25 @@
 
+export interface FiscalYear {
+  id: string;
+  label: string; // نام سال مثلا 1404
+  isClosed: boolean;
+  
+  // تنظیمات پیش‌فرض (اگر برای شرکتی تنظیم خاصی نبود)
+  defaultStartTrackingNumber: number; 
+  defaultStartExitPermitNumber: number; 
+  defaultStartBijakNumber: number; 
+
+  // تنظیمات اختصاصی به تفکیک شرکت
+  // Key: نام شرکت, Value: تنظیمات
+  companySequences: Record<string, {
+      startTrackingNumber?: number; // شروع پرداخت این شرکت
+      startExitPermitNumber?: number; // شروع خروج این شرکت
+      startBijakNumber?: number; // شروع بیجک این شرکت
+  }>;
+  
+  createdAt: number;
+}
+
 export enum PaymentMethod {
   CASH = 'نقد',
   CHEQUE = 'چک',
@@ -107,7 +128,8 @@ export interface PaymentOrder {
   rejectedBy?: string; 
   attachments?: { fileName: string; data: string; }[];
   createdAt: number;
-  updatedAt?: number; 
+  updatedAt?: number;
+  fiscalYearId?: string; // Linked Fiscal Year
 }
 
 // DYNAMIC PRINT TEMPLATE TYPES
@@ -177,12 +199,13 @@ export interface ExitPermit {
   sentToGroup?: boolean; // NEW: Track if sent to whatsapp group
   createdAt: number;
   updatedAt?: number;
+  fiscalYearId?: string; // Linked Fiscal Year
 }
 
 // ... rest of types remain same ...
 export interface WarehouseItem { id: string; code: string; name: string; unit: string; containerCapacity?: number; description?: string; }
 export interface WarehouseTransactionItem { itemId: string; itemName: string; quantity: number; weight: number; unitPrice?: number; }
-export interface WarehouseTransaction { id: string; type: 'IN' | 'OUT'; date: string; company: string; number: number; proformaNumber?: string; recipientName?: string; driverName?: string; plateNumber?: string; destination?: string; items: WarehouseTransactionItem[]; description?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED'; approvedBy?: string; rejectionReason?: string; rejectedBy?: string; createdAt: number; createdBy: string; updatedAt?: number; }
+export interface WarehouseTransaction { id: string; type: 'IN' | 'OUT'; date: string; company: string; number: number; proformaNumber?: string; recipientName?: string; driverName?: string; plateNumber?: string; destination?: string; items: WarehouseTransactionItem[]; description?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED'; approvedBy?: string; rejectionReason?: string; rejectedBy?: string; createdAt: number; createdBy: string; updatedAt?: number; fiscalYearId?: string; }
 export interface DailySecurityMeta { dailyDescription?: string; morningGuard?: { name: string; entry: string; exit: string }; eveningGuard?: { name: string; entry: string; exit: string }; nightGuard?: { name: string; entry: string; exit: string }; isFactoryDailyApproved?: boolean; isCeoDailyApproved?: boolean; isDelaySupervisorApproved?: boolean; isDelayFactoryApproved?: boolean; isDelayCeoApproved?: boolean; }
 export interface SecurityLog { id: string; rowNumber: number; date: string; shift: string; origin: string; entryTime: string; exitTime: string; driverName: string; plateNumber: string; goodsName: string; quantity: string; destination: string; receiver: string; workDescription: string; permitProvider: string; registrant: string; status: SecurityStatus; approverSupervisor?: string; approverFactory?: string; approverCeo?: string; rejectionReason?: string; createdAt: number; }
 export interface PersonnelDelay { id: string; date: string; personnelName: string; unit: string; arrivalTime: string; delayAmount: string; repeatCount?: string; instruction?: string; registrant: string; status: SecurityStatus; approverSupervisor?: string; approverFactory?: string; approverCeo?: string; rejectionReason?: string; createdAt: number; }
@@ -220,7 +243,39 @@ export interface Company {
 }
 export interface Contact { id: string; name: string; number: string; isGroup?: boolean; }
 export interface CustomRole { id: string; label: string; }
-export interface SystemSettings { currentTrackingNumber: number; currentExitPermitNumber: number; companyNames: string[]; companies?: Company[]; defaultCompany: string; bankNames: string[]; operatingBankNames?: string[]; commodityGroups: string[]; rolePermissions: Record<string, RolePermissions>; customRoles?: CustomRole[]; savedContacts?: Contact[]; pwaIcon?: string; telegramBotToken?: string; telegramAdminId?: string; smsApiKey?: string; smsSenderNumber?: string; googleCalendarId?: string; whatsappNumber?: string; geminiApiKey?: string; insuranceCompanies?: string[]; warehouseSequences?: Record<string, number>; exitPermitNotificationGroup?: string; companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; defaultWarehouseGroup?: string; defaultSalesManager?: string; dailySecurityMeta?: Record<string, DailySecurityMeta>; printTemplates?: PrintTemplate[]; }
+export interface SystemSettings { 
+    currentTrackingNumber: number; 
+    currentExitPermitNumber: number; 
+    companyNames: string[]; 
+    companies?: Company[]; 
+    defaultCompany: string; 
+    bankNames: string[]; 
+    operatingBankNames?: string[]; 
+    commodityGroups: string[]; 
+    rolePermissions: Record<string, RolePermissions>; 
+    customRoles?: CustomRole[]; 
+    savedContacts?: Contact[]; 
+    pwaIcon?: string; 
+    telegramBotToken?: string; 
+    telegramAdminId?: string; 
+    smsApiKey?: string; 
+    smsSenderNumber?: string; 
+    googleCalendarId?: string; 
+    whatsappNumber?: string; 
+    geminiApiKey?: string; 
+    insuranceCompanies?: string[]; 
+    warehouseSequences?: Record<string, number>; 
+    exitPermitNotificationGroup?: string; 
+    companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
+    defaultWarehouseGroup?: string; 
+    defaultSalesManager?: string; 
+    dailySecurityMeta?: Record<string, DailySecurityMeta>; 
+    printTemplates?: PrintTemplate[]; 
+    
+    // FISCAL YEAR SETTINGS
+    activeFiscalYearId?: string;
+    fiscalYears?: FiscalYear[];
+}
 export interface DashboardStats { totalPending: number; totalApproved: number; totalAmount: number; }
 export interface ChatMessage { id: string; sender: string; senderUsername: string; recipient?: string; groupId?: string; role: string; message: string; timestamp: number; attachment?: { fileName: string; url: string; }; audioUrl?: string; isEdited?: boolean; replyTo?: { id: string; sender: string; message: string; }; }
 export interface ChatGroup { id: string; name: string; members: string[]; createdBy: string; icon?: string; }
