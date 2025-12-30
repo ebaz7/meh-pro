@@ -16,6 +16,7 @@ export enum PaymentMethod {
   POS = 'کارتخوان',
   SHEBA = 'شبا (پایا / ساتنا)', // Merged Option
   INTERNAL_TRANSFER = 'حواله داخلی',
+  // Deprecated but kept for backward compatibility if needed in logic
   SATNA = 'ساتنا',
   PAYA = 'پایا'
 }
@@ -26,6 +27,7 @@ export enum OrderStatus {
   APPROVED_MANAGER = 'تایید مدیریت / در انتظار مدیرعامل', 
   APPROVED_CEO = 'تایید نهایی', 
   REJECTED = 'رد شده',
+  // Revocation Workflow
   REVOCATION_PENDING_FINANCE = 'درخواست ابطال / منتظر تایید مالی',
   REVOCATION_PENDING_MANAGER = 'تایید ابطال مالی / منتظر مدیریت',
   REVOCATION_PENDING_CEO = 'تایید ابطال مدیریت / منتظر مدیرعامل',
@@ -35,12 +37,13 @@ export enum OrderStatus {
 export enum ExitPermitStatus {
   PENDING_CEO = 'در انتظار تایید مدیرعامل',
   PENDING_FACTORY = 'تایید مدیرعامل / در انتظار مدیر کارخانه',
-  PENDING_WAREHOUSE = 'تایید کارخانه / در انتظار سرپرست انبار', 
+  PENDING_WAREHOUSE = 'تایید کارخانه / در انتظار سرپرست انبار', // NEW STAGE
   PENDING_SECURITY = 'تایید انبار / در انتظار تایید انتظامات',
   EXITED = 'خارج شده (بایگانی)',
   REJECTED = 'رد شده'
 }
 
+// Security Module Statuses
 export enum SecurityStatus {
   PENDING_SUPERVISOR = 'در انتظار تایید سرپرست انتظامات',
   APPROVED_SUPERVISOR_CHECK = 'تایید اولیه سرپرست (چک شد)', 
@@ -85,12 +88,14 @@ export interface PaymentDetail {
   chequeDate?: string; 
   bankName?: string;
   description?: string;
+  // SATNA & Paya Fields (Now under SHEBA)
   sheba?: string;
   recipientBank?: string;
   paymentId?: string;
-  destinationAccount?: string;
+  // Internal Transfer Fields
+  destinationAccount?: string; // Card or Account Number
   destinationOwner?: string;
-  destinationBranch?: string;
+  destinationBranch?: string; // New: Branch Name/Code
 }
 
 export interface PaymentOrder {
@@ -102,6 +107,7 @@ export interface PaymentOrder {
   description: string;
   status: OrderStatus;
   payingCompany?: string; 
+  // paymentLocation removed as requested
   paymentDetails: PaymentDetail[];
   requester: string;
   approverFinancial?: string;
@@ -112,40 +118,41 @@ export interface PaymentOrder {
   attachments?: { fileName: string; data: string; }[];
   createdAt: number;
   updatedAt?: number;
-  fiscalYearId?: string; // آیدی سال مالی مربوطه
+  fiscalYearId?: string; // Linked Fiscal Year
 }
 
+// DYNAMIC PRINT TEMPLATE TYPES
 export interface PrintField {
     id: string;
-    key: string; 
-    label: string; 
-    x: number; 
-    y: number; 
-    width?: number; 
-    fontSize: number; 
-    letterSpacing?: number; 
+    key: string; // e.g., 'amount', 'date_day', 'sheba'
+    label: string; // For UI
+    x: number; // mm
+    y: number; // mm
+    width?: number; // mm
+    fontSize: number; // px
+    letterSpacing?: number; // px (for Sheba boxes)
     align?: 'right' | 'center' | 'left';
     isBold?: boolean;
 }
 
 export interface PrintTemplate {
     id: string;
-    name: string; 
-    width: number; 
-    height: number; 
-    pageSize?: 'A4' | 'A5'; 
-    orientation?: 'portrait' | 'landscape'; 
-    backgroundImage?: string; 
+    name: string; // e.g., "Refah Bank Satna"
+    width: number; // mm (210 for A4)
+    height: number; // mm (297 for A4)
+    pageSize?: 'A4' | 'A5'; // NEW (Optional for legacy compat)
+    orientation?: 'portrait' | 'landscape'; // NEW (Optional for legacy compat)
+    backgroundImage?: string; // Base64 of the form
     fields: PrintField[];
 }
 
 export interface ExitPermitItem {
   id: string;
   goodsName: string;
-  cartonCount: number; 
-  weight: number; 
-  deliveredCartonCount?: number; 
-  deliveredWeight?: number; 
+  cartonCount: number; // Requested
+  weight: number; // Requested
+  deliveredCartonCount?: number; // Actual/Final from Warehouse
+  deliveredWeight?: number; // Actual/Final from Warehouse
 }
 
 export interface ExitPermitDestination {
@@ -170,20 +177,21 @@ export interface ExitPermit {
   plateNumber?: string; 
   driverName?: string; 
   description?: string;
-  exitTime?: string; 
+  exitTime?: string; // Recorded by security in final stage
   status: ExitPermitStatus;
   approverSecurity?: string; 
   approverFactory?: string;
-  approverWarehouse?: string; 
+  approverWarehouse?: string; // NEW: Warehouse Supervisor
   approverCeo?: string;
   rejectionReason?: string;
   rejectedBy?: string;
-  sentToGroup?: boolean; 
+  sentToGroup?: boolean; // NEW: Track if sent to whatsapp group
   createdAt: number;
   updatedAt?: number;
-  fiscalYearId?: string; // آیدی سال مالی مربوطه
+  fiscalYearId?: string; // Linked Fiscal Year
 }
 
+// ... rest of types remain same ...
 export interface WarehouseItem { id: string; code: string; name: string; unit: string; containerCapacity?: number; description?: string; }
 export interface WarehouseTransactionItem { itemId: string; itemName: string; quantity: number; weight: number; unitPrice?: number; }
 export interface WarehouseTransaction { id: string; type: 'IN' | 'OUT'; date: string; company: string; number: number; proformaNumber?: string; recipientName?: string; driverName?: string; plateNumber?: string; destination?: string; items: WarehouseTransactionItem[]; description?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED'; approvedBy?: string; rejectionReason?: string; rejectedBy?: string; createdAt: number; createdBy: string; updatedAt?: number; fiscalYearId?: string; }
@@ -193,16 +201,17 @@ export interface PersonnelDelay { id: string; date: string; personnelName: strin
 export interface SecurityIncident { id: string; reportNumber: string; date: string; subject: string; description: string; shift: string; registrant: string; status: SecurityStatus; witnesses?: string; shiftManagerOpinion?: string; approverSupervisor?: string; approverFactory?: string; approverCeo?: string; hrAction?: string; safetyAction?: string; rejectionReason?: string; createdAt: number; }
 export interface RolePermissions { canViewAll: boolean; canCreatePaymentOrder: boolean; canViewPaymentOrders: boolean; canViewExitPermits: boolean; canApproveFinancial: boolean; canApproveManager: boolean; canApproveCeo: boolean; canEditOwn: boolean; canEditAll: boolean; canDeleteOwn: boolean; canDeleteAll: boolean; canManageTrade: boolean; canManageSettings?: boolean; canCreateExitPermit?: boolean; canApproveExitCeo?: boolean; canApproveExitFactory?: boolean; canApproveExitWarehouse?: boolean; canApproveExitSecurity?: boolean; canViewExitArchive?: boolean; canEditExitArchive?: boolean; canManageWarehouse?: boolean; canViewWarehouseReports?: boolean; canApproveBijak?: boolean; canViewSecurity?: boolean; canCreateSecurityLog?: boolean; canApproveSecuritySupervisor?: boolean; }
 
+// Updated CompanyBank to include form layout and dual print settings
 export interface CompanyBank { 
     id: string; 
     bankName: string; 
     accountNumber: string; 
-    sheba?: string; 
-    formLayoutId?: string; 
-    internalTransferTemplateId?: string; 
-    enableDualPrint?: boolean; 
-    internalWithdrawalTemplateId?: string; 
-    internalDepositTemplateId?: string; 
+    sheba?: string; // Source Sheba
+    formLayoutId?: string; // Default template (Check, Satna, etc.)
+    internalTransferTemplateId?: string; // Legacy: Kept for compat, but new fields preferred if dual
+    enableDualPrint?: boolean; // NEW: Toggle for Withdrawal/Deposit split printing
+    internalWithdrawalTemplateId?: string; // NEW: Template for Withdrawal (Bardasht)
+    internalDepositTemplateId?: string; // NEW: Template for Deposit (Variz)
 }
 
 export interface Company { 
@@ -212,13 +221,14 @@ export interface Company {
     showInWarehouse?: boolean; 
     banks?: CompanyBank[]; 
     letterhead?: string;
+    // Legal Info for Bank Forms
     registrationNumber?: string;
     nationalId?: string;
     address?: string;
     phone?: string;
-    postalCode?: string; 
-    fax?: string; 
-    economicCode?: string; 
+    postalCode?: string; // New
+    fax?: string; // New
+    economicCode?: string; // New
 }
 export interface Contact { id: string; name: string; number: string; isGroup?: boolean; }
 export interface CustomRole { id: string; label: string; }
@@ -250,7 +260,8 @@ export interface SystemSettings {
     defaultSalesManager?: string; 
     dailySecurityMeta?: Record<string, DailySecurityMeta>; 
     printTemplates?: PrintTemplate[]; 
-    // فیلدهای جدید سال مالی
+    
+    // FISCAL YEAR SETTINGS
     activeFiscalYearId?: string;
     fiscalYears?: FiscalYear[];
 }
