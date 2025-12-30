@@ -6,12 +6,12 @@ import { Settings as SettingsIcon, Save, Loader2, Database, Plus, Trash2, Buildi
 import { generateUUID } from '../constants';
 
 const Settings: React.FC = () => {
-  const [activeCategory, setActiveCategory] = useState<'system' | 'data' | 'fiscal' | 'permissions'>('system');
+  const [activeCategory, setActiveCategory] = useState<'system' | 'data' | 'fiscal'>('system');
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // New Fiscal Year Form
+  // فیلدهای فرم سال مالی جدید
   const [newYearLabel, setNewYearLabel] = useState('');
   const [startPay, setStartPay] = useState('1001');
   const [startExit, setStartExit] = useState('2001');
@@ -102,7 +102,7 @@ const Settings: React.FC = () => {
                             <h3 className="font-bold text-gray-800 border-b pb-2">لیست سال‌های مالی</h3>
                             <div className="space-y-3">
                                 {settings?.fiscalYears?.map(y => (
-                                    <div key={y.id} className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-center gap-4 ${y.id === settings.activeFiscalYearId ? 'border-blue-500 bg-blue-50/30' : 'bg-white border-gray-200'}`}>
+                                    <div key={y.id} className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-center gap-4 ${y.id === settings.activeFiscalYearId ? 'border-blue-500 bg-blue-50/30 ring-2 ring-blue-500/10' : 'bg-white border-gray-200'}`}>
                                         <div className="flex items-center gap-4">
                                             <div className={`p-3 rounded-full ${y.isClosed ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-600'}`}>
                                                 {y.isClosed ? <Lock size={20}/> : <Unlock size={20}/>}
@@ -131,16 +131,18 @@ const Settings: React.FC = () => {
                                         </div>
                                     </div>
                                 ))}
+                                {(!settings?.fiscalYears || settings.fiscalYears.length === 0) && (
+                                    <div className="text-center py-10 text-gray-400 text-sm border-2 border-dashed rounded-xl">هنوز سال مالی تعریف نشده است.</div>
+                                )}
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* ... سایر کتگوری‌ها ... */}
                 {activeCategory === 'system' && (
                     <div className="space-y-4">
                         <h3 className="font-bold text-gray-800 border-b pb-2">تنظیمات عمومی</h3>
-                        <p className="text-sm text-gray-500">در اینجا می‌توانید تنظیمات عمومی سیستم را مدیریت کنید.</p>
+                        <p className="text-sm text-gray-500">سایر تنظیمات عمومی سیستم را در اینجا مدیریت کنید.</p>
                     </div>
                 )}
 

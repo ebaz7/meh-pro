@@ -43,16 +43,17 @@ const getDb = () => {
 
 const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
-// تابع هوشمند پیدا کردن شماره بعدی بر اساس سال مالی
-const findNextAvailableNumber = (arr, key, base, fiscalYearId) => {
-    // فیلتر کردن اسناد فقط برای سال مالی مشخص شده
+// تابع هوشمند پیدا کردن شماره بعدی بر اساس فیلتر سال مالی
+const findNextAvailableNumberByYear = (arr, key, base, fiscalYearId) => {
+    const startNum = base;
+    // فیلتر کردن اسنادی که مربوط به همین سال مالی هستند
     const existing = arr
         .filter(o => o.fiscalYearId === fiscalYearId)
         .map(o => Number(o[key]))
         .filter(n => !isNaN(n))
         .sort((a, b) => a - b);
         
-    let next = base;
+    let next = startNum;
     for (const num of existing) { 
         if (num === next) next++; 
         else if (num > next) break; 
@@ -62,10 +63,10 @@ const findNextAvailableNumber = (arr, key, base, fiscalYearId) => {
 
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
+// دریافت لیست بر اساس سال مالی فعال
 app.get('/api/orders', (req, res) => {
     const db = getDb();
     const activeYearId = db.settings.activeFiscalYearId;
-    // اگر سال مالی انتخاب شده باشد، فقط اسناد آن سال را برگردان
     if (activeYearId) {
         return res.json(db.orders.filter(o => o.fiscalYearId === activeYearId));
     }
@@ -75,14 +76,15 @@ app.get('/api/orders', (req, res) => {
 app.post('/api/orders', (req, res) => {
     const db = getDb();
     const order = req.body;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === db.settings.activeFiscalYearId);
+    const activeYearId = db.settings.activeFiscalYearId;
+    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
     
-    if (activeYear?.isClosed) return res.status(403).json({ error: "این سال مالی بسته شده است و امکان ثبت سند جدید وجود ندارد." });
+    if (activeYear?.isClosed) return res.status(403).json({ error: "این سال مالی بسته شده است." });
 
     const baseNum = activeYear ? activeYear.startTrackingNumber : 1001;
     order.id = Date.now().toString();
-    order.fiscalYearId = db.settings.activeFiscalYearId;
-    order.trackingNumber = findNextAvailableNumber(db.orders, 'trackingNumber', baseNum, order.fiscalYearId);
+    order.fiscalYearId = activeYearId;
+    order.trackingNumber = findNextAvailableNumberByYear(db.orders, 'trackingNumber', baseNum, order.fiscalYearId);
     
     db.orders.unshift(order);
     saveDb(db);
@@ -101,14 +103,15 @@ app.get('/api/exit-permits', (req, res) => {
 app.post('/api/exit-permits', (req, res) => {
     const db = getDb();
     const permit = req.body;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === db.settings.activeFiscalYearId);
+    const activeYearId = db.settings.activeFiscalYearId;
+    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
 
-    if (activeYear?.isClosed) return res.status(403).json({ error: "این سال مالی بسته شده است." });
+    if (activeYear?.isClosed) return res.status(403).json({ error: "سال مالی بسته شده است." });
 
     const baseNum = activeYear ? activeYear.startExitPermitNumber : 2001;
     permit.id = Date.now().toString();
-    permit.fiscalYearId = db.settings.activeFiscalYearId;
-    permit.permitNumber = findNextAvailableNumber(db.exitPermits, 'permitNumber', baseNum, permit.fiscalYearId);
+    permit.fiscalYearId = activeYearId;
+    permit.permitNumber = findNextAvailableNumberByYear(db.exitPermits, 'permitNumber', baseNum, permit.fiscalYearId);
     
     db.exitPermits.push(permit);
     saveDb(db);
@@ -127,16 +130,16 @@ app.get('/api/warehouse/transactions', (req, res) => {
 app.post('/api/warehouse/transactions', (req, res) => {
     const db = getDb();
     const t = req.body;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === db.settings.activeFiscalYearId);
+    const activeYearId = db.settings.activeFiscalYearId;
+    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
 
-    if (activeYear?.isClosed) return res.status(403).json({ error: "این سال مالی بسته شده است." });
+    if (activeYear?.isClosed) return res.status(403).json({ error: "سال مالی بسته شده است." });
 
-    t.fiscalYearId = db.settings.activeFiscalYearId;
+    t.fiscalYearId = activeYearId;
     if(t.type === 'OUT'){
         const baseNum = activeYear ? activeYear.startBijakNumber : 5001;
-        // بیجک‌ها بر اساس شرکت هم تفکیک می‌شوند
         const companyTxs = db.warehouseTransactions.filter(x => x.type === 'OUT' && x.company === t.company && x.fiscalYearId === t.fiscalYearId);
-        t.number = findNextAvailableNumber(companyTxs, 'number', baseNum, t.fiscalYearId);
+        t.number = findNextAvailableNumberByYear(companyTxs, 'number', baseNum, t.fiscalYearId);
     }
     db.warehouseTransactions.unshift(t);
     saveDb(db);
