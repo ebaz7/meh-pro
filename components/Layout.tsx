@@ -6,7 +6,6 @@ import { logout, hasPermission, getRolePermissions, updateUser } from '../servic
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp, sendNotification } from '../services/notificationService';
 import { getSettings, uploadFile } from '../services/storageService';
 import { apiCall } from '../services/apiService';
-import { FiscalYearSwitcher } from './FiscalModule'; // Import Switcher
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -304,14 +303,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
       
       {/* Desktop Sidebar */}
       <aside className="w-64 bg-slate-800 text-white flex-shrink-0 hidden md:flex flex-col no-print shadow-xl relative h-screen sticky top-0">
-          <div className="p-6 border-b border-slate-700 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                  <div className="bg-blue-500 p-2 rounded-lg"><FileText className="w-6 h-6 text-white" /></div>
-                  <div><h1 className="text-lg font-bold tracking-wide">سیستم مالی</h1><span className="text-xs text-slate-400">پنل مدیریتی</span></div>
-              </div>
-              <FiscalYearSwitcher /> {/* Added Fiscal Year Switcher */}
-          </div>
-          
+          <div className="p-6 border-b border-slate-700 flex items-center gap-3"><div className="bg-blue-500 p-2 rounded-lg"><FileText className="w-6 h-6 text-white" /></div><div><h1 className="text-lg font-bold tracking-wide">سیستم مالی</h1><span className="text-xs text-slate-400">پنل کاربری</span></div></div>
           <div className="p-4 bg-slate-700/50 mx-4 mt-4 rounded-xl flex items-center gap-3 border border-slate-600 relative group cursor-pointer hover:bg-slate-600 transition-colors" onClick={() => setShowProfileModal(true)} title="تنظیمات کاربری"><div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center overflow-hidden shrink-0">{currentUser.avatar ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover"/> : <UserIcon size={20} className="text-blue-300" />}</div><div className="overflow-hidden flex-1"><p className="text-sm font-bold truncate">{currentUser.fullName}</p><p className="text-xs text-slate-400 truncate">نقش: {currentUser.role}</p></div><div className="absolute right-2 top-2 bg-slate-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"><Settings size={14} /></div></div>
           
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
@@ -346,16 +338,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
         <header className="bg-white shadow-sm p-4 md:hidden no-print flex items-center justify-between shrink-0 relative z-40 safe-pt">
             <div className="flex items-center gap-3">
                 {activeTab !== 'dashboard' && (<button onClick={() => setActiveTab('dashboard')} className="p-1.5 -mr-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight size={24} /></button>)}
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-gray-300" onClick={() => setShowProfileModal(true)}>{currentUser.avatar ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover"/> : <UserIcon size={16} className="text-gray-500 m-2" />}</div>
-                    <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                            <h1 className="font-bold text-gray-800 text-sm">{activeTab === 'dashboard' ? 'سیستم مالی' : navItems.find(i => i.id === activeTab)?.label}</h1>
-                            <FiscalYearSwitcher /> {/* Added Mobile Switcher */}
-                        </div>
-                        <div className="text-[10px] text-gray-500">{currentUser.fullName}</div>
-                    </div>
-                </div>
+                <div className="flex items-center gap-2" onClick={() => setShowProfileModal(true)}><div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-gray-300">{currentUser.avatar ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover"/> : <UserIcon size={16} className="text-gray-500 m-2" />}</div><div><h1 className="font-bold text-gray-800 text-sm">{activeTab === 'dashboard' ? 'سیستم مالی' : navItems.find(i => i.id === activeTab)?.label}</h1><div className="text-[10px] text-gray-500">{currentUser.fullName}</div></div></div>
             </div>
             <div className="flex items-center gap-2">
                 {(!isStandalone && (deferredPrompt || isIOS)) && (
