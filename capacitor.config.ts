@@ -6,11 +6,9 @@ const config: CapacitorConfig = {
   appName: 'Payment Order System',
   webDir: 'dist',
   server: {
-    // استفاده از http برای جلوگیری از مشکلات SSL در شبکه داخلی
-    androidScheme: 'http',
-    // اجازه دادن به ترافیک غیرامن (برای اتصال به IP سرور)
+    // برای اتصال به دامین‌های خارجی (چه HTTP چه HTTPS)
+    androidScheme: 'https',
     cleartext: true,
-    // اجازه ناوبری به همه آدرس‌ها
     allowNavigation: ['*']
   },
   plugins: {
