@@ -3,34 +3,36 @@ import { PaymentOrder, User, UserRole, SystemSettings, ChatMessage, ChatGroup, G
 import { INITIAL_ORDERS } from '../constants';
 import { Capacitor } from '@capacitor/core';
 
-// ******************************************************************
-// تنظیمات اتصال به سرور (مهم)
-// آدرس دامین یا آی‌پی ثابت خود را در خط زیر وارد کنید
-// مثال: 'http://85.12.34.56:3000' یا 'https://example.com'
-// ******************************************************************
-const HARDCODED_SERVER_URL = 'http://YOUR_DOMAIN_OR_IP'; // <--- اینجا را تغییر دهید
+// کلید ذخیره سازی آدرس در حافظه گوشی
+const STORAGE_KEY_HOST = 'app_server_host';
+
+// آدرس پیش‌فرض (فقط اگر کاربر چیزی وارد نکرده باشد استفاده می‌شود)
+const DEFAULT_FALLBACK_URL = ''; 
 
 export const getServerHost = () => {
-    // اگر آدرس بالا پر شده باشد، اولویت با آن است
-    if (HARDCODED_SERVER_URL && HARDCODED_SERVER_URL !== 'http://YOUR_DOMAIN_OR_IP') {
-        return (HARDCODED_SERVER_URL as string).replace(/\/$/, '');
-    }
-    // در غیر این صورت از حافظه گوشی می‌خواند (برای حالت توسعه)
-    return localStorage.getItem('app_server_host') || '';
+    // 1. اولویت با آدرسی است که کاربر در صفحه تنظیمات لاگین وارد کرده
+    const savedHost = localStorage.getItem(STORAGE_KEY_HOST);
+    if (savedHost) return savedHost.replace(/\/$/, ''); // حذف اسلش آخر اگر بود
+
+    // 2. اگر تنظیم نشده بود، برگرداندن رشته خالی (که باعث می‌شود اپلیکیشن درخواست تنظیم کند)
+    return DEFAULT_FALLBACK_URL;
 };
 
 export const setServerHost = (url: string) => {
-    const cleanUrl = url.replace(/\/$/, '');
-    localStorage.setItem('app_server_host', cleanUrl);
+    let cleanUrl = url.trim().replace(/\/$/, '');
+    // اگر کاربر http یا https را وارد نکرده بود، پیش‌فرض http بگذار (مگر اینکه دامین باشد)
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        cleanUrl = 'https://' + cleanUrl; // پیش‌فرض امن برای دامین‌ها
+    }
+    localStorage.setItem(STORAGE_KEY_HOST, cleanUrl);
 };
 
-// تشخیص دقیق پلتفرم
 const isNativeApp = Capacitor.isNativePlatform();
 
 console.log("Environment:", isNativeApp ? "Native App" : "Web Browser");
 
 const MOCK_USERS: User[] = [
-    { id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم', role: UserRole.ADMIN, canManageTrade: true }
+    { id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم (آفلاین)', role: UserRole.ADMIN, canManageTrade: true }
 ];
 
 const LS_KEYS = {
@@ -66,13 +68,15 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         if (isNativeApp) {
             const host = getServerHost();
             if (!host) {
+                // اگر آدرس تنظیم نشده بود، خطای خاص پرتاب کن تا UI متوجه شود
                 throw new Error("SERVER_URL_MISSING");
             }
-            // اگر آدرس سرور پورت نداشت و لوکال نبود، ممکن است نیاز به /api داشته باشد یا خیر
-            // در اینجا فرض می‌کنیم سرور اکسپرس شما روی روت /api را سرو می‌کند
             baseUrl = `${host}/api`;
         } else {
-            baseUrl = '/api';
+            // در حالت وب (توسعه)، از پروکسی یا آدرس نسبی استفاده کن
+            // اما اگر آدرس دستی ست شده بود، از آن استفاده کن (برای تست روی گوشی با مرورگر)
+            const host = getServerHost();
+            baseUrl = host ? `${host}/api` : '/api';
         }
 
         const response = await fetch(`${baseUrl}${endpoint}`, {
@@ -96,33 +100,30 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
     } catch (error: any) {
         
         if (error.message === "SERVER_URL_MISSING") {
-            throw error; 
+            throw error; // پاس دادن خطا به کامپوننت لاگین
         }
 
-        console.warn(`API Fallback (Mock) triggered for: ${endpoint}`, error);
+        console.warn(`API Connection Failed: ${endpoint}`, error);
 
-        await delay(500);
-        
-        // --- MOCK DATA FALLBACKS ---
+        // در اپ موبایل، اگر نتواند وصل شود نباید به ماک دیتا برود مگر اینکه لاگین نباشد
         if (endpoint === '/login' && method === 'POST') {
-            const users = getLocalData<User[]>(LS_KEYS.USERS, MOCK_USERS);
-            const user = users.find(u => u.username === body.username && u.password === body.password);
-            if (user) return user as unknown as T;
-            throw new Error('Invalid credentials');
+             throw new Error('اتصال به سرور برقرار نشد. لطفاً آدرس سرور و اینترنت را بررسی کنید.');
         }
 
-        if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
-        if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
-        if (endpoint === '/warehouse/items') return getLocalData<WarehouseItem[]>(LS_KEYS.WH_ITEMS, []) as unknown as T;
-        if (endpoint === '/warehouse/transactions') return getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []) as unknown as T;
-        if (endpoint === '/settings') return getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any) as unknown as T;
-        if (endpoint === '/chat') return getLocalData<ChatMessage[]>(LS_KEYS.CHAT, []) as unknown as T;
-        if (endpoint === '/users') return getLocalData<User[]>(LS_KEYS.USERS, MOCK_USERS) as unknown as T;
-        
-        if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
-            return { success: true, offline: true } as unknown as T;
+        // --- MOCK DATA FALLBACKS (فقط برای نمایش در حالت توسعه وب یا آفلاین اضطراری) ---
+        // این بخش در پروداکشن واقعی باید حذف شود یا مدیریت شود
+        if (!isNativeApp) {
+            await delay(500);
+            if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
+            if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
+            if (endpoint === '/warehouse/items') return getLocalData<WarehouseItem[]>(LS_KEYS.WH_ITEMS, []) as unknown as T;
+            if (endpoint === '/warehouse/transactions') return getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []) as unknown as T;
+            if (endpoint === '/settings') return getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any) as unknown as T;
+            if (endpoint === '/chat') return getLocalData<ChatMessage[]>(LS_KEYS.CHAT, []) as unknown as T;
+            if (endpoint === '/users') return getLocalData<User[]>(LS_KEYS.USERS, MOCK_USERS) as unknown as T;
+            if (method === 'POST' || method === 'PUT' || method === 'DELETE') return { success: true, offline: true } as unknown as T;
         }
 
-        throw new Error(`Mock endpoint not found: ${endpoint}`);
+        throw error;
     }
 };

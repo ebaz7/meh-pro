@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { login } from '../services/authService';
 import { getServerHost, setServerHost } from '../services/apiService';
 import { User } from '../types';
-import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save } from 'lucide-react';
+import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, Globe, Save } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 interface LoginProps {
@@ -16,29 +16,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
+  // بخش تنظیمات سرور
   const [showServerConfig, setShowServerConfig] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
   const [isNative, setIsNative] = useState(false);
-  const [isHardcoded, setIsHardcoded] = useState(false);
 
   useEffect(() => {
     const savedUsername = localStorage.getItem('saved_username');
     if (savedUsername) setUsername(savedUsername);
     
-    const native = Capacitor.isNativePlatform();
-    setIsNative(native);
+    setIsNative(Capacitor.isNativePlatform());
+    
+    // خواندن آدرس فعلی
+    const currentHost = getServerHost();
+    setServerUrl(currentHost);
 
-    const host = getServerHost();
-    setServerUrl(host);
-
-    // اگر آدرس هاردکد شده باشد (یعنی در apiService تنظیم شده باشد)، دیگر تنظیمات را نشان نده
-    // ما با چک کردن اینکه آیا آدرس در LocalStorage است یا نه این را می‌فهمیم
-    // اما ساده‌تر این است که اگر host مقدار داشت، فرض کنیم وصل است.
-    if (host && native) {
-        setIsHardcoded(true);
-    }
-
-    if (native && !host) {
+    // اگر آدرس تنظیم نشده و در محیط موبایل هستیم، صفحه تنظیمات را باز کن
+    if (Capacitor.isNativePlatform() && !currentHost) {
         setShowServerConfig(true);
     }
   }, []);
@@ -46,8 +40,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // چک کردن تنظیم بودن آدرس سرور قبل از تلاش برای لاگین
     if (isNative && !getServerHost()) {
-        setError('لطفا ابتدا آدرس سرور را تنظیم کنید.');
+        setError('لطفا ابتدا آدرس سرور (سایت) را تنظیم کنید.');
         setShowServerConfig(true);
         return;
     }
@@ -68,7 +63,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             setError("آدرس سرور تنظیم نشده است.");
             setShowServerConfig(true);
         } else {
-            setError('خطا در اتصال به سرور. اینترنت یا آدرس سرور را بررسی کنید.');
+            setError('خطا در اتصال به سرور. اینترنت یا آدرس سایت را بررسی کنید.');
         }
     } finally {
         setLoading(false);
@@ -78,36 +73,27 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSaveServer = (e: React.FormEvent) => {
       e.preventDefault();
       if(!serverUrl.trim()) {
-          alert("لطفا آدرس سرور را وارد کنید");
+          alert("لطفا آدرس سایت را وارد کنید");
           return;
       }
       
-      let finalUrl = serverUrl.trim();
-      if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-          finalUrl = 'http://' + finalUrl;
-      }
-      finalUrl = finalUrl.replace(/\/$/, '');
-
-      setServerHost(finalUrl);
-      setServerUrl(finalUrl);
+      setServerHost(serverUrl);
       setShowServerConfig(false);
       setError('');
-      alert("تنظیمات سرور ذخیره شد.");
+      alert("آدرس سرور ذخیره شد.");
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 relative font-sans">
       
-      {/* فقط اگر آدرس هاردکد نشده باشد دکمه تنظیمات را نشان بده */}
-      {(!isHardcoded || showServerConfig) && (
-          <button 
-            onClick={() => setShowServerConfig(!showServerConfig)} 
-            className="absolute top-6 right-6 p-3 bg-white rounded-full shadow-md text-gray-500 hover:text-blue-600 transition-colors z-10"
-            title="تنظیمات اتصال"
-          >
-            <Settings size={24} />
-          </button>
-      )}
+      {/* دکمه شناور تنظیمات در بالای صفحه */}
+      <button 
+        onClick={() => setShowServerConfig(!showServerConfig)} 
+        className="absolute top-6 right-6 p-3 bg-white rounded-full shadow-md text-gray-500 hover:text-blue-600 transition-colors z-10"
+        title="تنظیمات اتصال"
+      >
+        <Settings size={24} />
+      </button>
 
       <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 relative overflow-hidden">
         
@@ -115,39 +101,40 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <div className="animate-fade-in space-y-6">
                 <div className="flex flex-col items-center mb-4">
                     <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 mb-4 border-4 border-indigo-100 shadow-inner">
-                        <Server size={40} />
+                        <Globe size={40} />
                     </div>
-                    <h1 className="text-2xl font-black text-gray-800">اتصال به سرور</h1>
+                    <h1 className="text-2xl font-black text-gray-800">اتصال به سایت</h1>
                     <p className="text-gray-500 mt-2 text-sm text-center leading-relaxed px-4">
-                        آدرس سرور را وارد کنید.
+                        آدرس دامین یا IP سرور نرم‌افزار را وارد کنید.
                     </p>
                 </div>
                 
                 <form onSubmit={handleSaveServer} className="space-y-5">
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور / دامین</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور (مثال: https://mysite.com)</label>
                         <div className="relative">
                             <input 
                                 type="text" 
                                 value={serverUrl} 
                                 onChange={(e) => setServerUrl(e.target.value)} 
                                 className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 pl-12 text-left dir-ltr font-mono font-bold text-gray-700 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" 
-                                placeholder="http://192.168.1.100:3000"
+                                placeholder="https://..."
                                 required 
                             />
                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <Wifi size={20}/>
+                                <Server size={20}/>
                             </div>
                         </div>
+                        <p className="text-[10px] text-gray-400 mt-2 mr-1">اگر SSL ندارید از http:// استفاده کنید.</p>
                     </div>
 
                     <div className="pt-2">
                         <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 text-lg">
                             <Save size={20}/>
-                            ذخیره و اتصال
+                            ذخیره و بازگشت
                         </button>
                         <button type="button" onClick={() => setShowServerConfig(false)} className="w-full mt-3 text-gray-500 py-3 rounded-xl font-medium hover:bg-gray-50 transition-all">
-                            بازگشت به ورود
+                            انصراف
                         </button>
                     </div>
                 </form>
@@ -161,14 +148,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <h1 className="text-3xl font-black text-gray-800 tracking-tight">ورود به سیستم</h1>
                     <div className="mt-3 flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full border border-gray-200">
                         <div className={`w-2 h-2 rounded-full ${isNative ? 'bg-purple-500' : 'bg-green-500'}`}></div>
-                        <p className="text-gray-500 text-xs font-bold">{isNative ? 'اتصال موبایل' : 'نسخه وب'}</p>
+                        <p className="text-gray-500 text-xs font-bold">{isNative ? 'نسخه موبایل' : 'نسخه وب'}</p>
                     </div>
                 </div>
                 
                 {isNative && !serverUrl && (
-                    <div className="bg-amber-50 text-amber-800 p-4 rounded-xl text-xs mb-6 flex items-start gap-3 border border-amber-200 shadow-sm cursor-pointer" onClick={() => setShowServerConfig(true)}>
-                        <WifiOff size={20} className="shrink-0 mt-0.5"/>
-                        <span className="leading-5">هنوز آدرس سرور تنظیم نشده است.</span>
+                    <div onClick={() => setShowServerConfig(true)} className="bg-amber-50 text-amber-800 p-4 rounded-xl text-xs mb-6 flex items-start gap-3 border border-amber-200 shadow-sm cursor-pointer hover:bg-amber-100 transition-colors">
+                        <Wifi size={20} className="shrink-0 mt-0.5"/>
+                        <span className="leading-5 font-bold">اتصال به سرور تنظیم نشده است. برای تنظیم کلیک کنید.</span>
                     </div>
                 )}
 
@@ -195,7 +182,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       </div>
       
       <div className="absolute bottom-4 text-center text-gray-400 text-[10px] dir-ltr font-mono">
-          v1.0.3 | {isNative ? (serverUrl ? 'Connected' : 'No Server') : 'Web Mode'}
+          App Version 1.1 | {serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'No Server Configured'}
       </div>
     </div>
   );
