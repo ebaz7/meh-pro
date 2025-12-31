@@ -1,24 +1,21 @@
-
 import { PaymentOrder, User, UserRole, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, WarehouseItem, WarehouseTransaction } from '../types';
 import { INITIAL_ORDERS } from '../constants';
 import { Capacitor } from '@capacitor/core';
 
-// ******************************************************************
-// تنظیمات حیاتی اتصال به سرور
-// ******************************************************************
-// اگر روی لوکال هاست (شبیه ساز) تست می‌کنید، از 10.0.2.2 استفاده کنید
-// اگر روی گوشی واقعی تست می‌کنید، آی‌پی سیستم خود را وارد کنید (مثلا 192.168.1.50)
-// اگر سرور آنلاین دارید، آدرس سایت را وارد کنید (مثلا https://api.mysite.com)
-// مثال: 'http://192.168.1.105:3000'
-const HARDCODED_SERVER_URL = 'http://192.168.1.100:3000'; // <--- این آدرس را حتما به آی‌پی سرور خود تغییر دهید
+// تنظیمات آدرس سرور
+// ما این را داینامیک می‌کنیم تا از LocalStorage خوانده شود.
+// اگر آدرس هاردکد شده را پر کنید، به عنوان پیش‌فرض استفاده می‌شود اما کاربر می‌تواند آن را تغییر دهد.
+let DEFAULT_SERVER_URL = ''; 
 
 export const getServerHost = () => {
-    // اولویت با آدرس هاردکد شده است
-    if (HARDCODED_SERVER_URL && !HARDCODED_SERVER_URL.includes('YOUR_DOMAIN')) {
-        return (HARDCODED_SERVER_URL as string).replace(/\/$/, '');
-    }
-    // خواندن از حافظه (برای تغییر دستی در صفحه لاگین)
-    return localStorage.getItem('app_server_host') || '';
+    // اولویت با آدرسی است که کاربر در تنظیمات وارد کرده است
+    const stored = localStorage.getItem('app_server_host');
+    if (stored) return stored.replace(/\/$/, '');
+    
+    // اگر کاربر چیزی وارد نکرده بود، از آدرس پیش‌فرض استفاده کن
+    if (DEFAULT_SERVER_URL) return DEFAULT_SERVER_URL.replace(/\/$/, '');
+    
+    return '';
 };
 
 export const setServerHost = (url: string) => {
@@ -72,7 +69,13 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
             }
             baseUrl = `${host}/api`;
         } else {
-            baseUrl = '/api';
+            // در حالت وب (توسعه یا پروداکشن وب)
+            const host = getServerHost();
+            if (host) {
+                baseUrl = `${host}/api`;
+            } else {
+                baseUrl = '/api';
+            }
         }
 
         const response = await fetch(`${baseUrl}${endpoint}`, {
@@ -95,21 +98,24 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         throw new Error(`Server Error: ${response.status}`);
     } catch (error: any) {
         
+        // این خطا را به UI پاس می‌دهیم تا فرم تنظیمات را باز کند
         if (error.message === "SERVER_URL_MISSING") {
             throw error; 
         }
 
         console.warn(`API Fallback (Mock) triggered for: ${endpoint}`, error);
 
-        // اگر لاگین بود و به سرور وصل نشد، اجازه نده با ادمین آفلاین وارد شود تا کاربر گیج نشود
-        // مگر اینکه بخواهید آفلاین کار کنید.
+        // اگر لاگین بود و به سرور وصل نشد
         if (endpoint === '/login' && method === 'POST') {
-             throw new Error('اتصال به سرور برقرار نشد. لطفاً آدرس سرور و اینترنت را بررسی کنید.');
+             // اگر URL داریم اما وصل نمی‌شود:
+             if (getServerHost()) {
+                 throw new Error('اتصال به سرور برقرار نشد. آدرس یا اینترنت را بررسی کنید.');
+             }
         }
 
         await delay(500);
         
-        // --- MOCK DATA FALLBACKS (فقط برای نمایش در حالت توسعه وب) ---
+        // --- MOCK DATA FALLBACKS (فقط برای نمایش در حالت توسعه وب یا آفلاین اضطراری) ---
         if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
         if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
         if (endpoint === '/warehouse/items') return getLocalData<WarehouseItem[]>(LS_KEYS.WH_ITEMS, []) as unknown as T;
