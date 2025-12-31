@@ -15,7 +15,8 @@ import WarehouseModule from './components/WarehouseModule';
 import SecurityModule from './components/SecurityModule'; 
 import PrintVoucher from './components/PrintVoucher'; 
 import NotificationController from './components/NotificationController'; 
-import { getOrders, getSettings, getMessages } from './services/storageService'; // Added getMessages
+import ErrorBoundary from './components/ErrorBoundary'; // Imported ErrorBoundary
+import { getOrders, getSettings, getMessages } from './services/storageService'; 
 import { getCurrentUser, getUsers } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod } from './types';
 import { Loader2, Bell, X } from 'lucide-react';
@@ -44,17 +45,16 @@ function App() {
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const IDLE_LIMIT = 60 * 60 * 1000; 
   const NOTIFICATION_CHECK_KEY = 'last_notification_check';
-  const lastChatMsgIdRef = useRef<string | null>(null); // For chat polling
+  const lastChatMsgIdRef = useRef<string | null>(null); 
 
   const isNative = Capacitor.isNativePlatform();
 
-  // Safe History Manipulation: Only for Web
   const safePushState = (state: any, title: string, url?: string) => { 
-      if (isNative) return; // Prevent routing crashes on Android
+      if (isNative) return; 
       try { if (url) window.history.pushState(state, title, url); else window.history.pushState(state, title); } catch (e) { try { window.history.pushState(state, title); } catch(e2) {} } 
   };
   const safeReplaceState = (state: any, title: string, url?: string) => { 
-      if (isNative) return; // Prevent routing crashes on Android
+      if (isNative) return; 
       try { if (url) window.history.replaceState(state, title, url); else window.history.replaceState(state, title); } catch (e) { try { window.history.replaceState(state, title); } catch(e2) {} } 
   };
   
@@ -117,7 +117,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (isNative) return; // Skip browser routing logic on native
+    if (isNative) return; 
 
     const hash = window.location.hash.replace('#', '');
     if (hash && ['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'warehouse', 'security'].includes(hash)) {
@@ -163,7 +163,6 @@ function App() {
       setToast({ show: true, title, message });
       toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
       
-      // Attempt Native Popup (Windows/Android)
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           try {
               new Notification(title, { body: message, icon: '/pwa-192x192.png', dir: 'rtl', lang: 'fa' });
@@ -177,7 +176,6 @@ function App() {
 
   const closeToast = () => { setToast(null); if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); };
 
-  // --- POLLING LOGIC FOR DATA & CHAT ---
   const loadData = async (silent = false) => {
     if (!currentUser) return;
     if (!silent) setLoading(true);
@@ -188,21 +186,16 @@ function App() {
         checkForNotifications(ordersData, currentUser, lastCheck);
         if (isFirstLoad.current) { checkChequeAlerts(ordersData); }
         
-        // --- CHAT POLLING ---
         const messages = await getMessages();
         if (messages && messages.length > 0) {
             const lastMsg = messages[messages.length - 1];
-            // If new message exists and it's not sent by me and we haven't seen it yet
             if (lastMsg.id !== lastChatMsgIdRef.current) {
                 if (lastChatMsgIdRef.current && lastMsg.senderUsername !== currentUser.username) {
-                    // Logic to check if message is for me (Public, Group I'm in, or Direct)
-                    // Simplified: We assume getMessages returns accessible messages.
-                    // Just check if I'm not the sender.
                     
                     const isForMe = 
-                        !lastMsg.recipient || // Public
-                        lastMsg.recipient === currentUser.username || // Direct
-                        (lastMsg.groupId && settingsData); // Group (assume if I see it, it's relevant, actual filter is in ChatRoom but we don't have group list here easily without overhead. For now notify on any new msg if not sender)
+                        !lastMsg.recipient || 
+                        lastMsg.recipient === currentUser.username || 
+                        (lastMsg.groupId && settingsData); 
 
                     if (isForMe) {
                         const title = `پیام جدید از ${lastMsg.sender}`;
@@ -286,69 +279,71 @@ function App() {
   if (!currentUser) return <Login onLogin={handleLogin} />;
 
   return (
-    <Layout 
-      activeTab={activeTab} 
-      setActiveTab={(t) => { setActiveTab(t); if(t!=='warehouse') setWarehouseInitialTab('dashboard'); if(t!=='manage-exit') setExitPermitStatusFilter(null); if(t!=='manage') setDashboardStatusFilter(null); }} 
-      currentUser={currentUser} 
-      onLogout={handleLogout} 
-      notifications={notifications} 
-      clearNotifications={() => setNotifications([])}
-      onAddNotification={addAppNotification}
-      onRemoveNotification={removeNotification}
-    >
-      
-      <NotificationController />
+    <ErrorBoundary>
+        <Layout 
+        activeTab={activeTab} 
+        setActiveTab={(t) => { setActiveTab(t); if(t!=='warehouse') setWarehouseInitialTab('dashboard'); if(t!=='manage-exit') setExitPermitStatusFilter(null); if(t!=='manage') setDashboardStatusFilter(null); }} 
+        currentUser={currentUser} 
+        onLogout={handleLogout} 
+        notifications={notifications} 
+        clearNotifications={() => setNotifications([])}
+        onAddNotification={addAppNotification}
+        onRemoveNotification={removeNotification}
+        >
+        
+        <NotificationController />
 
-      {toast && toast.show && (
-          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] bg-white border-l-4 border-blue-600 shadow-2xl rounded-lg p-4 flex items-start gap-4 min-w-[300px] max-w-sm animate-slide-down" onClick={closeToast}>
-              <div className="bg-blue-100 p-2 rounded-full text-blue-600">
-                  <Bell size={20} className="animate-pulse" />
-              </div>
-              <div className="flex-1">
-                  <h4 className="font-bold text-gray-800 text-sm mb-1">{toast.title}</h4>
-                  <p className="text-xs text-gray-600 leading-relaxed">{toast.message}</p>
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); closeToast(); }} className="text-gray-400 hover:text-red-500">
-                  <X size={16} />
-              </button>
-          </div>
-      )}
+        {toast && toast.show && (
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] bg-white border-l-4 border-blue-600 shadow-2xl rounded-lg p-4 flex items-start gap-4 min-w-[300px] max-w-sm animate-slide-down" onClick={closeToast}>
+                <div className="bg-blue-100 p-2 rounded-full text-blue-600">
+                    <Bell size={20} className="animate-pulse" />
+                </div>
+                <div className="flex-1">
+                    <h4 className="font-bold text-gray-800 text-sm mb-1">{toast.title}</h4>
+                    <p className="text-xs text-gray-600 leading-relaxed">{toast.message}</p>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); closeToast(); }} className="text-gray-400 hover:text-red-500">
+                    <X size={16} />
+                </button>
+            </div>
+        )}
 
-      {backgroundJobs.length > 0 && (
-          <div className="hidden-print-export" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
-              <div id={`bg-print-voucher-${backgroundJobs[0].order.id}`}>
-                  <PrintVoucher order={backgroundJobs[0].order} embed settings={settings || undefined} />
-              </div>
-          </div>
-      )}
+        {backgroundJobs.length > 0 && (
+            <div className="hidden-print-export" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
+                <div id={`bg-print-voucher-${backgroundJobs[0].order.id}`}>
+                    <PrintVoucher order={backgroundJobs[0].order} embed settings={settings || undefined} />
+                </div>
+            </div>
+        )}
 
-      {loading && orders.length === 0 ? ( <div className="flex h-[50vh] items-center justify-center text-blue-600"><Loader2 size={48} className="animate-spin" /></div> ) : (
-        <>
-            {activeTab === 'dashboard' && 
-                <Dashboard 
-                    orders={orders} 
-                    settings={settings} 
-                    currentUser={currentUser} 
-                    onViewArchive={handleViewArchive} 
-                    onFilterByStatus={handleDashboardFilter}
-                    onGoToPaymentApprovals={handleGoToPaymentApprovals}
-                    onGoToExitApprovals={handleGoToExitApprovals}
-                    onGoToBijakApprovals={handleGoToWarehouseApprovals}
-                />
-            }
-            {activeTab === 'create' && <CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} />}
-            {activeTab === 'manage' && <ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} />}
-            {activeTab === 'create-exit' && <CreateExitPermit onSuccess={() => setActiveTab('manage-exit')} currentUser={currentUser} />}
-            {activeTab === 'manage-exit' && <ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} />}
-            {activeTab === 'warehouse' && <WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} />}
-            {activeTab === 'trade' && <TradeModule currentUser={currentUser} />}
-            {activeTab === 'users' && <ManageUsers />}
-            {activeTab === 'settings' && <Settings />}
-            {activeTab === 'security' && <SecurityModule currentUser={currentUser} />}
-            {activeTab === 'chat' && <ChatRoom currentUser={currentUser} onNotification={() => {}} />} {/* Removed redundant notification trigger from ChatRoom as App handles it globally now */}
-        </>
-      )}
-    </Layout>
+        {loading && orders.length === 0 ? ( <div className="flex h-[50vh] items-center justify-center text-blue-600"><Loader2 size={48} className="animate-spin" /></div> ) : (
+            <>
+                {activeTab === 'dashboard' && 
+                    <Dashboard 
+                        orders={orders} 
+                        settings={settings} 
+                        currentUser={currentUser} 
+                        onViewArchive={handleViewArchive} 
+                        onFilterByStatus={handleDashboardFilter}
+                        onGoToPaymentApprovals={handleGoToPaymentApprovals}
+                        onGoToExitApprovals={handleGoToExitApprovals}
+                        onGoToBijakApprovals={handleGoToWarehouseApprovals}
+                    />
+                }
+                {activeTab === 'create' && <CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} />}
+                {activeTab === 'manage' && <ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} />}
+                {activeTab === 'create-exit' && <CreateExitPermit onSuccess={() => setActiveTab('manage-exit')} currentUser={currentUser} />}
+                {activeTab === 'manage-exit' && <ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} />}
+                {activeTab === 'warehouse' && <WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} />}
+                {activeTab === 'trade' && <TradeModule currentUser={currentUser} />}
+                {activeTab === 'users' && <ManageUsers />}
+                {activeTab === 'settings' && <Settings />}
+                {activeTab === 'security' && <SecurityModule currentUser={currentUser} />}
+                {activeTab === 'chat' && <ChatRoom currentUser={currentUser} onNotification={() => {}} />} 
+            </>
+        )}
+        </Layout>
+    </ErrorBoundary>
   );
 }
 export default App;

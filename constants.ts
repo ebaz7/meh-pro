@@ -38,7 +38,7 @@ export const INITIAL_ORDERS: PaymentOrder[] = [];
 
 export const getStatusLabel = (status: OrderStatus) => {
     switch (status) {
-        case OrderStatus.PENDING: return 'در انتظار مالی';
+        case OrderStatus.PENDING: return 'در انتظار بررسی مالی';
         case OrderStatus.APPROVED_FINANCE: return 'تایید مالی';
         case OrderStatus.APPROVED_MANAGER: return 'تایید مدیریت';
         case OrderStatus.APPROVED_CEO: return 'تایید نهایی';
@@ -52,16 +52,29 @@ export const getStatusLabel = (status: OrderStatus) => {
 };
 
 export const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('fa-IR').format(amount) + ' ریال';
+  try {
+    return new Intl.NumberFormat('fa-IR').format(amount) + ' ریال';
+  } catch (e) {
+    return amount + ' ریال'; // Fallback for environments without Intl support
+  }
 };
 
 export const formatDate = (dateString: string): string => {
   if (!dateString) return '-';
-  return new Date(dateString).toLocaleDateString('fa-IR-u-ca-persian', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  try {
+    return new Date(dateString).toLocaleDateString('fa-IR-u-ca-persian', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch (e) {
+    // Fallback if Persian calendar not supported
+    try {
+        return new Date(dateString).toLocaleDateString(); 
+    } catch {
+        return dateString;
+    }
+  }
 };
 
 export const jalaliToGregorian = (j_y: number, j_m: number, j_d: number): Date => {
@@ -121,24 +134,41 @@ export const parsePersianDate = (dateStr: string): Date | null => {
 };
 
 export const getCurrentShamsiDate = () => {
-  const now = new Date();
-  const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
-  const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(now);
-  const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
-  const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
-  const d = parseInt(parts.find(p => p.type === 'day')?.value || '1');
-  return { year: y, month: m, day: d };
+  try {
+      const now = new Date();
+      const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
+      const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(now);
+      const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
+      const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
+      const d = parseInt(parts.find(p => p.type === 'day')?.value || '1');
+      return { year: y, month: m, day: d };
+  } catch (e) {
+      // Fallback for systems without Persian calendar support
+      // Simplified mapping, slightly inaccurate but prevents crash
+      const now = new Date();
+      return { year: now.getFullYear() - 621, month: now.getMonth() + 1, day: now.getDate() };
+  }
 };
 
 export const getShamsiDateFromIso = (isoDate: string) => {
-  const [yStr, mStr, dStr] = isoDate.split('-').map(Number);
-  const date = new Date(yStr, mStr - 1, dStr);
-  const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
-  const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(date);
-  const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
-  const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
-  const d = parseInt(parts.find(p => p.type === 'day')?.value || '1');
-  return { year: y, month: m, day: d };
+  if (!isoDate || typeof isoDate !== 'string') {
+      return { year: 1403, month: 1, day: 1 }; // Safe default
+  }
+  try {
+      const [yStr, mStr, dStr] = isoDate.split('-').map(Number);
+      if(!yStr || !mStr || !dStr) return { year: 1403, month: 1, day: 1 }; // Parsing failed
+
+      const date = new Date(yStr, mStr - 1, dStr);
+      const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
+      const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(date);
+      const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
+      const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
+      const d = parseInt(parts.find(p => p.type === 'day')?.value || '1');
+      return { year: y, month: m, day: d };
+  } catch (e) {
+      // Fallback if Intl fails or input is bad
+      return { year: 1403, month: 1, day: 1 };
+  }
 };
 
 export const calculateDaysDiff = (startDateStr: string, endDateStr?: string): number | null => {

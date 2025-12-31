@@ -73,10 +73,15 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   }, [showProfileModal, currentUser]);
 
   useEffect(() => {
-    // SAFE CHECK: Check if Notification API exists (prevents crash on Android WebView)
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && isNotificationEnabledInApp()) {
-        setNotifEnabled(true);
-    } else {
+    // SAFE CHECK: Check if Notification API exists and doesn't throw
+    try {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && isNotificationEnabledInApp()) {
+            setNotifEnabled(true);
+        } else {
+            setNotifEnabled(false);
+        }
+    } catch(e) {
+        console.warn("Notification API not supported or blocked");
         setNotifEnabled(false);
     }
   }, []);
@@ -133,9 +138,14 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isIosDevice);
 
-    const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator as any).standalone;
-    const isDisplayModeStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    setIsStandalone(isInStandaloneMode || isDisplayModeStandalone);
+    try {
+        const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator as any).standalone;
+        const isDisplayModeStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        setIsStandalone(isInStandaloneMode || isDisplayModeStandalone);
+    } catch(e) {
+        // Fallback for older webviews
+        setIsStandalone(false);
+    }
 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNotifDropdown]);
