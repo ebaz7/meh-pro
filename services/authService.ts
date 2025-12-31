@@ -110,6 +110,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     };
 
     // If role has explicit settings, override defaults
+    // CRITICAL FIX: safe check for rolePermissions existence
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         // Merge defaults with custom settings (custom takes precedence)
         // For custom roles (not standard), defaults are minimal (mostly false/null) except canEditOwn.
