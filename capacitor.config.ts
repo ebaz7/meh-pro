@@ -5,10 +5,12 @@ const config: CapacitorConfig = {
   appId: 'com.payment.system',
   appName: 'Payment Order System',
   webDir: 'dist',
-  bundledWebRuntime: false,
   server: {
-    androidScheme: 'http', // Changed to http to avoid SSL issues on local network
-    cleartext: true, // Critical for local development (IP address)
+    // استفاده از http برای جلوگیری از مشکلات SSL در شبکه داخلی
+    androidScheme: 'http',
+    // اجازه دادن به ترافیک غیرامن (برای اتصال به IP سرور)
+    cleartext: true,
+    // اجازه ناوبری به همه آدرس‌ها
     allowNavigation: ['*']
   },
   plugins: {

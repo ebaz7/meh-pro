@@ -9,10 +9,8 @@
     "preview": "vite preview",
     "start": "node server.js",
     "mobile": "npm run build && npx cap sync && npx cap open android",
-    "postinstall": "npx puppeteer browsers install chrome",
-    "fix-browser": "npx puppeteer browsers install chrome",
-    "install-service": "node install-service.js",
-    "uninstall-service": "node uninstall-service.js"
+    "sync": "npm run build && npx cap sync",
+    "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
     "cors": "^2.8.5",
