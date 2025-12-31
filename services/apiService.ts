@@ -3,25 +3,27 @@ import { PaymentOrder, User, UserRole, SystemSettings, ChatMessage, ChatGroup, G
 import { INITIAL_ORDERS } from '../constants';
 import { Capacitor } from '@capacitor/core';
 
-// کلید ذخیره سازی آدرس در حافظه گوشی
-const STORAGE_KEY_HOST = 'app_server_host';
+// ******************************************************************
+// تنظیمات حیاتی اتصال به سرور
+// ******************************************************************
+// اگر روی لوکال هاست (شبیه ساز) تست می‌کنید، از 10.0.2.2 استفاده کنید
+// اگر روی گوشی واقعی تست می‌کنید، آی‌پی سیستم خود را وارد کنید (مثلا 192.168.1.50)
+// اگر سرور آنلاین دارید، آدرس سایت را وارد کنید (مثلا https://api.mysite.com)
+// مثال: 'http://192.168.1.105:3000'
+const HARDCODED_SERVER_URL = 'http://192.168.1.100:3000'; // <--- این آدرس را حتما به آی‌پی سرور خود تغییر دهید
 
 export const getServerHost = () => {
-    // 1. اولویت با آدرسی است که کاربر در صفحه تنظیمات لاگین وارد کرده
-    const savedHost = localStorage.getItem(STORAGE_KEY_HOST);
-    if (savedHost) return savedHost.replace(/\/$/, ''); // حذف اسلش آخر اگر بود
-
-    // 2. اگر تنظیم نشده بود، در حالت وب خالی برگردان
-    return '';
+    // اولویت با آدرس هاردکد شده است
+    if (HARDCODED_SERVER_URL && !HARDCODED_SERVER_URL.includes('YOUR_DOMAIN')) {
+        return (HARDCODED_SERVER_URL as string).replace(/\/$/, '');
+    }
+    // خواندن از حافظه (برای تغییر دستی در صفحه لاگین)
+    return localStorage.getItem('app_server_host') || '';
 };
 
 export const setServerHost = (url: string) => {
-    let cleanUrl = url.trim().replace(/\/$/, '');
-    // اگر کاربر http یا https را وارد نکرده بود، پیش‌فرض http بگذار (مگر اینکه دامین باشد)
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-        cleanUrl = 'http://' + cleanUrl; 
-    }
-    localStorage.setItem(STORAGE_KEY_HOST, cleanUrl);
+    const cleanUrl = url.replace(/\/$/, '');
+    localStorage.setItem('app_server_host', cleanUrl);
 };
 
 const isNativeApp = Capacitor.isNativePlatform();
@@ -61,17 +63,16 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
         let baseUrl = '';
-        const host = getServerHost();
 
         if (isNativeApp) {
+            const host = getServerHost();
             if (!host) {
-                // اگر آدرس تنظیم نشده بود، خطای خاص پرتاب کن تا UI متوجه شود
+                // اگر آدرس تنظیم نشده بود، خطا بده تا کاربر به صفحه تنظیمات هدایت شود
                 throw new Error("SERVER_URL_MISSING");
             }
             baseUrl = `${host}/api`;
         } else {
-            // در حالت وب (توسعه)
-            baseUrl = host ? `${host}/api` : '/api';
+            baseUrl = '/api';
         }
 
         const response = await fetch(`${baseUrl}${endpoint}`, {
@@ -95,30 +96,32 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
     } catch (error: any) {
         
         if (error.message === "SERVER_URL_MISSING") {
-            throw error; // پاس دادن خطا به کامپوننت لاگین
+            throw error; 
         }
 
-        console.warn(`API Connection Failed: ${endpoint}`, error);
+        console.warn(`API Fallback (Mock) triggered for: ${endpoint}`, error);
 
-        // در اپ موبایل، اگر نتواند وصل شود نباید به ماک دیتا برود مگر اینکه لاگین نباشد
-        // این اجازه می‌دهد کاربر خطای اتصال را ببیند و آدرس را اصلاح کند
+        // اگر لاگین بود و به سرور وصل نشد، اجازه نده با ادمین آفلاین وارد شود تا کاربر گیج نشود
+        // مگر اینکه بخواهید آفلاین کار کنید.
         if (endpoint === '/login' && method === 'POST') {
              throw new Error('اتصال به سرور برقرار نشد. لطفاً آدرس سرور و اینترنت را بررسی کنید.');
         }
 
-        // --- MOCK DATA FALLBACKS (فقط برای وب) ---
-        if (!isNativeApp) {
-            await delay(500);
-            if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
-            if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
-            if (endpoint === '/warehouse/items') return getLocalData<WarehouseItem[]>(LS_KEYS.WH_ITEMS, []) as unknown as T;
-            if (endpoint === '/warehouse/transactions') return getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []) as unknown as T;
-            if (endpoint === '/settings') return getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any) as unknown as T;
-            if (endpoint === '/chat') return getLocalData<ChatMessage[]>(LS_KEYS.CHAT, []) as unknown as T;
-            if (endpoint === '/users') return getLocalData<User[]>(LS_KEYS.USERS, MOCK_USERS) as unknown as T;
-            if (method === 'POST' || method === 'PUT' || method === 'DELETE') return { success: true, offline: true } as unknown as T;
+        await delay(500);
+        
+        // --- MOCK DATA FALLBACKS (فقط برای نمایش در حالت توسعه وب) ---
+        if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
+        if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
+        if (endpoint === '/warehouse/items') return getLocalData<WarehouseItem[]>(LS_KEYS.WH_ITEMS, []) as unknown as T;
+        if (endpoint === '/warehouse/transactions') return getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []) as unknown as T;
+        if (endpoint === '/settings') return getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any) as unknown as T;
+        if (endpoint === '/chat') return getLocalData<ChatMessage[]>(LS_KEYS.CHAT, []) as unknown as T;
+        if (endpoint === '/users') return getLocalData<User[]>(LS_KEYS.USERS, MOCK_USERS) as unknown as T;
+        
+        if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+            return { success: true, offline: true } as unknown as T;
         }
 
-        throw error;
+        throw new Error(`اتصال به سرور برقرار نیست: ${endpoint}`);
     }
 };

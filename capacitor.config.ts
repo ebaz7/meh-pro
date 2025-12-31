@@ -6,9 +6,10 @@ const config: CapacitorConfig = {
   appName: 'Payment Order System',
   webDir: 'dist',
   server: {
+    // برای اتصال به دامین‌های خارجی (چه HTTP چه HTTPS)
     androidScheme: 'https',
-    cleartext: true, // اجازه ترافیک HTTP (برای IP لوکال)
-    allowNavigation: ['*'] // اجازه اتصال به هر آدرسی
+    cleartext: true,
+    allowNavigation: ['*']
   },
   plugins: {
     PushNotifications: {
