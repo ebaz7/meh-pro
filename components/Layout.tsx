@@ -73,7 +73,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   }, [showProfileModal, currentUser]);
 
   useEffect(() => {
-    if (Notification.permission === 'granted' && isNotificationEnabledInApp()) {
+    // SAFE CHECK: Check if Notification API exists (prevents crash on Android WebView)
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && isNotificationEnabledInApp()) {
         setNotifEnabled(true);
     } else {
         setNotifEnabled(false);
@@ -142,7 +143,13 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   const handleLogout = () => { logout(); onLogout(); };
   
   const handleToggleNotif = async () => { 
-      if (!isSecure) { 
+      // Safe check for notification API
+      if (!('Notification' in window)) {
+          alert("این دستگاه/مرورگر از اعلان‌های وب پشتیبانی نمی‌کند.");
+          return;
+      }
+
+      if (!isSecure && window.location.hostname !== 'localhost') { 
           alert("⚠️ مرورگرها اجازه فعال‌سازی نوتیفیکیشن در شبکه غیرامن (HTTP) را نمی‌دهند."); 
           return; 
       } 
@@ -159,8 +166,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
           setNotificationPreference(true); 
           onAddNotification("سیستم دستور پرداخت", "نوتیفیکیشن‌ها با موفقیت فعال شدند."); 
           
-          // Test Native Notification immediately
-          new Notification("سیستم فعال شد", { body: "این یک پیام آزمایشی سیستمی است.", icon: '/pwa-192x192.png' });
+          try {
+            new Notification("سیستم فعال شد", { body: "این یک پیام آزمایشی سیستمی است.", icon: '/pwa-192x192.png' });
+          } catch(e) {}
       } else {
           setNotifEnabled(false);
           if (Notification.permission === 'denied') {
@@ -173,8 +181,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
 
   const handleTestNotification = async () => {
       onAddNotification("تست سیستم", `این یک پیام آزمایشی است (${new Date().toLocaleTimeString('fa-IR')}).`);
-      if (Notification.permission === 'granted') {
-          new Notification("تست سیستم", { body: "پیام آزمایشی روی ویندوز/گوشی", icon: '/pwa-192x192.png' });
+      if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification("تست سیستم", { body: "پیام آزمایشی روی ویندوز/گوشی", icon: '/pwa-192x192.png' });
+          } catch(e) {}
       }
   };
   

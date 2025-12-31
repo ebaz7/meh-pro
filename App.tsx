@@ -21,6 +21,7 @@ import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSetti
 import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
 import { apiCall } from './services/apiService';
+import { Capacitor } from '@capacitor/core';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -45,8 +46,18 @@ function App() {
   const NOTIFICATION_CHECK_KEY = 'last_notification_check';
   const lastChatMsgIdRef = useRef<string | null>(null); // For chat polling
 
-  const safePushState = (state: any, title: string, url?: string) => { try { if (url) window.history.pushState(state, title, url); else window.history.pushState(state, title); } catch (e) { try { window.history.pushState(state, title); } catch(e2) {} } };
-  const safeReplaceState = (state: any, title: string, url?: string) => { try { if (url) window.history.replaceState(state, title, url); else window.history.replaceState(state, title); } catch (e) { try { window.history.replaceState(state, title); } catch(e2) {} } };
+  const isNative = Capacitor.isNativePlatform();
+
+  // Safe History Manipulation: Only for Web
+  const safePushState = (state: any, title: string, url?: string) => { 
+      if (isNative) return; // Prevent routing crashes on Android
+      try { if (url) window.history.pushState(state, title, url); else window.history.pushState(state, title); } catch (e) { try { window.history.pushState(state, title); } catch(e2) {} } 
+  };
+  const safeReplaceState = (state: any, title: string, url?: string) => { 
+      if (isNative) return; // Prevent routing crashes on Android
+      try { if (url) window.history.replaceState(state, title, url); else window.history.replaceState(state, title); } catch (e) { try { window.history.replaceState(state, title); } catch(e2) {} } 
+  };
+  
   const setActiveTab = (tab: string, addToHistory = true) => { setActiveTabState(tab); if (addToHistory) safePushState({ tab }, '', `#${tab}`); };
 
   useEffect(() => {
@@ -106,6 +117,8 @@ function App() {
   };
 
   useEffect(() => {
+    if (isNative) return; // Skip browser routing logic on native
+
     const hash = window.location.hash.replace('#', '');
     if (hash && ['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'warehouse', 'security'].includes(hash)) {
         setActiveTabState(hash);
@@ -151,7 +164,7 @@ function App() {
       toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
       
       // Attempt Native Popup (Windows/Android)
-      if (Notification.permission === 'granted') {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           try {
               new Notification(title, { body: message, icon: '/pwa-192x192.png', dir: 'rtl', lang: 'fa' });
           } catch(e) {}
