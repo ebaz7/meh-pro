@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import compression from 'compression'; // Added compression
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
 import archiver from 'archiver';
@@ -36,11 +37,20 @@ const WAUTH_DIR = path.join(__dirname, 'wauth');
 
 // Allow CORS from ALL origins (Mobile app runs on localhost or file://)
 app.use(cors()); 
+app.use(compression()); // Enable Gzip Compression
 
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.static(path.join(__dirname, 'dist')));
-app.use('/uploads', express.static(UPLOADS_DIR));
+
+// Serve static files with caching
+const staticOptions = {
+  maxAge: '1y', // Cache for 1 year
+  etag: true,
+  lastModified: true
+};
+
+app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
+app.use('/uploads', express.static(UPLOADS_DIR, staticOptions));
 
 const publicVapidKey = 'BPhz-4d_V_X-Xo_2Wd-6X_1Y-5Z_3A-9B_7C-8D_0E-1F_2G-3H_4I-5J_6K-7L_8M-9N_0O'; 
 const privateVapidKey = 'aB1-cD2-eF3-gH4-iJ5-kL6-mN7-oP8-qR9-sT0'; 

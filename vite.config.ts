@@ -18,5 +18,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // --- CODE SPLITTING FOR PERFORMANCE ---
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'lucide-react'],
+          charts: ['recharts'],
+          utils: ['html2canvas', 'jspdf', '@google/genai']
+        }
+      }
+    }
   }
 })
