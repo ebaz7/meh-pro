@@ -16,7 +16,7 @@ interface LayoutProps {
   notifications: AppNotification[];
   clearNotifications: () => void;
   onAddNotification: (title: string, message: string) => void;
-  onRemoveNotification: (id: string) => void; // New Prop
+  onRemoveNotification: (id: string) => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, currentUser, onLogout, notifications, clearNotifications, onAddNotification, onRemoveNotification }) => {
@@ -144,7 +144,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   
   const handleToggleNotif = async () => { 
       // Safe check for notification API
-      if (!('Notification' in window)) {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
           alert("این دستگاه/مرورگر از اعلان‌های وب پشتیبانی نمی‌کند.");
           return;
       }
@@ -181,7 +181,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
 
   const handleTestNotification = async () => {
       onAddNotification("تست سیستم", `این یک پیام آزمایشی است (${new Date().toLocaleTimeString('fa-IR')}).`);
-      if ('Notification' in window && Notification.permission === 'granted') {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           try {
             new Notification("تست سیستم", { body: "پیام آزمایشی روی ویندوز/گوشی", icon: '/pwa-192x192.png' });
           } catch(e) {}
