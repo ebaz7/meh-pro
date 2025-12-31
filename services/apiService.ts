@@ -6,23 +6,20 @@ import { Capacitor } from '@capacitor/core';
 // کلید ذخیره سازی آدرس در حافظه گوشی
 const STORAGE_KEY_HOST = 'app_server_host';
 
-// آدرس پیش‌فرض (فقط اگر کاربر چیزی وارد نکرده باشد استفاده می‌شود)
-const DEFAULT_FALLBACK_URL = ''; 
-
 export const getServerHost = () => {
     // 1. اولویت با آدرسی است که کاربر در صفحه تنظیمات لاگین وارد کرده
     const savedHost = localStorage.getItem(STORAGE_KEY_HOST);
     if (savedHost) return savedHost.replace(/\/$/, ''); // حذف اسلش آخر اگر بود
 
-    // 2. اگر تنظیم نشده بود، برگرداندن رشته خالی (که باعث می‌شود اپلیکیشن درخواست تنظیم کند)
-    return DEFAULT_FALLBACK_URL;
+    // 2. اگر تنظیم نشده بود، در حالت وب خالی برگردان
+    return '';
 };
 
 export const setServerHost = (url: string) => {
     let cleanUrl = url.trim().replace(/\/$/, '');
     // اگر کاربر http یا https را وارد نکرده بود، پیش‌فرض http بگذار (مگر اینکه دامین باشد)
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-        cleanUrl = 'https://' + cleanUrl; // پیش‌فرض امن برای دامین‌ها
+        cleanUrl = 'http://' + cleanUrl; 
     }
     localStorage.setItem(STORAGE_KEY_HOST, cleanUrl);
 };
@@ -64,18 +61,16 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
         let baseUrl = '';
+        const host = getServerHost();
 
         if (isNativeApp) {
-            const host = getServerHost();
             if (!host) {
                 // اگر آدرس تنظیم نشده بود، خطای خاص پرتاب کن تا UI متوجه شود
                 throw new Error("SERVER_URL_MISSING");
             }
             baseUrl = `${host}/api`;
         } else {
-            // در حالت وب (توسعه)، از پروکسی یا آدرس نسبی استفاده کن
-            // اما اگر آدرس دستی ست شده بود، از آن استفاده کن (برای تست روی گوشی با مرورگر)
-            const host = getServerHost();
+            // در حالت وب (توسعه)
             baseUrl = host ? `${host}/api` : '/api';
         }
 
@@ -106,12 +101,12 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         console.warn(`API Connection Failed: ${endpoint}`, error);
 
         // در اپ موبایل، اگر نتواند وصل شود نباید به ماک دیتا برود مگر اینکه لاگین نباشد
+        // این اجازه می‌دهد کاربر خطای اتصال را ببیند و آدرس را اصلاح کند
         if (endpoint === '/login' && method === 'POST') {
              throw new Error('اتصال به سرور برقرار نشد. لطفاً آدرس سرور و اینترنت را بررسی کنید.');
         }
 
-        // --- MOCK DATA FALLBACKS (فقط برای نمایش در حالت توسعه وب یا آفلاین اضطراری) ---
-        // این بخش در پروداکشن واقعی باید حذف شود یا مدیریت شود
+        // --- MOCK DATA FALLBACKS (فقط برای وب) ---
         if (!isNativeApp) {
             await delay(500);
             if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;

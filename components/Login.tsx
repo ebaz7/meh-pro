@@ -42,7 +42,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     
     // چک کردن تنظیم بودن آدرس سرور قبل از تلاش برای لاگین
     if (isNative && !getServerHost()) {
-        setError('لطفا ابتدا آدرس سرور (سایت) را تنظیم کنید.');
+        setError('لطفا ابتدا آدرس سرور را تنظیم کنید.');
         setShowServerConfig(true);
         return;
     }
@@ -63,7 +63,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             setError("آدرس سرور تنظیم نشده است.");
             setShowServerConfig(true);
         } else {
-            setError('خطا در اتصال به سرور. اینترنت یا آدرس سایت را بررسی کنید.');
+            setError('خطا در اتصال به سرور. اینترنت یا آدرس سرور را بررسی کنید.');
         }
     } finally {
         setLoading(false);
@@ -73,7 +73,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSaveServer = (e: React.FormEvent) => {
       e.preventDefault();
       if(!serverUrl.trim()) {
-          alert("لطفا آدرس سایت را وارد کنید");
+          alert("لطفا آدرس سرور را وارد کنید");
           return;
       }
       
@@ -103,29 +103,29 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 mb-4 border-4 border-indigo-100 shadow-inner">
                         <Globe size={40} />
                     </div>
-                    <h1 className="text-2xl font-black text-gray-800">اتصال به سایت</h1>
+                    <h1 className="text-2xl font-black text-gray-800">اتصال به سرور</h1>
                     <p className="text-gray-500 mt-2 text-sm text-center leading-relaxed px-4">
-                        آدرس دامین یا IP سرور نرم‌افزار را وارد کنید.
+                        آدرس آی‌پی یا دامین سرور نرم‌افزار را وارد کنید.
                     </p>
                 </div>
                 
                 <form onSubmit={handleSaveServer} className="space-y-5">
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور (مثال: https://mysite.com)</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور (مثال: 192.168.1.100:3000)</label>
                         <div className="relative">
                             <input 
                                 type="text" 
                                 value={serverUrl} 
                                 onChange={(e) => setServerUrl(e.target.value)} 
                                 className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 pl-12 text-left dir-ltr font-mono font-bold text-gray-700 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" 
-                                placeholder="https://..."
+                                placeholder="https://... یا http://..."
                                 required 
                             />
                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                                 <Server size={20}/>
                             </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2 mr-1">اگر SSL ندارید از http:// استفاده کنید.</p>
+                        <p className="text-[10px] text-gray-400 mt-2 mr-1">اگر پورت ۳۰۰۰ است، حتما وارد کنید.</p>
                     </div>
 
                     <div className="pt-2">
