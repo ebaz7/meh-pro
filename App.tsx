@@ -23,7 +23,7 @@ import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
 import { apiCall } from './services/apiService';
 import { Capacitor } from '@capacitor/core';
-import { App as CapacitorApp } from '@capacitor/app';
+import { App as CapacitorApp } from '@capacitor/app'; // Ensure this is imported
 import { sendNotification } from './services/notificationService';
 
 function App() {
@@ -243,20 +243,30 @@ function App() {
      });
   };
 
+  // --- CRITICAL FIX FOR "ZEROING OUT" ---
+  // This listener ensures that when you switch back to the app from background,
+  // the data is immediately re-fetched.
+  useEffect(() => {
+      let appListener: any;
+      if (Capacitor.isNativePlatform()) {
+          console.log("Adding App State Listener...");
+          appListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+              console.log("App State Changed. Active:", isActive);
+              if (isActive && currentUser) {
+                  // Reload data immediately when app comes to foreground
+                  loadData(true);
+              }
+          });
+      }
+      return () => {
+          if (appListener) appListener.remove();
+      };
+  }, [currentUser]); // Re-bind if user changes
+
   useEffect(() => { 
       if (currentUser) { 
           loadData(false); 
           const intervalId = setInterval(() => loadData(true), 10000); 
-          
-          // ADDED: App State Listener for instant refresh on resume
-          if (Capacitor.isNativePlatform()) {
-              CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-                  if (isActive) {
-                      loadData(true);
-                  }
-              });
-          }
-
           return () => clearInterval(intervalId); 
       } 
   }, [currentUser]);
