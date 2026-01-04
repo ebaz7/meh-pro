@@ -15,7 +15,7 @@ import WarehouseModule from './components/WarehouseModule';
 import SecurityModule from './components/SecurityModule'; 
 import PrintVoucher from './components/PrintVoucher'; 
 import NotificationController from './components/NotificationController'; 
-import ErrorBoundary from './components/ErrorBoundary'; // Imported ErrorBoundary
+import ErrorBoundary from './components/ErrorBoundary'; 
 import { getOrders, getSettings, getMessages } from './services/storageService'; 
 import { getCurrentUser, getUsers } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod } from './types';
@@ -23,6 +23,8 @@ import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
 import { apiCall } from './services/apiService';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { sendNotification } from './services/notificationService';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -163,12 +165,8 @@ function App() {
       setToast({ show: true, title, message });
       toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
       
-      // Try web notification if supported (fallback for desktop)
-      if (!Capacitor.isNativePlatform() && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          try {
-              new Notification(title, { body: message, icon: '/pwa-192x192.png', dir: 'rtl', lang: 'fa' });
-          } catch(e) {}
-      }
+      // Use refined Service for Native/Web handling
+      sendNotification(title, message);
   };
 
   const removeNotification = (id: string) => {
@@ -187,25 +185,21 @@ function App() {
         checkForNotifications(ordersData, currentUser, lastCheck);
         if (isFirstLoad.current) { checkChequeAlerts(ordersData); }
         
+        // Chat Polling
         const messages = await getMessages();
         if (messages && messages.length > 0) {
             const lastMsg = messages[messages.length - 1];
-            if (lastMsg.id !== lastChatMsgIdRef.current) {
-                if (lastChatMsgIdRef.current && lastMsg.senderUsername !== currentUser.username) {
-                    
-                    const isForMe = 
-                        !lastMsg.recipient || 
-                        lastMsg.recipient === currentUser.username || 
-                        (lastMsg.groupId && settingsData); 
-
+            if (lastChatMsgIdRef.current && lastMsg.id !== lastChatMsgIdRef.current) {
+                if (lastMsg.senderUsername !== currentUser.username) {
+                    const isForMe = !lastMsg.recipient || lastMsg.recipient === currentUser.username || (lastMsg.groupId && settingsData); 
                     if (isForMe) {
                         const title = `پیام جدید از ${lastMsg.sender}`;
                         const body = lastMsg.message || (lastMsg.audioUrl ? 'پیام صوتی' : 'فایل');
                         addAppNotification(title, body);
                     }
                 }
-                lastChatMsgIdRef.current = lastMsg.id;
             }
+            lastChatMsgIdRef.current = lastMsg.id;
         }
 
         localStorage.setItem(NOTIFICATION_CHECK_KEY, Date.now().toString());
@@ -252,8 +246,17 @@ function App() {
   useEffect(() => { 
       if (currentUser) { 
           loadData(false); 
-          // Increase polling to 10 seconds to reduce load on mobile
           const intervalId = setInterval(() => loadData(true), 10000); 
+          
+          // ADDED: App State Listener for instant refresh on resume
+          if (Capacitor.isNativePlatform()) {
+              CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+                  if (isActive) {
+                      loadData(true);
+                  }
+              });
+          }
+
           return () => clearInterval(intervalId); 
       } 
   }, [currentUser]);

@@ -1,6 +1,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 const PREF_KEY = 'app_notification_pref';
 
@@ -17,15 +18,26 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   // 1. Native Android/iOS Logic
   if (Capacitor.isNativePlatform()) {
       try {
-          const result = await PushNotifications.requestPermissions();
-          if (result.receive === 'granted') {
-              // Register to get the token immediately
-              await PushNotifications.register();
+          // Request Local Notifications permission (critical for background alerts without FCM)
+          const localResult = await LocalNotifications.requestPermissions();
+          
+          // Request Push permission (if configured)
+          const pushResult = await PushNotifications.requestPermissions();
+          
+          if (localResult.display === 'granted' || pushResult.receive === 'granted') {
+              // Register to get the token immediately if push is granted
+              if (pushResult.receive === 'granted') {
+                  try {
+                    await PushNotifications.register();
+                  } catch (e) {
+                      console.warn("Push register failed (might be emulator)", e);
+                  }
+              }
               return true;
           }
           return false;
       } catch (e) {
-          console.error("Native Push Error:", e);
+          console.error("Native Permission Error:", e);
           return false;
       }
   }
@@ -43,7 +55,7 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
              // SW active
           } else {
-             window.location.reload(); 
+             // window.location.reload(); 
           }
           return true;
       } else {
@@ -55,18 +67,39 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   }
 };
 
-// Deprecated in favor of Backend Push, but kept for Fallback
+// Send a notification (Local for mobile, Web API for desktop)
 export const sendNotification = async (title: string, body: string) => {
-  // Native Local Notification fallback
+  if (!isNotificationEnabledInApp()) return;
+
+  // Native Local Notification (Works in background/minimized on Android)
   if (Capacitor.isNativePlatform()) {
-      // Typically handled by background listener, but simple trigger:
-      // LocalNotifications plugin would be used here if installed, 
-      // but we rely on PushNotifications plugin for remote messages.
+      try {
+          await LocalNotifications.schedule({
+              notifications: [
+                  {
+                      title: title,
+                      body: body,
+                      id: new Date().getTime(), // Unique ID
+                      schedule: { at: new Date(Date.now() + 100) }, // Show immediately
+                      sound: 'beep.wav', // Default sound
+                      smallIcon: 'ic_stat_icon_config_sample', // Android resource name if custom, else default
+                      actionTypeId: "",
+                      extra: null
+                  }
+              ]
+          });
+      } catch (e) {
+          console.error("Local Notification Error:", e);
+      }
       return;
   }
 
   // Web local notification (only works if tab is open)
-  if (isNotificationEnabledInApp() && Notification.permission === "granted") {
-      new Notification(title, { body, icon: '/pwa-192x192.png', dir: 'rtl', lang: 'fa' });
+  if (Notification.permission === "granted") {
+      try {
+        new Notification(title, { body, icon: '/pwa-192x192.png', dir: 'rtl', lang: 'fa' });
+      } catch (e) {
+          console.error("Web Notification Error:", e);
+      }
   }
 };
