@@ -1,52 +1,79 @@
 
 import React, { useEffect } from 'react';
 import { apiCall } from '../services/apiService';
-
-// This component handles the registration of Service Worker and Push Subscription
-// It is invisible and should be mounted once in the App layout.
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 const NotificationController: React.FC = () => {
   useEffect(() => {
-    const registerSwAndSubscribe = async () => {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.log('Push messaging is not supported');
-        return;
-      }
+    
+    const initNotifications = async () => {
+        // --- NATIVE APP LOGIC (ANDROID) ---
+        if (Capacitor.isNativePlatform()) {
+            // Listeners
+            await PushNotifications.addListener('registration', token => {
+                console.log('Push Registration Token:', token.value);
+                // Send FCM token to backend (using same endpoint format)
+                const subObject = { 
+                    endpoint: token.value, 
+                    keys: { p256dh: 'native', auth: 'native' }, 
+                    type: 'android' // Mark as android
+                };
+                apiCall('/subscribe', 'POST', subObject);
+            });
 
-      try {
-        // 1. Register Service Worker
-        const registration = await navigator.serviceWorker.register('/sw.js');
-        console.log('Service Worker Registered');
+            await PushNotifications.addListener('registrationError', err => {
+                console.error('Push Registration Error:', err.error);
+            });
 
-        // 2. Check if we are already subscribed
-        const existingSub = await registration.pushManager.getSubscription();
-        if (existingSub) {
-          console.log('User is already subscribed to push');
-          // Optionally send to backend to ensure it's synced
-          await sendSubscriptionToBackend(existingSub);
-          return;
+            await PushNotifications.addListener('pushNotificationReceived', notification => {
+                console.log('Push Received:', notification);
+                // In foreground, show a toast or alert if needed, or let system handle
+            });
+
+            await PushNotifications.addListener('pushNotificationActionPerformed', notification => {
+                console.log('Push Action:', notification.actionId, notification.inputValue);
+                // Navigate if needed
+            });
+
+            // If permission already granted, register
+            const permStatus = await PushNotifications.checkPermissions();
+            if (permStatus.receive === 'granted') {
+                await PushNotifications.register();
+            }
+            return;
         }
 
-        // 3. Get VAPID Public Key from Backend
-        const { publicKey } = await apiCall<{ publicKey: string }>('/vapid-key');
-        
-        // 4. Subscribe (This prompts the user if not granted)
-        const convertedVapidKey = urlBase64ToUint8Array(publicKey);
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedVapidKey
-        });
+        // --- WEB / PWA LOGIC ---
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            return;
+        }
 
-        // 5. Send Subscription to Backend
-        await sendSubscriptionToBackend(subscription);
-        console.log('User Subscribed successfully!');
+        try {
+            const registration = await navigator.serviceWorker.register('/sw.js');
+            
+            const existingSub = await registration.pushManager.getSubscription();
+            if (existingSub) {
+                // Ensure backend has it
+                await sendSubscriptionToBackend(existingSub);
+                return;
+            }
 
-      } catch (error) {
-        console.error('Service Worker / Push Error:', error);
-      }
+            const { publicKey } = await apiCall<{ publicKey: string }>('/vapid-key');
+            if (publicKey) {
+                const convertedVapidKey = urlBase64ToUint8Array(publicKey);
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: convertedVapidKey
+                });
+                await sendSubscriptionToBackend(subscription);
+            }
+        } catch (error) {
+            console.error('Web Push Error:', error);
+        }
     };
 
-    // Helper to format key
+    // Helper for Web Push Key
     function urlBase64ToUint8Array(base64String: string) {
       const padding = '='.repeat((4 - base64String.length % 4) % 4);
       const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -62,14 +89,14 @@ const NotificationController: React.FC = () => {
       await apiCall('/subscribe', 'POST', subscription);
     };
 
-    // Trigger logic if user enabled notifications in previous session or setting
+    // Initialize if pref is true
     if (localStorage.getItem('app_notification_pref') === 'true') {
-        registerSwAndSubscribe();
+        initNotifications();
     }
 
   }, []);
 
-  return null; // Invisible component
+  return null;
 };
 
 export default NotificationController;

@@ -163,7 +163,8 @@ function App() {
       setToast({ show: true, title, message });
       toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
       
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      // Try web notification if supported (fallback for desktop)
+      if (!Capacitor.isNativePlatform() && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           try {
               new Notification(title, { body: message, icon: '/pwa-192x192.png', dir: 'rtl', lang: 'fa' });
           } catch(e) {}
@@ -248,7 +249,14 @@ function App() {
      });
   };
 
-  useEffect(() => { if (currentUser) { loadData(false); const intervalId = setInterval(() => loadData(true), 3000); return () => clearInterval(intervalId); } }, [currentUser]);
+  useEffect(() => { 
+      if (currentUser) { 
+          loadData(false); 
+          // Increase polling to 10 seconds to reduce load on mobile
+          const intervalId = setInterval(() => loadData(true), 10000); 
+          return () => clearInterval(intervalId); 
+      } 
+  }, [currentUser]);
 
   const handleOrderCreated = () => { loadData(); setManageOrdersInitialTab('current'); setDashboardStatusFilter(null); setActiveTab('manage'); };
   const handleLogin = (user: User) => { setCurrentUser(user); setActiveTab('dashboard'); };

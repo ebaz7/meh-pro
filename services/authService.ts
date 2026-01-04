@@ -21,13 +21,10 @@ export const deleteUser = async (id: string): Promise<User[]> => {
 };
 
 export const login = async (username: string, password: string): Promise<User | null> => {
-    try {
-        const user = await apiCall<User>('/login', 'POST', { username, password });
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-        return user;
-    } catch (e) {
-        return null;
-    }
+    // Note: Do not catch errors here, let the UI handle network errors or server messages
+    const user = await apiCall<User>('/login', 'POST', { username, password });
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    return user;
 };
 
 export const logout = (): void => {
@@ -109,19 +106,13 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canApproveSecuritySupervisor: isStandardRole && (userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN)
     };
 
-    // If role has explicit settings, override defaults
-    // CRITICAL FIX: safe check for rolePermissions existence
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
-        // Merge defaults with custom settings (custom takes precedence)
-        // For custom roles (not standard), defaults are minimal (mostly false/null) except canEditOwn.
         const merged = { ...defaults, ...settings.rolePermissions[userRole] };
         
         if (userObject && userObject.canManageTrade) merged.canManageTrade = true;
         return merged;
     }
     
-    // If no settings exist for this role, return defaults. 
-    // For custom roles, defaults are minimal (mostly false/null) except canEditOwn.
     if (userObject && userObject.canManageTrade) defaults.canManageTrade = true;
     return defaults;
 };

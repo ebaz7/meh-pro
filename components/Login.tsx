@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { login } from '../services/authService';
 import { getServerHost, setServerHost } from '../services/apiService';
 import { User } from '../types';
-import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save } from 'lucide-react';
+import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 interface LoginProps {
@@ -54,18 +54,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         if (user) {
           localStorage.setItem('saved_username', username);
           onLogin(user);
-        } else {
-          setError('نام کاربری یا رمز عبور اشتباه است.');
         }
     } catch (e: any) {
+        setLoading(false);
         if (e.message === "SERVER_URL_MISSING") {
             setError("آدرس سرور تنظیم نشده است.");
             setShowServerConfig(true);
+        } else if (e.message && e.message.includes('401')) {
+            setError('نام کاربری یا رمز عبور اشتباه است.');
+        } else if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('Network Error'))) {
+            setError('خطا در اتصال به سرور. اینترنت یا آدرس سرور را بررسی کنید.');
         } else {
-            setError(e.message || 'خطا در اتصال به سرور.');
+            setError(e.message || 'خطا در ورود به سیستم.');
         }
-    } finally {
-        setLoading(false);
     }
   };
 
@@ -131,7 +132,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                 <Wifi size={20}/>
                             </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2 mr-1">مثال: http://192.168.1.50:3000</p>
+                        <p className="text-[10px] text-gray-400 mt-2 mr-1">مثال: http://192.168.1.50:3000 یا https://api.mydomain.com</p>
                     </div>
 
                     <div className="pt-2">
@@ -166,7 +167,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  {error && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm text-center border border-red-100 font-bold animate-pulse">{error}</div>}
+                  {error && (
+                      <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm text-center border border-red-100 font-bold animate-pulse flex flex-col items-center gap-2">
+                          <span>{error}</span>
+                          {(error.includes('سرور') || error.includes('اتصال')) && (
+                              <button type="button" onClick={() => setShowServerConfig(true)} className="text-xs bg-red-100 px-3 py-1 rounded-full flex items-center gap-1 hover:bg-red-200 mt-1">
+                                  <RefreshCw size={12}/> تغییر آدرس سرور
+                              </button>
+                          )}
+                      </div>
+                  )}
                   
                   <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-700 block mr-1">نام کاربری</label>
@@ -188,7 +198,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       </div>
       
       <div className="absolute bottom-4 text-center text-gray-400 text-[10px] dir-ltr font-mono">
-          v1.0.3 | {isNative ? (serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'Disconnected') : 'Web Mode'}
+          v1.0.4 | {isNative ? (serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'Disconnected') : 'Web Mode'}
       </div>
     </div>
   );
