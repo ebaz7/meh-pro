@@ -42,7 +42,7 @@ const NotificationController: React.FC = () => {
 
             await PushNotifications.addListener('registrationError', err => {
                 console.error('Push Registration Error:', err.error);
-                alert('خطا در اتصال به سرویس نوتیفیکیشن گوگل. آیا فایل google-services.json را کپی کرده‌اید؟');
+                // alert('خطا در اتصال به سرویس نوتیفیکیشن گوگل. آیا فایل google-services.json را کپی کرده‌اید؟');
             });
 
             await PushNotifications.addListener('pushNotificationReceived', notification => {
@@ -59,6 +59,12 @@ const NotificationController: React.FC = () => {
             const permStatus = await PushNotifications.checkPermissions();
             if (permStatus.receive === 'granted') {
                 await PushNotifications.register();
+            } else {
+                // Request if not granted
+                const request = await PushNotifications.requestPermissions();
+                if (request.receive === 'granted') {
+                    await PushNotifications.register();
+                }
             }
         } else {
             // Web Logic (PWA)
