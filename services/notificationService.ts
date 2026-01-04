@@ -21,8 +21,13 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
           // Request Local Notifications permission (critical for background alerts without FCM)
           const localResult = await LocalNotifications.requestPermissions();
           
-          // Request Push permission (if configured)
-          const pushResult = await PushNotifications.requestPermissions();
+          // Try Push Notification Registration - Wrap in try/catch to prevent crashes if google-services.json is missing
+          let pushResult = { receive: 'denied' };
+          try {
+              pushResult = await PushNotifications.requestPermissions();
+          } catch (e) {
+              console.warn("Push Notifications Plugin not available or configured correctly (ignoring):", e);
+          }
           
           if (localResult.display === 'granted' || pushResult.receive === 'granted') {
               // Register to get the token immediately if push is granted
@@ -30,7 +35,7 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
                   try {
                     await PushNotifications.register();
                   } catch (e) {
-                      console.warn("Push register failed (might be emulator)", e);
+                      console.warn("Push register failed (might be emulator or missing config)", e);
                   }
               }
               return true;
@@ -44,19 +49,13 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
 
   // 2. Web/PWA Logic
   if (!("Notification" in window)) {
-      alert("مرورگر شما از نوتیفیکیشن پشتیبانی نمی‌کند.");
+      // Don't alert here to avoid spamming user
       return false;
   }
 
   try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
-          // Trigger PWA reload to activate Service Worker if needed
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-             // SW active
-          } else {
-             // window.location.reload(); 
-          }
           return true;
       } else {
           return false;

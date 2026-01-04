@@ -182,23 +182,21 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
               setNotifEnabled(true); 
               setNotificationPreference(true); 
               onAddNotification("سیستم دستور پرداخت", "نوتیفیکیشن‌ها با موفقیت فعال شدند."); 
-              // Do NOT call new Notification() directly here for native apps, the service handles it via LocalNotification if needed.
-              // For web, onAddNotification triggers toast/notification logic.
           } else {
               setNotifEnabled(false);
+              // Don't show alert for native as requestNotificationPermission handles the error internally now
               if (!Capacitor.isNativePlatform()) {
                   if (Notification.permission === 'denied') {
                       alert("دسترسی به نوتیفیکیشن توسط شما مسدود شده است.");
                   } else {
                       alert("امکان فعال‌سازی وجود ندارد.");
                   }
-              } else {
-                  alert("دسترسی به نوتیفیکیشن داده نشد. لطفاً در تنظیمات گوشی بررسی کنید.");
               }
           } 
       } catch (err) {
           console.error("Notification toggle error:", err);
-          alert("خطا در فعال‌سازی نوتیفیکیشن");
+          // Only alert if not native, to avoid disrupting user experience on mobile crashes
+          if(!Capacitor.isNativePlatform()) alert("خطا در فعال‌سازی نوتیفیکیشن");
       }
   };
 
@@ -326,11 +324,57 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
       {/* ... (Update Banner, iOS Prompt, AI Voice Modal, Profile Modal code preserved) ... */}
       {isUpdateAvailable && (<div className="fixed top-0 left-0 right-0 bg-blue-600 text-white z-[9999] p-3 text-center shadow-lg animate-slide-down flex justify-center items-center gap-4"><div className="flex items-center gap-2"><RefreshCw size={20} className="animate-spin"/><span className="font-bold text-sm">نسخه جدید نرم‌افزار در دسترس است!</span></div><button onClick={handleReload} className="bg-white text-blue-600 px-4 py-1 rounded-full text-xs font-bold hover:bg-blue-50 transition-colors shadow-sm">بروزرسانی (رفرش)</button></div>)}
       {showIOSPrompt && (<div className="fixed inset-0 bg-black/80 z-[100] flex items-end md:items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setShowIOSPrompt(false)}><div className="bg-white w-full max-w-sm rounded-t-2xl md:rounded-2xl p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}><button className="absolute top-3 right-3 text-gray-400 hover:text-red-500" onClick={() => setShowIOSPrompt(false)}><X size={24}/></button><div className="flex flex-col items-center text-center"><Smartphone size={48} className="text-blue-600 mb-4" /><h3 className="text-xl font-bold text-gray-800 mb-2">نصب روی آیفون</h3><p className="text-sm text-gray-500 mb-6 leading-relaxed">برای نصب اپلیکیشن، دکمه <span className="inline-block mx-1"><Share size={16}/></span> (اشتراک‌گذاری) در پایین مرورگر سافاری را بزنید و سپس گزینه <span className="font-bold text-gray-800">Add to Home Screen</span> را انتخاب کنید.</p><div className="w-full bg-gray-100 rounded-xl p-4 flex items-center justify-center gap-4 mb-4"><span className="text-xs font-mono text-gray-400">1. Share</span><ChevronRight size={16} className="text-gray-400"/><span className="text-xs font-bold text-gray-700">2. Add to Home Screen</span></div><button onClick={() => setShowIOSPrompt(false)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">متوجه شدم</button></div></div></div>)}
-      <div className="fixed bottom-24 left-4 md:bottom-8 md:left-8 z-[60]"><button onClick={() => setShowVoiceModal(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center group" title="دستیار صوتی"><Mic size={24} className="group-hover:animate-pulse"/></button></div>
+      
+      {/* Hide Global AI Voice Button in Chat Tab */}
+      {activeTab !== 'chat' && (
+        <div className="fixed bottom-24 left-4 md:bottom-8 md:left-8 z-[60]">
+            <button onClick={() => setShowVoiceModal(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center group" title="دستیار صوتی">
+                <Mic size={24} className="group-hover:animate-pulse"/>
+            </button>
+        </div>
+      )}
+
       {showVoiceModal && (<div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center relative overflow-hidden"><button onClick={() => { setShowVoiceModal(false); setVoiceResult(null); setIsRecording(false); }} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={20}/></button><h3 className="text-xl font-black text-gray-800 mb-2">دستیار صوتی هوشمند</h3><p className="text-xs text-gray-500 mb-6">دستور خود را بگویید (مثلاً: ثبت ۵ میلیون برای علی...)</p><div className="flex justify-center mb-6"><button onClick={isRecording ? handleStopRecording : handleStartRecording} className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-100 text-red-600 scale-110 shadow-[0_0_0_10px_rgba(239,68,68,0.2)]' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>{isRecording ? <StopCircle size={40} className="animate-pulse"/> : <Mic size={40}/>}</button></div>{processingVoice && (<div className="flex items-center justify-center gap-2 text-blue-600 text-sm font-bold animate-pulse mb-4"><Loader2 size={16} className="animate-spin"/> در حال پردازش...</div>)}{voiceResult && (<div className={`p-4 rounded-xl text-sm text-right mb-4 ${voiceResult.includes("ثبت شد") ? 'bg-green-50 text-green-800' : 'bg-gray-50'}`}><p className="font-bold mb-1">پاسخ:</p><p className="whitespace-pre-wrap">{voiceResult}</p></div>)}</div></div>)}
       
       {/* ... Profile Modal ... */}
-      
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 flex flex-col items-center justify-center text-white relative">
+                    <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 text-white/70 hover:text-white"><X size={20}/></button>
+                    <div className="relative group cursor-pointer mb-3" onClick={() => avatarInputRef.current?.click()}>
+                        <div className="w-24 h-24 rounded-full bg-white/20 border-4 border-white/30 overflow-hidden shadow-lg">
+                            {currentUser.avatar ? <img src={currentUser.avatar} alt="Profile" className="w-full h-full object-cover" /> : <UserIcon size={48} className="w-full h-full p-4 text-white" />}
+                        </div>
+                        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            {uploadingAvatar ? <Loader2 size={24} className="animate-spin text-white"/> : <Camera size={24} className="text-white"/>}
+                        </div>
+                        <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} disabled={uploadingAvatar} />
+                    </div>
+                    <h3 className="text-xl font-bold">{currentUser.fullName}</h3>
+                    <p className="text-sm opacity-80">{currentUser.role}</p>
+                </div>
+                <div className="p-6">
+                    <form onSubmit={handleUpdateProfile} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><label className="text-xs font-bold text-gray-500">رمز عبور جدید</label><input type="password" value={profileForm.password} onChange={e => setProfileForm({...profileForm, password: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="******"/></div>
+                            <div className="space-y-1"><label className="text-xs font-bold text-gray-500">تکرار رمز</label><input type="password" value={profileForm.confirmPassword} onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="******"/></div>
+                        </div>
+                        <div className="space-y-1"><label className="text-xs font-bold text-gray-500">شماره موبایل (واتساپ)</label><input type="tel" value={profileForm.phoneNumber} onChange={e => setProfileForm({...profileForm, phoneNumber: e.target.value})} className="w-full border rounded-lg p-2 text-sm dir-ltr" placeholder="98912..."/></div>
+                        <div className="space-y-1"><label className="text-xs font-bold text-gray-500">آیدی تلگرام (عدد)</label><input type="text" value={profileForm.telegramChatId} onChange={e => setProfileForm({...profileForm, telegramChatId: e.target.value})} className="w-full border rounded-lg p-2 text-sm dir-ltr" placeholder="Chat ID"/></div>
+                        
+                        <label className="flex items-center gap-2 text-sm cursor-pointer bg-gray-50 p-3 rounded-lg">
+                            <input type="checkbox" checked={profileForm.receiveNotifications} onChange={e => setProfileForm({...profileForm, receiveNotifications: e.target.checked})} className="w-4 h-4 text-blue-600 rounded" />
+                            <span className="text-gray-700">دریافت پیام‌های اطلاع‌رسانی</span>
+                        </label>
+
+                        <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all mt-2">ذخیره تغییرات</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* Desktop Sidebar */}
       <aside className="w-64 bg-slate-800 text-white flex-shrink-0 hidden md:flex flex-col no-print shadow-xl relative h-screen sticky top-0">
           <div className="p-6 border-b border-slate-700 flex items-center gap-3"><div className="bg-blue-500 p-2 rounded-lg"><FileText className="w-6 h-6 text-white" /></div><div><h1 className="text-lg font-bold tracking-wide">سیستم مالی</h1><span className="text-xs text-slate-400">پنل کاربری</span></div></div>
