@@ -11,6 +11,7 @@
     "start": "node server.js",
     "mobile": "npm run build && npx cap sync && npx cap open android",
     "sync": "npm run build && npx cap sync",
+    "make-apk": "npm run build && npx cap sync && cd android && gradlew :app:assembleDebug",
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
