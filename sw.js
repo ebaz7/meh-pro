@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'payment-sys-v3-push';
+const CACHE_NAME = 'payment-sys-v4-push';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -29,29 +29,33 @@ self.addEventListener('activate', (event) => {
 });
 
 // *** CORE PUSH NOTIFICATION LOGIC ***
-// This event fires even if the tab is CLOSED (as long as the browser process is running in background)
+// This event fires in the BACKGROUND, even if the app is closed (on Android/Desktop and iOS 16.4+ PWA)
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 
   try {
     const data = event.data.json();
     const title = data.title || 'پیام سیستم';
+    
     const options = {
       body: data.body,
-      icon: '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
+      icon: '/pwa-192x192.png',     // Must exist
+      badge: '/pwa-192x192.png',    // Small icon for Android status bar
       dir: 'rtl',
       lang: 'fa',
       vibrate: [100, 50, 100],
       data: {
         url: data.url || '/'
       },
+      tag: 'payment-sys-notification', // Overwrites older notifications with same tag
+      renotify: true, // Play sound again for new notifications with same tag
+      requireInteraction: true, // Keeps notification visible until user interacts
       actions: [
         { action: 'open', title: 'مشاهده' }
-      ],
-      requireInteraction: true // Keeps notification visible until user interacts
+      ]
     };
 
+    // waitUntil ensures the browser doesn't terminate the worker before showing the notification
     event.waitUntil(
       self.registration.showNotification(title, options)
     );
@@ -63,15 +67,23 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
+  // Handle the click: Open the app window or focus existing one
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a window is already open, focus it
+      // 1. Try to find an existing open tab
       for (const client of clientList) {
+        // Match the base URL to find our app
         if (client.url.includes(self.registration.scope) && 'focus' in client) {
-          return client.focus();
+          return client.focus().then((focusedClient) => {
+              // Optional: Send a message to the client to navigate to specific page
+              if(focusedClient) {
+                  focusedClient.navigate('/'); 
+              }
+              return focusedClient;
+          });
         }
       }
-      // If no window is open, open a new one
+      // 2. If no window is open, open a new one
       if (clients.openWindow) {
         return clients.openWindow('/');
       }

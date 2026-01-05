@@ -176,14 +176,8 @@ function App() {
         if (messages && messages.length > 0) {
             const lastMsg = messages[messages.length - 1];
             if (lastChatMsgIdRef.current && lastMsg.id !== lastChatMsgIdRef.current) {
-                if (lastMsg.senderUsername !== currentUser.username) {
-                    const isForMe = !lastMsg.recipient || lastMsg.recipient === currentUser.username || (lastMsg.groupId && settingsData); 
-                    if (isForMe) {
-                        const title = `پیام جدید از ${lastMsg.sender}`;
-                        const body = lastMsg.message || (lastMsg.audioUrl ? 'پیام صوتی' : 'فایل');
-                        addAppNotification(title, body);
-                    }
-                }
+                // Logic moved to Backend Push, but we keep this for open-app update
+                // The push notification handles the background case
             }
             lastChatMsgIdRef.current = lastMsg.id;
         }
@@ -289,7 +283,8 @@ function App() {
         onRemoveNotification={removeNotification}
         >
         
-        <NotificationController />
+        {/* Pass currentUser to NotificationController so we can link the subscription to the user */}
+        <NotificationController currentUser={currentUser} />
 
         {toast && toast.show && (
             <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] bg-white border-l-4 border-blue-600 shadow-2xl rounded-lg p-4 flex items-start gap-4 min-w-[300px] max-w-sm animate-slide-down" onClick={closeToast}>
