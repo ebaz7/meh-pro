@@ -8,13 +8,13 @@ let DEFAULT_SERVER_URL = '';
 
 export const getServerHost = () => {
     const stored = localStorage.getItem('app_server_host');
-    if (stored) return stored.replace(/\/$/, '');
+    if (stored) return stored.trim().replace(/\/$/, '');
     if (DEFAULT_SERVER_URL) return DEFAULT_SERVER_URL.replace(/\/$/, '');
     return '';
 };
 
 export const setServerHost = (url: string) => {
-    const cleanUrl = url.replace(/\/$/, '');
+    const cleanUrl = url.trim().replace(/\/$/, '');
     localStorage.setItem('app_server_host', cleanUrl);
 };
 
@@ -67,7 +67,10 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
             }
         }
 
-        const response = await fetch(`${baseUrl}${endpoint}`, {
+        // endpoint should start with /
+        const finalUrl = `${baseUrl}${endpoint}`;
+
+        const response = await fetch(finalUrl, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: body ? JSON.stringify(body) : undefined,
@@ -106,7 +109,7 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         console.warn(`API Error for ${endpoint}:`, error);
 
         if (endpoint === '/login' && method === 'POST') {
-             throw new Error('اتصال به سرور برقرار نشد. آدرس یا اینترنت را بررسی کنید.');
+             throw new Error('اتصال به سرور برقرار نشد. آدرس سرور یا اینترنت را بررسی کنید.');
         }
 
         // Fallback to cache if network fails (Offline Mode)

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { login } from '../services/authService';
 import { getServerHost, setServerHost } from '../services/apiService';
 import { User } from '../types';
-import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, AlertTriangle } from 'lucide-react';
+import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, AlertTriangle, Globe } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 interface LoginProps {
@@ -64,7 +64,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             setError('نام کاربری یا رمز عبور اشتباه است.');
         } else {
             // General connection error
-            setError('خطا در اتصال به سرور. آدرس IP را چک کنید.');
+            setError('خطا در اتصال به سرور. آدرس یا اینترنت را چک کنید.');
         }
     }
   };
@@ -78,28 +78,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           return;
       }
       
-      // Remove trailing slash
+      // 1. Remove trailing slash
       inputUrl = inputUrl.replace(/\/$/, '');
       
-      // FORCE CLEANUP
-      inputUrl = inputUrl.replace(/^https?:\/\//, ''); // Remove existing protocol to re-add correctly
+      // 2. Smart Protocol Handling
+      // If user provided http:// or https://, respect it.
+      // If not, default to http:// (common for local IPs).
+      if (!inputUrl.startsWith('http://') && !inputUrl.startsWith('https://')) {
+          inputUrl = `http://${inputUrl}`;
+      }
       
-      // IP Regex (Simple check for numbers and dots)
-      const isIpOrLocal = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(inputUrl) || inputUrl.startsWith('localhost') || inputUrl.startsWith('192.168');
-      
-      // Protocol Logic:
-      // Always use HTTP for IPs (Android blocks mixed content on HTTPS usually for self-signed)
-      // Use HTTP for everything unless user explicitly wants HTTPS (which needs custom setup)
-      // For this app context, http:// is the safest default for local networks.
-      const finalUrl = `http://${inputUrl}`;
-      
-      setServerHost(finalUrl);
-      setServerUrl(finalUrl); // Update UI to show what we saved
+      setServerHost(inputUrl);
+      setServerUrl(inputUrl); // Update UI to show the finalized URL
       
       setShowServerConfig(false);
       setError('');
       
-      alert(`تنظیمات ذخیره شد:\n${finalUrl}\n\nنکته: مطمئن شوید گوشی و سرور به یک وای‌فای متصل هستند.`);
+      alert(`تنظیمات ذخیره شد:\n${inputUrl}\n\nاکنون می‌توانید وارد شوید.`);
   };
 
   return (
@@ -123,13 +118,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     </div>
                     <h1 className="text-2xl font-black text-gray-800">اتصال به سرور</h1>
                     <p className="text-gray-500 mt-2 text-sm text-center leading-relaxed px-4">
-                        آدرس IP کامپیوتر سرور را وارد کنید.
+                        آدرس IP یا دامنه سرور را وارد کنید.
                     </p>
                 </div>
                 
                 <form onSubmit={handleSaveServer} className="space-y-5">
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس IP و پورت</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور (IP یا دامنه)</label>
                         <div className="relative">
                             <input 
                                 type="text" 
@@ -141,23 +136,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                 autoCorrect="off"
                             />
                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                                <Wifi size={20}/>
+                                <Globe size={20}/>
                             </div>
                         </div>
-                        <p className="text-[10px] text-indigo-600 mt-2 mr-1 font-bold">
-                            مثال صحیح: 192.168.1.50:3000
+                        <p className="text-[10px] text-gray-400 mt-2 mr-1">
+                            مثال‌ها: <span className="font-mono text-indigo-600">192.168.1.50:3000</span> یا <span className="font-mono text-indigo-600">https://api.domain.com</span>
                         </p>
                     </div>
 
-                    <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-[10px] text-amber-800 flex gap-2">
-                        <AlertTriangle size={16} className="shrink-0"/>
-                        <p>حتماً بررسی کنید که فایروال ویندوز سرور خاموش باشد یا پورت 3000 باز باشد.</p>
+                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 text-[10px] text-blue-800 flex gap-2">
+                        <Wifi size={16} className="shrink-0"/>
+                        <p>اگر از IP عددی استفاده می‌کنید، مطمئن شوید گوشی و سرور به یک شبکه (وای‌فای) متصل هستند.</p>
                     </div>
 
                     <div className="pt-2">
                         <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 text-lg">
                             <Save size={20}/>
-                            ذخیره و تست اتصال
+                            ذخیره تنظیمات
                         </button>
                         <button type="button" onClick={() => setShowServerConfig(false)} className="w-full mt-3 text-gray-500 py-3 rounded-xl font-medium hover:bg-gray-50 transition-all">
                             بازگشت به ورود
