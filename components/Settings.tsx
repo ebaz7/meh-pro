@@ -774,7 +774,7 @@ const Settings: React.FC = () => {
                                         {settings.companies?.map(c => (
                                             <div key={c.id} className="flex flex-col bg-white p-3 rounded border shadow-sm gap-2">
                                                 <div className="flex justify-between items-center">
-                                                    <div className="flex items-center gap-2">{c.logo && <img src={c.logo} className="w-6 h-6 object-contain"/><span className="text-sm font-bold">{c.name}</span>}</div>
+                                                    <div className="flex items-center gap-2">{c.logo && <img src={c.logo} className="w-6 h-6 object-contain"/>}<span className="text-sm font-bold">{c.name}</span></div>
                                                     <div className="flex gap-1"><button type="button" onClick={() => handleEditCompany(c)} className="text-blue-500 p-1 hover:bg-blue-50 rounded"><Pencil size={14}/></button><button type="button" onClick={() => handleRemoveCompany(c.id)} className="text-red-500 p-1 hover:bg-red-50 rounded"><Trash2 size={14}/></button></div>
                                                 </div>
                                             </div>
