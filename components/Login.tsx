@@ -72,27 +72,31 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const handleSaveServer = (e: React.FormEvent) => {
       e.preventDefault();
-      if(!serverUrl.trim()) {
+      let inputUrl = serverUrl.trim();
+      
+      if(!inputUrl) {
           alert("لطفا آدرس سرور را وارد کنید");
           return;
       }
       
-      let finalUrl = serverUrl.trim();
-      
-      // Auto-add protocol if missing
-      // Logic: If it doesn't start with http/https, assume http
-      if (!finalUrl.match(/^https?:\/\//)) {
-          finalUrl = 'http://' + finalUrl;
+      // 1. Remove trailing slash
+      inputUrl = inputUrl.replace(/\/$/, '');
+
+      // 2. Auto-add protocol if missing
+      // Logic: If it doesn't start with http:// or https://, assume http:// (for local IPs)
+      if (!inputUrl.match(/^https?:\/\//)) {
+          inputUrl = 'http://' + inputUrl;
       }
       
-      // Remove trailing slash
-      finalUrl = finalUrl.replace(/\/$/, '');
-
-      setServerHost(finalUrl);
-      setServerUrl(finalUrl);
+      // 3. Save directly without regex validation to support all local IPs
+      setServerHost(inputUrl);
+      setServerUrl(inputUrl);
+      
       setShowServerConfig(false);
       setError('');
-      alert("تنظیمات سرور ذخیره شد. اکنون وارد شوید.");
+      
+      // Optional: Test connection (Ping) could go here
+      alert(`تنظیمات ذخیره شد.\nآدرس: ${inputUrl}`);
   };
 
   return (
@@ -116,7 +120,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     </div>
                     <h1 className="text-2xl font-black text-gray-800">اتصال به سرور</h1>
                     <p className="text-gray-500 mt-2 text-sm text-center leading-relaxed px-4">
-                        برای استفاده از برنامه، آدرس سرور (IP یا دامین) را وارد کنید.
+                        آدرس IP سرور را وارد کنید (مثال: 192.168.1.50:3000)
                     </p>
                 </div>
                 
@@ -129,14 +133,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                 value={serverUrl} 
                                 onChange={(e) => setServerUrl(e.target.value)} 
                                 className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 pl-12 text-left dir-ltr font-mono font-bold text-gray-700 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" 
-                                placeholder="مثال: 192.168.1.100:3000 یا api.mysite.com"
-                                required 
+                                placeholder="192.168.1.X:3000"
+                                autoCapitalize="off"
+                                autoCorrect="off"
                             />
                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                                 <Wifi size={20}/>
                             </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2 mr-1">مثال: 192.168.1.50:3000 (بدون http هم قبول می‌شود)</p>
+                        <p className="text-[10px] text-gray-400 mt-2 mr-1">اگر پورت 3000 است، حتماً :3000 را بنویسید.</p>
                     </div>
 
                     <div className="pt-2">
@@ -202,7 +207,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       </div>
       
       <div className="absolute bottom-4 text-center text-gray-400 text-[10px] dir-ltr font-mono">
-          v1.0.5 | {isNative ? (serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'Disconnected') : 'Web Mode'}
+          v1.0.6 | {isNative ? (serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'Disconnected') : 'Web Mode'}
       </div>
     </div>
   );

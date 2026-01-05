@@ -7,13 +7,9 @@ import { Capacitor } from '@capacitor/core';
 let DEFAULT_SERVER_URL = ''; 
 
 export const getServerHost = () => {
-    // اولویت با آدرسی است که کاربر در تنظیمات وارد کرده است
     const stored = localStorage.getItem('app_server_host');
     if (stored) return stored.replace(/\/$/, '');
-    
-    // اگر کاربر چیزی وارد نکرده بود، از آدرس پیش‌فرض استفاده کن
     if (DEFAULT_SERVER_URL) return DEFAULT_SERVER_URL.replace(/\/$/, '');
-    
     return '';
 };
 
@@ -28,7 +24,7 @@ const MOCK_USERS: User[] = [
     { id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم (آفلاین)', role: UserRole.ADMIN, canManageTrade: true }
 ];
 
-const LS_KEYS = {
+export const LS_KEYS = {
     ORDERS: 'app_data_orders',
     USERS: 'app_data_users',
     SETTINGS: 'app_data_settings',
@@ -40,7 +36,8 @@ const LS_KEYS = {
     WH_TX: 'app_data_wh_tx'
 };
 
-const getLocalData = <T>(key: string, defaultData: T): T => {
+// Exported so App.tsx can use it for instant load
+export const getLocalData = <T>(key: string, defaultData: T): T => {
     try {
         const item = localStorage.getItem(key);
         return item ? JSON.parse(item) : defaultData;
@@ -51,7 +48,6 @@ const getLocalData = <T>(key: string, defaultData: T): T => {
 
 export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?: any): Promise<T> => {
     try {
-        // Reduced timeout for faster failure/feedback
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
@@ -64,7 +60,6 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
             }
             baseUrl = `${host}/api`;
         } else {
-            // Web Mode
             if (host) {
                 baseUrl = `${host}/api`;
             } else {
@@ -80,12 +75,25 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         });
         clearTimeout(timeoutId);
 
-        const contentType = response.headers.get("content-type");
         if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            let data;
             if (contentType && contentType.includes("application/json")) {
-                return await response.json();
+                data = await response.json();
+            } else {
+                data = { success: true } as unknown as T;
             }
-            return { success: true } as unknown as T;
+
+            // --- CACHING LOGIC ---
+            // Automatically cache successful GET requests to support "Instant Load"
+            if (method === 'GET') {
+                if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(data));
+                else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, JSON.stringify(data));
+                else if (endpoint === '/settings') localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(data));
+                else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, JSON.stringify(data));
+            }
+            
+            return data;
         }
 
         throw new Error(`Server Error: ${response.status}`);
@@ -97,14 +105,12 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
 
         console.warn(`API Error for ${endpoint}:`, error);
 
-        // Critical for login: Don't fallback, show error
         if (endpoint === '/login' && method === 'POST') {
              throw new Error('اتصال به سرور برقرار نشد. آدرس یا اینترنت را بررسی کنید.');
         }
 
-        // Only fallback to mock data if NOT a critical write operation
+        // Fallback to cache if network fails
         if (method === 'GET') {
-            // Quick Fallback for read operations to keep UI responsive
             if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
             if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
             if (endpoint === '/warehouse/items') return getLocalData<WarehouseItem[]>(LS_KEYS.WH_ITEMS, []) as unknown as T;

@@ -21,7 +21,7 @@ import { getCurrentUser, getUsers } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod } from './types';
 import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
-import { apiCall } from './services/apiService';
+import { apiCall, getLocalData, LS_KEYS } from './services/apiService'; // Imported getLocalData & keys
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app'; 
 import { sendNotification } from './services/notificationService';
@@ -51,6 +51,7 @@ function App() {
 
   const isNative = Capacitor.isNativePlatform();
 
+  // ... (Safe push/replace state logic remains same) ...
   const safePushState = (state: any, title: string, url?: string) => { 
       if (isNative) return; 
       try { if (url) window.history.pushState(state, title, url); else window.history.pushState(state, title); } catch (e) { try { window.history.pushState(state, title); } catch(e2) {} } 
@@ -62,19 +63,14 @@ function App() {
   
   const setActiveTab = (tab: string, addToHistory = true) => { setActiveTabState(tab); if (addToHistory) safePushState({ tab }, '', `#${tab}`); };
 
+  // ... (Job Processors remain same) ...
   useEffect(() => {
-      const handleJob = (e: CustomEvent) => {
-          setBackgroundJobs(prev => [...prev, e.detail]);
-      };
+      const handleJob = (e: CustomEvent) => { setBackgroundJobs(prev => [...prev, e.detail]); };
       window.addEventListener('QUEUE_WHATSAPP_JOB' as any, handleJob);
       return () => window.removeEventListener('QUEUE_WHATSAPP_JOB' as any, handleJob);
   }, []);
 
-  useEffect(() => {
-      if (backgroundJobs.length > 0 && !processingJobRef.current) {
-          processNextJob();
-      }
-  }, [backgroundJobs]);
+  useEffect(() => { if (backgroundJobs.length > 0 && !processingJobRef.current) { processNextJob(); } }, [backgroundJobs]);
 
   const processNextJob = async () => {
       processingJobRef.current = true;
@@ -94,23 +90,13 @@ function App() {
                   targetUser = usersList.find(u => u.role === UserRole.FINANCIAL && u.phoneNumber);
                   caption = `📢 *درخواست پرداخت جدید*\nشماره: ${order.trackingNumber}\nمبلغ: ${formatCurrency(order.totalAmount)}\nدرخواست کننده: ${order.requester}\n\nلطفا بررسی نمایید.`;
               } else if (type === 'approve') {
-                  if (order.status === OrderStatus.APPROVED_FINANCE) {
-                      targetUser = usersList.find(u => u.role === UserRole.MANAGER && u.phoneNumber);
-                      caption = `✅ *تایید مالی انجام شد*\nشماره: ${order.trackingNumber}\nمنتظر تایید مدیریت.`;
-                  } else if (order.status === OrderStatus.APPROVED_MANAGER) {
-                      targetUser = usersList.find(u => u.role === UserRole.CEO && u.phoneNumber);
-                      caption = `✅ *تایید مدیریت انجام شد*\nشماره: ${order.trackingNumber}\nمنتظر تایید نهایی مدیرعامل.`;
-                  } else if (order.status === OrderStatus.APPROVED_CEO) {
-                      targetUser = usersList.find(u => u.role === UserRole.FINANCIAL && u.phoneNumber);
-                      caption = `💰 *دستور پرداخت تایید نهایی شد*\nشماره: ${order.trackingNumber}\nلطفا پرداخت نمایید.`;
-                  }
+                  // Logic omitted for brevity, same as before
+                  if (order.status === OrderStatus.APPROVED_FINANCE) { targetUser = usersList.find(u => u.role === UserRole.MANAGER && u.phoneNumber); caption = `✅ *تایید مالی انجام شد*\nشماره: ${order.trackingNumber}\nمنتظر تایید مدیریت.`; }
+                  else if (order.status === OrderStatus.APPROVED_MANAGER) { targetUser = usersList.find(u => u.role === UserRole.CEO && u.phoneNumber); caption = `✅ *تایید مدیریت انجام شد*\nشماره: ${order.trackingNumber}\nمنتظر تایید نهایی مدیرعامل.`; }
+                  else if (order.status === OrderStatus.APPROVED_CEO) { targetUser = usersList.find(u => u.role === UserRole.FINANCIAL && u.phoneNumber); caption = `💰 *دستور پرداخت تایید نهایی شد*\nشماره: ${order.trackingNumber}\nلطفا پرداخت نمایید.`; }
               }
               if (targetUser && targetUser.phoneNumber) {
-                  await apiCall('/send-whatsapp', 'POST', { 
-                      number: targetUser.phoneNumber, 
-                      message: caption, 
-                      mediaData: { data: base64, mimeType: 'image/png', filename: `Order_${order.trackingNumber}.png` } 
-                  });
+                  await apiCall('/send-whatsapp', 'POST', { number: targetUser.phoneNumber, message: caption, mediaData: { data: base64, mimeType: 'image/png', filename: `Order_${order.trackingNumber}.png` } });
               }
           } catch (e) { console.error("Background Job Failed", e); }
       }
@@ -120,14 +106,10 @@ function App() {
 
   useEffect(() => {
     if (isNative) return; 
-
     const hash = window.location.hash.replace('#', '');
     if (hash && ['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'warehouse', 'security'].includes(hash)) {
-        setActiveTabState(hash);
-        safeReplaceState({ tab: hash }, '', `#${hash}`);
-    } else {
-        safeReplaceState({ tab: 'dashboard' }, '', '#dashboard');
-    }
+        setActiveTabState(hash); safeReplaceState({ tab: hash }, '', `#${hash}`);
+    } else { safeReplaceState({ tab: 'dashboard' }, '', '#dashboard'); }
     const handlePopState = (event: PopStateEvent) => { if (event.state && event.state.tab) setActiveTabState(event.state.tab); else setActiveTabState('dashboard'); };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -150,13 +132,7 @@ function App() {
     }
   }, [currentUser]);
 
-  const playNotificationSound = () => {
-      try {
-          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
-          audio.volume = 1.0;
-          audio.play().catch(e => console.log("Audio blocked"));
-      } catch (e) { }
-  };
+  const playNotificationSound = () => { try { const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); audio.volume = 1.0; audio.play().catch(e => console.log("Audio blocked")); } catch (e) { } };
 
   const addAppNotification = (title: string, message: string) => { 
       setNotifications(prev => [{ id: generateUUID(), title, message, timestamp: Date.now(), read: false }, ...prev]); 
@@ -164,28 +140,38 @@ function App() {
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       setToast({ show: true, title, message });
       toastTimeoutRef.current = setTimeout(() => setToast(null), 5000);
-      
-      // Use refined Service for Native/Web handling
       sendNotification(title, message);
   };
 
-  const removeNotification = (id: string) => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-  };
-
+  const removeNotification = (id: string) => { setNotifications(prev => prev.filter(n => n.id !== id)); };
   const closeToast = () => { setToast(null); if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); };
 
+  // --- REFACTORED LOAD DATA: CACHE FIRST ---
   const loadData = async (silent = false) => {
     if (!currentUser) return;
-    if (!silent) setLoading(true);
+    
+    // 1. INSTANTLY Load from Local Cache (Synchronous)
+    if (!silent && isFirstLoad.current) {
+        const cachedOrders = getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, []);
+        const cachedSettings = getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any);
+        if (cachedOrders.length > 0) setOrders(cachedOrders);
+        if (cachedSettings) setSettings(cachedSettings);
+    }
+
+    if (!silent && orders.length === 0) setLoading(true);
+
     try {
+        // 2. Fetch Fresh Data (Background)
         const [ordersData, settingsData] = await Promise.all([getOrders(), getSettings()]);
+        
+        // 3. Update State with Fresh Data
         setSettings(settingsData);
+        setOrders(ordersData);
+        
         const lastCheck = parseInt(localStorage.getItem(NOTIFICATION_CHECK_KEY) || '0');
         checkForNotifications(ordersData, currentUser, lastCheck);
         if (isFirstLoad.current) { checkChequeAlerts(ordersData); }
         
-        // Chat Polling
         const messages = await getMessages();
         if (messages && messages.length > 0) {
             const lastMsg = messages[messages.length - 1];
@@ -203,9 +189,12 @@ function App() {
         }
 
         localStorage.setItem(NOTIFICATION_CHECK_KEY, Date.now().toString());
-        setOrders(ordersData);
         isFirstLoad.current = false;
-    } catch (error) { console.error("Failed to load data", error); } finally { if (!silent) setLoading(false); }
+    } catch (error) { 
+        console.error("Failed to load data", error); 
+    } finally { 
+        if (!silent) setLoading(false); 
+    }
   };
 
   const checkChequeAlerts = (list: PaymentOrder[]) => {
@@ -227,6 +216,7 @@ function App() {
   };
 
   const checkForNotifications = (newList: PaymentOrder[], user: User, lastCheckTime: number) => {
+     // ... (Logic kept same) ...
      const newEvents = newList.filter(o => o.updatedAt && o.updatedAt > lastCheckTime);
      newEvents.forEach(newItem => {
         const status = newItem.status;
@@ -243,28 +233,19 @@ function App() {
      });
   };
 
-  // --- CRITICAL FIX FOR "FREEZING/EMPTY MENU" ON RESUME ---
   useEffect(() => {
-      // Listener to handle app state changes (Background -> Foreground)
       const handleAppStateChange = async (state: any) => {
           if (state.isActive && currentUser) {
-              console.log("App resumed from background. Reloading data...");
-              // Force reload data to refresh state that might have been cleared by OS
+              console.log("App resumed. Reloading...");
               await loadData(true);
           }
       };
-
       let listener: any;
       if (Capacitor.isNativePlatform()) {
-          CapacitorApp.addListener('appStateChange', handleAppStateChange).then(l => {
-              listener = l;
-          });
+          CapacitorApp.addListener('appStateChange', handleAppStateChange).then(l => { listener = l; });
       }
-
-      return () => {
-          if (listener) listener.remove();
-      };
-  }, [currentUser]); // Re-bind if user logs in/out
+      return () => { if (listener) listener.remove(); };
+  }, [currentUser]);
 
   useEffect(() => { 
       if (currentUser) { 
@@ -289,16 +270,9 @@ function App() {
       setActiveTab('manage');
   };
 
-  const handleGoToExitApprovals = () => {
-      setExitPermitStatusFilter('pending');
-      setActiveTab('manage-exit');
-  };
-
+  const handleGoToExitApprovals = () => { setExitPermitStatusFilter('pending'); setActiveTab('manage-exit'); };
   const [warehouseInitialTab, setWarehouseInitialTab] = useState<'dashboard' | 'approvals'>('dashboard');
-  const handleGoToWarehouseApprovals = () => {
-      setWarehouseInitialTab('approvals');
-      setActiveTab('warehouse');
-  };
+  const handleGoToWarehouseApprovals = () => { setWarehouseInitialTab('approvals'); setActiveTab('warehouse'); };
 
   if (!currentUser) return <Login onLogin={handleLogin} />;
 
@@ -319,16 +293,12 @@ function App() {
 
         {toast && toast.show && (
             <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] bg-white border-l-4 border-blue-600 shadow-2xl rounded-lg p-4 flex items-start gap-4 min-w-[300px] max-w-sm animate-slide-down" onClick={closeToast}>
-                <div className="bg-blue-100 p-2 rounded-full text-blue-600">
-                    <Bell size={20} className="animate-pulse" />
-                </div>
+                <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Bell size={20} className="animate-pulse" /></div>
                 <div className="flex-1">
                     <h4 className="font-bold text-gray-800 text-sm mb-1">{toast.title}</h4>
                     <p className="text-xs text-gray-600 leading-relaxed">{toast.message}</p>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); closeToast(); }} className="text-gray-400 hover:text-red-500">
-                    <X size={16} />
-                </button>
+                <button onClick={(e) => { e.stopPropagation(); closeToast(); }} className="text-gray-400 hover:text-red-500"><X size={16} /></button>
             </div>
         )}
 
@@ -340,20 +310,15 @@ function App() {
             </div>
         )}
 
-        {loading && orders.length === 0 ? ( <div className="flex h-[50vh] items-center justify-center text-blue-600"><Loader2 size={48} className="animate-spin" /></div> ) : (
+        {/* Improved Loader: Show skeleton/loading only if no data available */}
+        {loading && orders.length === 0 ? ( 
+            <div className="flex h-[50vh] items-center justify-center text-blue-600 flex-col gap-3">
+                <Loader2 size={48} className="animate-spin" />
+                <span className="text-sm font-bold animate-pulse">در حال دریافت اطلاعات...</span>
+            </div> 
+        ) : (
             <>
-                {activeTab === 'dashboard' && 
-                    <Dashboard 
-                        orders={orders} 
-                        settings={settings} 
-                        currentUser={currentUser} 
-                        onViewArchive={handleViewArchive} 
-                        onFilterByStatus={handleDashboardFilter}
-                        onGoToPaymentApprovals={handleGoToPaymentApprovals}
-                        onGoToExitApprovals={handleGoToExitApprovals}
-                        onGoToBijakApprovals={handleGoToWarehouseApprovals}
-                    />
-                }
+                {activeTab === 'dashboard' && <Dashboard orders={orders} settings={settings} currentUser={currentUser} onViewArchive={handleViewArchive} onFilterByStatus={handleDashboardFilter} onGoToPaymentApprovals={handleGoToPaymentApprovals} onGoToExitApprovals={handleGoToExitApprovals} onGoToBijakApprovals={handleGoToWarehouseApprovals} />}
                 {activeTab === 'create' && <CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} />}
                 {activeTab === 'manage' && <ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} />}
                 {activeTab === 'create-exit' && <CreateExitPermit onSuccess={() => setActiveTab('manage-exit')} currentUser={currentUser} />}
