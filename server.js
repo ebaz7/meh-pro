@@ -50,8 +50,6 @@ const vapidKeys = {
 };
 
 // Android Native FCM Key (Optional - for APK builds only)
-// If you are using the PWA version (Chrome/Safari), this is NOT needed.
-// Only needed if building a signed APK/IPA with Capacitor push plugin configured for FCM.
 const FCM_SERVER_KEY = process.env.FCM_SERVER_KEY || ''; 
 
 try {
@@ -129,9 +127,14 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
     const subs = db.pushSubscriptions || [];
     
     // Filter subscriptions
-    const relevantSubs = targetUsername 
-        ? subs.filter(s => s.username === targetUsername) 
-        : subs;
+    let relevantSubs = subs;
+    if (targetUsername) {
+        // Strict filtering for specific users
+        relevantSubs = subs.filter(s => s.username === targetUsername);
+        if (relevantSubs.length === 0) {
+            console.log(`Push Warning: No subscription found for user '${targetUsername}'`);
+        }
+    }
 
     const payload = JSON.stringify({ title, body, url });
     const options = { headers: { 'Urgency': 'high' } };
@@ -164,8 +167,9 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
 };
 
 const sendPushToUsers = (usernames, title, body) => {
-    // Helper to send to multiple users
-    usernames.forEach(u => sendWebPush(title, body, '/', u));
+    // Deduplicate usernames
+    const uniqueUsers = [...new Set(usernames)];
+    uniqueUsers.forEach(u => sendWebPush(title, body, '/', u));
 };
 
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
@@ -176,15 +180,19 @@ app.post('/api/subscribe', (req, res) => {
     const d = getDb(); 
     if(!d.pushSubscriptions) d.pushSubscriptions = [];
     
-    // Remove old sub if exists
+    // Update existing or add new
     const existingIdx = d.pushSubscriptions.findIndex(x => x.endpoint === s.endpoint);
-    if(existingIdx !== -1) d.pushSubscriptions.splice(existingIdx, 1);
+    if(existingIdx !== -1) {
+        // Update user metadata for existing subscription
+        d.pushSubscriptions[existingIdx] = { ...d.pushSubscriptions[existingIdx], ...s };
+    } else {
+        d.pushSubscriptions.push(s); 
+    }
     
-    d.pushSubscriptions.push(s); 
     saveDb(d); 
     
-    // Send welcome only if it's a new sub
-    if (s.keys && s.keys.p256dh !== 'native') {
+    // Send welcome ONLY if it's a freshly added subscription (not an update)
+    if (existingIdx === -1 && s.keys && s.keys.p256dh !== 'native') {
         webpush.sendNotification(s, JSON.stringify({ title: 'فعال‌سازی موفق', body: `نوتیفیکیشن برای کاربر ${s.username || 'شما'} فعال شد.` }))
         .catch(e => console.error("Welcome Push Failed", e));
     }
@@ -330,15 +338,18 @@ app.post('/api/chat', (req, res) => {
     
     // --- TARGETED PUSH FOR CHAT ---
     const title = `پیام جدید از ${m.sender}`;
-    const body = m.message || 'فایل ضمیمه';
+    let body = m.message || 'فایل ضمیمه';
+    if(body.startsWith('CALL_INVITE|')) body = '📞 تماس ورودی...';
 
     if (m.recipient) {
         // 1. Private Message: Send to recipient
+        // Important: Ensure we use 'username' for targeting as per registration
         sendPushToUsers([m.recipient], title, body);
     } else if (m.groupId) {
         // 2. Group Message: Send to all members EXCEPT sender
         const group = db.groups.find(g => g.id === m.groupId);
         if (group) {
+            // Member array contains usernames
             const targets = group.members.filter(u => u !== m.senderUsername);
             sendPushToUsers(targets, title + ` (گروه ${group.name})`, body);
         }
