@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -18,19 +17,20 @@ import NotificationController from './components/NotificationController';
 import ErrorBoundary from './components/ErrorBoundary'; 
 import { getOrders, getSettings, getMessages } from './services/storageService'; 
 import { getCurrentUser, getUsers } from './services/authService';
-import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod } from './types';
+import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod, ChatMessage } from './types';
 import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
 import { apiCall, getLocalData, LS_KEYS } from './services/apiService'; 
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app'; 
-import { PushNotifications } from '@capacitor/push-notifications'; // Import for listener
+import { PushNotifications } from '@capacitor/push-notifications'; 
 import { sendNotification } from './services/notificationService';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTabState] = useState('dashboard');
   const [orders, setOrders] = useState<PaymentOrder[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]); // Lifted State
   const [settings, setSettings] = useState<SystemSettings | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -48,11 +48,12 @@ function App() {
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const IDLE_LIMIT = 60 * 60 * 1000; 
   const NOTIFICATION_CHECK_KEY = 'last_notification_check';
-  const lastChatMsgIdRef = useRef<string | null>(null); 
+  
+  // Track last message ID to detect new ones
+  const lastChatMsgIdRef = useRef<string | null>(null);
 
   const isNative = Capacitor.isNativePlatform();
 
-  // ... (Safe push/replace state logic remains same) ...
   const safePushState = (state: any, title: string, url?: string) => { 
       if (isNative) return; 
       try { if (url) window.history.pushState(state, title, url); else window.history.pushState(state, title); } catch (e) { try { window.history.pushState(state, title); } catch(e2) {} } 
@@ -64,14 +65,11 @@ function App() {
   
   const setActiveTab = (tab: string, addToHistory = true) => { setActiveTabState(tab); if (addToHistory) safePushState({ tab }, '', `#${tab}`); };
 
-  // --- NATIVE NOTIFICATION ACTION HANDLER ---
   useEffect(() => {
     if (isNative) {
-        // Listen for notification clicks (App closed or background)
         PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
             const data = notification.notification.data;
             if (data && data.url) {
-                // Handle deep linking based on data.url
                 if (data.url.includes('chat') || data.url === '#chat') {
                     setActiveTab('chat');
                 } else if (data.url.includes('manage-exit') || data.url === '#manage-exit') {
@@ -86,7 +84,6 @@ function App() {
     }
   }, []);
 
-  // ... (Job Processors remain same) ...
   useEffect(() => {
       const handleJob = (e: CustomEvent) => { setBackgroundJobs(prev => [...prev, e.detail]); };
       window.addEventListener('QUEUE_WHATSAPP_JOB' as any, handleJob);
@@ -113,7 +110,6 @@ function App() {
                   targetUser = usersList.find(u => u.role === UserRole.FINANCIAL && u.phoneNumber);
                   caption = `📢 *درخواست پرداخت جدید*\nشماره: ${order.trackingNumber}\nمبلغ: ${formatCurrency(order.totalAmount)}\nدرخواست کننده: ${order.requester}\n\nلطفا بررسی نمایید.`;
               } else if (type === 'approve') {
-                  // Logic omitted for brevity, same as before
                   if (order.status === OrderStatus.APPROVED_FINANCE) { targetUser = usersList.find(u => u.role === UserRole.MANAGER && u.phoneNumber); caption = `✅ *تایید مالی انجام شد*\nشماره: ${order.trackingNumber}\nمنتظر تایید مدیریت.`; }
                   else if (order.status === OrderStatus.APPROVED_MANAGER) { targetUser = usersList.find(u => u.role === UserRole.CEO && u.phoneNumber); caption = `✅ *تایید مدیریت انجام شد*\nشماره: ${order.trackingNumber}\nمنتظر تایید نهایی مدیرعامل.`; }
                   else if (order.status === OrderStatus.APPROVED_CEO) { targetUser = usersList.find(u => u.role === UserRole.FINANCIAL && u.phoneNumber); caption = `💰 *دستور پرداخت تایید نهایی شد*\nشماره: ${order.trackingNumber}\nلطفا پرداخت نمایید.`; }
@@ -169,42 +165,53 @@ function App() {
   const removeNotification = (id: string) => { setNotifications(prev => prev.filter(n => n.id !== id)); };
   const closeToast = () => { setToast(null); if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); };
 
-  // --- REFACTORED LOAD DATA: CACHE FIRST ---
   const loadData = async (silent = false) => {
     if (!currentUser) return;
     
-    // 1. INSTANTLY Load from Local Cache (Synchronous)
     if (!silent && isFirstLoad.current) {
         const cachedOrders = getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, []);
         const cachedSettings = getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any);
+        // Load cached messages to prevent empty chat on start
+        const cachedMessages = getLocalData<ChatMessage[]>(LS_KEYS.CHAT, []); 
+        
         if (cachedOrders.length > 0) setOrders(cachedOrders);
         if (cachedSettings) setSettings(cachedSettings);
+        if (cachedMessages.length > 0) {
+            setChatMessages(cachedMessages);
+            if (cachedMessages.length > 0) lastChatMsgIdRef.current = cachedMessages[cachedMessages.length - 1].id;
+        }
     }
 
     if (!silent && orders.length === 0) setLoading(true);
 
     try {
-        // 2. Fetch Fresh Data (Background)
-        const [ordersData, settingsData] = await Promise.all([getOrders(), getSettings()]);
+        const [ordersData, settingsData, messagesData] = await Promise.all([getOrders(), getSettings(), getMessages()]);
         
-        // 3. Update State with Fresh Data
         setSettings(settingsData);
         setOrders(ordersData);
+        setChatMessages(messagesData || []); // Update global chat state
         
         const lastCheck = parseInt(localStorage.getItem(NOTIFICATION_CHECK_KEY) || '0');
         checkForNotifications(ordersData, currentUser, lastCheck);
-        if (isFirstLoad.current) { checkChequeAlerts(ordersData); }
         
-        const messages = await getMessages();
-        if (messages && messages.length > 0) {
-            const lastMsg = messages[messages.length - 1];
-            if (lastChatMsgIdRef.current && lastMsg.id !== lastChatMsgIdRef.current) {
-                // Logic moved to Backend Push, but we keep this for open-app update
-                // The push notification handles the background case
+        // --- CHAT NOTIFICATION LOGIC ---
+        if (messagesData && messagesData.length > 0) {
+            const lastMsg = messagesData[messagesData.length - 1];
+            // If new message ID exists AND it's not sent by me
+            if (lastChatMsgIdRef.current && lastMsg.id !== lastChatMsgIdRef.current && lastMsg.senderUsername !== currentUser.username) {
+                // If user is NOT in chat tab, notify
+                if (activeTab !== 'chat') {
+                    let body = lastMsg.message || 'فایل ضمیمه';
+                    if (body.startsWith('CALL_INVITE|')) body = '📞 تماس ورودی...';
+                    addAppNotification(`پیام جدید از ${lastMsg.sender}`, body);
+                }
             }
             lastChatMsgIdRef.current = lastMsg.id;
         }
+        // -------------------------------
 
+        if (isFirstLoad.current) { checkChequeAlerts(ordersData); }
+        
         localStorage.setItem(NOTIFICATION_CHECK_KEY, Date.now().toString());
         isFirstLoad.current = false;
     } catch (error) { 
@@ -233,7 +240,6 @@ function App() {
   };
 
   const checkForNotifications = (newList: PaymentOrder[], user: User, lastCheckTime: number) => {
-     // ... (Logic kept same) ...
      const newEvents = newList.filter(o => o.updatedAt && o.updatedAt > lastCheckTime);
      newEvents.forEach(newItem => {
         const status = newItem.status;
@@ -264,10 +270,11 @@ function App() {
       return () => { if (listener) listener.remove(); };
   }, [currentUser]);
 
+  // Reduced polling interval for better reactivity
   useEffect(() => { 
       if (currentUser) { 
           loadData(false); 
-          const intervalId = setInterval(() => loadData(true), 10000); 
+          const intervalId = setInterval(() => loadData(true), 5000); // 5s poll
           return () => clearInterval(intervalId); 
       } 
   }, [currentUser]);
@@ -306,7 +313,6 @@ function App() {
         onRemoveNotification={removeNotification}
         >
         
-        {/* Pass currentUser to NotificationController so we can link the subscription to the user */}
         <NotificationController currentUser={currentUser} />
 
         {toast && toast.show && (
@@ -346,7 +352,14 @@ function App() {
                 {activeTab === 'users' && <ManageUsers />}
                 {activeTab === 'settings' && <Settings />}
                 {activeTab === 'security' && <SecurityModule currentUser={currentUser} />}
-                {activeTab === 'chat' && <ChatRoom currentUser={currentUser} onNotification={() => {}} />} 
+                {/* CHAT TAB: Pass pre-loaded messages to avoid load time */}
+                {activeTab === 'chat' && (
+                    <ChatRoom 
+                        currentUser={currentUser} 
+                        preloadedMessages={chatMessages}
+                        onRefresh={() => loadData(true)} 
+                    />
+                )} 
             </>
         )}
         </Layout>
