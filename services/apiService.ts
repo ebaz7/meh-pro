@@ -8,13 +8,13 @@ let DEFAULT_SERVER_URL = '';
 
 export const getServerHost = () => {
     const stored = localStorage.getItem('app_server_host');
-    if (stored) return stored.replace(/\/$/, '');
+    if (stored) return stored.trim().replace(/\/$/, '');
     if (DEFAULT_SERVER_URL) return DEFAULT_SERVER_URL.replace(/\/$/, '');
     return '';
 };
 
 export const setServerHost = (url: string) => {
-    const cleanUrl = url.replace(/\/$/, '');
+    const cleanUrl = url.trim().replace(/\/$/, '');
     localStorage.setItem('app_server_host', cleanUrl);
 };
 
@@ -49,7 +49,8 @@ export const getLocalData = <T>(key: string, defaultData: T): T => {
 export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?: any): Promise<T> => {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); 
+        // Increased timeout significantly
+        const timeoutId = setTimeout(() => controller.abort(), 20000); 
 
         let baseUrl = '';
         const host = getServerHost();
@@ -67,7 +68,12 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
             }
         }
 
-        const response = await fetch(`${baseUrl}${endpoint}`, {
+        // endpoint should start with /
+        const finalUrl = `${baseUrl}${endpoint}`;
+
+        console.log(`API calling: ${method} ${finalUrl}`); 
+
+        const response = await fetch(finalUrl, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: body ? JSON.stringify(body) : undefined,
@@ -84,14 +90,20 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
                 data = { success: true } as unknown as T;
             }
 
-            // --- CACHING LOGIC ---
-            // Automatically cache successful GET requests to support "Instant Load"
+            // --- CACHING DISABLED ---
+            // To fix "Zero Data" issue, we disable writing to cache for now.
+            // This forces the app to always use fresh data from server next time.
+            /*
             if (method === 'GET') {
                 if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(data));
                 else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, JSON.stringify(data));
                 else if (endpoint === '/settings') localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(data));
                 else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, JSON.stringify(data));
+                else if (endpoint === '/trade') localStorage.setItem(LS_KEYS.TRADE, JSON.stringify(data));
+                else if (endpoint === '/warehouse/items') localStorage.setItem(LS_KEYS.WH_ITEMS, JSON.stringify(data));
+                else if (endpoint === '/warehouse/transactions') localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(data));
             }
+            */
             
             return data;
         }
@@ -106,20 +118,11 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         console.warn(`API Error for ${endpoint}:`, error);
 
         if (endpoint === '/login' && method === 'POST') {
-             throw new Error('اتصال به سرور برقرار نشد. آدرس یا اینترنت را بررسی کنید.');
+             throw new Error('اتصال به سرور برقرار نشد. آدرس سرور یا اینترنت را بررسی کنید.');
         }
 
-        // Fallback to cache if network fails
-        if (method === 'GET') {
-            if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
-            if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
-            if (endpoint === '/warehouse/items') return getLocalData<WarehouseItem[]>(LS_KEYS.WH_ITEMS, []) as unknown as T;
-            if (endpoint === '/warehouse/transactions') return getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []) as unknown as T;
-            if (endpoint === '/settings') return getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any) as unknown as T;
-            if (endpoint === '/chat') return getLocalData<ChatMessage[]>(LS_KEYS.CHAT, []) as unknown as T;
-            if (endpoint === '/users') return getLocalData<User[]>(LS_KEYS.USERS, MOCK_USERS) as unknown as T;
-        }
-        
+        // --- CACHE FALLBACK DISABLED ---
+        // If network fails, show error instead of showing potentially empty/stale cache
         throw error;
     }
 };

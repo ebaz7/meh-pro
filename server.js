@@ -79,64 +79,29 @@ const getDb = () => {
             messages: [], groups: [], tasks: [], tradeRecords: [],
             pushSubscriptions: [] 
         };
-        
-        // Auto-create 1404 if missing (Data Integrity)
-        if (!initial.settings.fiscalYears) initial.settings.fiscalYears = [];
-        if (initial.settings.fiscalYears.length === 0) {
-            const y1404 = {
-                id: 'fy_1404_init',
-                label: '1404',
-                isClosed: false,
-                companySequences: {}, // Empty means use defaults (1)
-                createdAt: Date.now()
-            };
-            initial.settings.fiscalYears.push(y1404);
-            initial.settings.activeFiscalYearId = 'fy_1404_init';
-        }
-
         fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
         return initial;
     }
     const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     if (!data.pushSubscriptions) data.pushSubscriptions = []; 
-    if (!data.settings.fiscalYears || data.settings.fiscalYears.length === 0) {
-        data.settings.fiscalYears = [{
-            id: 'fy_1404_migrated',
-            label: '1404',
-            isClosed: false,
-            companySequences: {},
-            createdAt: Date.now()
-        }];
-        data.settings.activeFiscalYearId = 'fy_1404_migrated';
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    }
     return data;
 };
 const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
-    // ... (Same fiscal logic as before) ...
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === fiscalYearId);
-    let baseNum = 1; 
-    if (activeYear && companyName && activeYear.companySequences && activeYear.companySequences[companyName]) {
-        const seqConfig = activeYear.companySequences[companyName];
-        if (type === 'payment' && seqConfig.startTrackingNumber) baseNum = seqConfig.startTrackingNumber;
-        else if (type === 'exit' && seqConfig.startExitPermitNumber) baseNum = seqConfig.startExitPermitNumber;
-        else if (type === 'bijak' && seqConfig.startBijakNumber) baseNum = seqConfig.startBijakNumber;
-    }
-    const filtered = arr.filter(item => {
-        if (item.fiscalYearId !== fiscalYearId) return false;
-        if (companyName) {
-             if (type === 'payment' && item.payingCompany !== companyName) return false;
-             if (type === 'bijak' && item.company !== companyName) return false;
-        }
-        return true;
-    });
+    // EMERGENCY MODE: IGNORE FISCAL YEAR FILTER TO ENSURE DATA CONSISTENCY
+    // Just find the max number globally to prevent "1" reset
+    
+    // Filter by company if provided (legacy logic)
+    const filtered = companyName ? arr.filter(item => 
+        (type === 'payment' && item.payingCompany === companyName) ||
+        (type === 'bijak' && item.company === companyName)
+    ) : arr;
+
     const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
-    let next = baseNum;
-    if (existing.length === 0) return baseNum;
-    for (const num of existing) { 
-        if (num === next) next++; 
+    let next = 1000; // Default start
+    if (existing.length > 0) {
+        next = existing[existing.length - 1] + 1;
     }
     return next;
 };
@@ -150,18 +115,11 @@ const sendWebPush = (title, body, url = '/') => {
     const db = getDb();
     const subs = db.pushSubscriptions || [];
     const payload = JSON.stringify({ title, body, url });
-    
-    // Options for high priority delivery
-    const options = {
-        headers: {
-            'Urgency': 'high' // Critical for Android Doze mode
-        }
-    };
+    const options = { headers: { 'Urgency': 'high' } };
 
     subs.forEach((subscription, index) => {
         webpush.sendNotification(subscription, payload, options).catch(err => {
             if (err.statusCode === 410 || err.statusCode === 404) {
-                // Remove invalid subscription
                 const currentDb = getDb();
                 currentDb.pushSubscriptions = currentDb.pushSubscriptions.filter(s => s.endpoint !== subscription.endpoint);
                 saveDb(currentDb);
@@ -174,14 +132,10 @@ app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 app.get('/api/vapid-key', (req, res) => res.json({ publicKey: vapidKeys.publicKey }));
 app.post('/api/subscribe', (req, res) => { const s = req.body; const d = getDb(); if(!d.pushSubscriptions.find(x=>x.endpoint===s.endpoint)){d.pushSubscriptions.push(s); saveDb(d);} res.status(201).json({}); });
 
-// ... (Rest of API routes remain identical) ...
 // --- ORDERS ---
+// EMERGENCY FIX: Removed all filtering. Return EVERYTHING.
 app.get('/api/orders', (req, res) => {
     const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    if (activeYearId) {
-        return res.json(db.orders.filter(o => o.fiscalYearId === activeYearId));
-    }
     res.json(db.orders);
 });
 
@@ -190,13 +144,8 @@ app.post('/api/orders', (req, res) => {
     const order = req.body; 
     order.id = Date.now().toString(); 
     
+    // Assign active year if exists, but don't enforce closed logic strictly yet
     const activeYearId = db.settings.activeFiscalYearId;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
-    
-    if (activeYear && activeYear.isClosed) {
-        return res.status(403).json({ error: "سال مالی فعال بسته شده است." });
-    }
-
     order.fiscalYearId = activeYearId;
     order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany);
     
@@ -204,19 +153,16 @@ app.post('/api/orders', (req, res) => {
     saveDb(db); 
     sendWebPush('سند جدید', `شماره ${order.trackingNumber}`); 
     
-    res.json(db.orders.filter(o => o.fiscalYearId === activeYearId)); 
+    res.json(db.orders); // Return all
 });
 
-app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders.filter(o => o.fiscalYearId === db.orders[idx].fiscalYearId)); } else res.sendStatus(404); });
-app.delete('/api/orders/:id', (req, res) => { const db=getDb(); const target = db.orders.find(x=>x.id===req.params.id); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders.filter(o => o.fiscalYearId === target?.fiscalYearId)); });
+app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders); } else res.sendStatus(404); });
+app.delete('/api/orders/:id', (req, res) => { const db=getDb(); const target = db.orders.find(x=>x.id===req.params.id); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); });
 
 // --- EXIT PERMITS ---
+// EMERGENCY FIX: Removed all filtering. Return EVERYTHING.
 app.get('/api/exit-permits', (req, res) => {
     const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    if (activeYearId) {
-        return res.json(db.exitPermits.filter(p => p.fiscalYearId === activeYearId));
-    }
     res.json(db.exitPermits);
 });
 
@@ -226,22 +172,16 @@ app.post('/api/exit-permits', (req, res) => {
     permit.id = Date.now().toString(); 
     
     const activeYearId = db.settings.activeFiscalYearId;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
-
-    if (activeYear && activeYear.isClosed) {
-        return res.status(403).json({ error: "سال مالی بسته شده است." });
-    }
-
     permit.fiscalYearId = activeYearId;
     permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, permit.companyName);
     
     db.exitPermits.push(permit); 
     saveDb(db); 
-    res.json(db.exitPermits.filter(p => p.fiscalYearId === activeYearId)); 
+    res.json(db.exitPermits); 
 });
 
-app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); res.json(db.exitPermits.filter(p => p.fiscalYearId === db.exitPermits[idx].fiscalYearId)); } else res.sendStatus(404); });
-app.delete('/api/exit-permits/:id', (req, res) => { const db=getDb(); const target = db.exitPermits.find(x=>x.id===req.params.id); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits.filter(p => p.fiscalYearId === target?.fiscalYearId)); });
+app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); res.json(db.exitPermits); } else res.sendStatus(404); });
+app.delete('/api/exit-permits/:id', (req, res) => { const db=getDb(); const target = db.exitPermits.find(x=>x.id===req.params.id); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits); });
 
 app.get('/api/next-tracking-number', (req, res) => {
     const db = getDb();
@@ -262,10 +202,6 @@ app.get('/api/next-exit-permit-number', (req, res) => {
 // --- WAREHOUSE TRANSACTIONS ---
 app.get('/api/warehouse/transactions', (req, res) => {
     const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    if (activeYearId) {
-        return res.json(db.warehouseTransactions.filter(t => t.fiscalYearId === activeYearId));
-    }
     res.json(db.warehouseTransactions);
 });
 
@@ -274,12 +210,6 @@ app.post('/api/warehouse/transactions', (req, res) => {
     const t = req.body; 
     
     const activeYearId = db.settings.activeFiscalYearId;
-    const activeYear = db.settings.fiscalYears?.find(y => y.id === activeYearId);
-
-    if (activeYear && activeYear.isClosed) {
-        return res.status(403).json({ error: "سال مالی بسته شده است." });
-    }
-
     t.fiscalYearId = activeYearId;
 
     if(t.type === 'OUT'){ 
@@ -288,11 +218,11 @@ app.post('/api/warehouse/transactions', (req, res) => {
     } 
     db.warehouseTransactions.unshift(t); 
     saveDb(db); 
-    res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === activeYearId)); 
+    res.json(db.warehouseTransactions); 
 });
 
-app.put('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx],...req.body}; saveDb(db); res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === db.warehouseTransactions[idx].fiscalYearId)); } else res.sendStatus(404); });
-app.delete('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const target = db.warehouseTransactions.find(x=>x.id===req.params.id); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === target?.fiscalYearId)); });
+app.put('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx],...req.body}; saveDb(db); res.json(db.warehouseTransactions); } else res.sendStatus(404); });
+app.delete('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const target = db.warehouseTransactions.find(x=>x.id===req.params.id); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions); });
 
 app.get('/api/chat', (req, res) => res.json(getDb().messages));
 app.post('/api/chat', (req, res) => { const db=getDb(); const m=req.body; m.id=Date.now().toString(); db.messages.push(m); saveDb(db); sendWebPush('پیام جدید', m.message || 'فایل'); res.json(db.messages); });
@@ -322,7 +252,44 @@ app.put('/api/users/:id', (req, res) => { const db=getDb(); const idx=db.users.f
 app.delete('/api/users/:id', (req, res) => { const db=getDb(); db.users=db.users.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.users); });
 app.post('/api/login', (req, res) => { const u=getDb().users.find(x=>x.username===req.body.username && x.password===req.body.password); u?res.json(u):res.status(401).send('Invalid'); });
 app.get('/api/settings', (req, res) => res.json(getDb().settings));
-app.post('/api/settings', (req, res) => { const db=getDb(); db.settings=req.body; saveDb(db); res.json(db.settings); });
+
+// CRITICAL FIX: Merge settings instead of replace to prevent data loss
+app.post('/api/settings', (req, res) => { 
+    const db = getDb(); 
+    db.settings = { ...db.settings, ...req.body }; // MERGE
+    saveDb(db); 
+    res.json(db.settings); 
+});
+
+// Full Restore Endpoint
+app.post('/api/full-restore', (req, res) => {
+    try {
+        const { fileData } = req.body;
+        if (!fileData) throw new Error("No data");
+        const zip = new AdmZip(Buffer.from(fileData.split(',')[1], 'base64'));
+        
+        // Extract DB
+        const dbEntry = zip.getEntry('database.json');
+        if (dbEntry) {
+            fs.writeFileSync(DB_FILE, zip.readAsText(dbEntry));
+        }
+        
+        // Extract Uploads
+        const uploadsEntry = zip.getEntry('uploads/');
+        if (uploadsEntry) {
+            zip.extractEntryTo('uploads/', UPLOADS_DIR, false, true);
+        }
+        
+        // RE-EXTRACT EVERYTHING TO ROOT IF STRUCTURE IS FLAT
+        zip.extractAllTo(__dirname, true);
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Restore Error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/render-pdf', async (req, res) => {
     try {
         const { html, landscape, width, height } = req.body;
