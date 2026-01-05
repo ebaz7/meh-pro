@@ -19,9 +19,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { getOrders, getSettings, getMessages } from './services/storageService'; 
 import { getCurrentUser, getUsers } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod } from './types';
-import { Loader2, Bell, X, RefreshCw, WifiOff } from 'lucide-react';
+import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
-import { apiCall, getLocalData, LS_KEYS } from './services/apiService'; 
+import { apiCall, getLocalData, LS_KEYS } from './services/apiService'; // Imported getLocalData & keys
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app'; 
 import { sendNotification } from './services/notificationService';
@@ -32,7 +32,6 @@ function App() {
   const [orders, setOrders] = useState<PaymentOrder[]>([]);
   const [settings, setSettings] = useState<SystemSettings | undefined>(undefined);
   const [loading, setLoading] = useState(false);
-  const [dataLoadError, setDataLoadError] = useState(false); // NEW: Track load error
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [manageOrdersInitialTab, setManageOrdersInitialTab] = useState<'current' | 'archive'>('current');
   const [dashboardStatusFilter, setDashboardStatusFilter] = useState<any>(null); 
@@ -52,6 +51,7 @@ function App() {
 
   const isNative = Capacitor.isNativePlatform();
 
+  // ... (Safe push/replace state logic remains same) ...
   const safePushState = (state: any, title: string, url?: string) => { 
       if (isNative) return; 
       try { if (url) window.history.pushState(state, title, url); else window.history.pushState(state, title); } catch (e) { try { window.history.pushState(state, title); } catch(e2) {} } 
@@ -63,7 +63,7 @@ function App() {
   
   const setActiveTab = (tab: string, addToHistory = true) => { setActiveTabState(tab); if (addToHistory) safePushState({ tab }, '', `#${tab}`); };
 
-  // ... (Job Processors kept same) ...
+  // ... (Job Processors remain same) ...
   useEffect(() => {
       const handleJob = (e: CustomEvent) => { setBackgroundJobs(prev => [...prev, e.detail]); };
       window.addEventListener('QUEUE_WHATSAPP_JOB' as any, handleJob);
@@ -145,6 +145,7 @@ function App() {
   const removeNotification = (id: string) => { setNotifications(prev => prev.filter(n => n.id !== id)); };
   const closeToast = () => { setToast(null); if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); };
 
+  // --- REFACTORED LOAD DATA: CACHE FIRST ---
   const loadData = async (silent = false) => {
     if (!currentUser) return;
     
@@ -156,8 +157,7 @@ function App() {
         if (cachedSettings) setSettings(cachedSettings);
     }
 
-    if (!silent) setLoading(true);
-    setDataLoadError(false);
+    if (!silent && orders.length === 0) setLoading(true);
 
     try {
         // 2. Fetch Fresh Data (Background)
@@ -190,11 +190,7 @@ function App() {
         localStorage.setItem(NOTIFICATION_CHECK_KEY, Date.now().toString());
         isFirstLoad.current = false;
     } catch (error) { 
-        console.error("Failed to load data", error);
-        // Set error flag if we have NO data to show
-        if (orders.length === 0) {
-            setDataLoadError(true);
-        }
+        console.error("Failed to load data", error); 
     } finally { 
         if (!silent) setLoading(false); 
     }
@@ -219,6 +215,7 @@ function App() {
   };
 
   const checkForNotifications = (newList: PaymentOrder[], user: User, lastCheckTime: number) => {
+     // ... (Logic kept same) ...
      const newEvents = newList.filter(o => o.updatedAt && o.updatedAt > lastCheckTime);
      newEvents.forEach(newItem => {
         const status = newItem.status;
@@ -312,23 +309,12 @@ function App() {
             </div>
         )}
 
-        {/* LOADING & ERROR STATES */}
+        {/* Improved Loader: Show skeleton/loading only if no data available */}
         {loading && orders.length === 0 ? ( 
             <div className="flex h-[50vh] items-center justify-center text-blue-600 flex-col gap-3">
                 <Loader2 size={48} className="animate-spin" />
                 <span className="text-sm font-bold animate-pulse">در حال دریافت اطلاعات...</span>
             </div> 
-        ) : dataLoadError && orders.length === 0 ? (
-            <div className="flex h-[50vh] items-center justify-center text-red-600 flex-col gap-4">
-                <div className="bg-red-50 p-6 rounded-full"><WifiOff size={48} /></div>
-                <div className="text-center">
-                    <h3 className="font-bold text-lg mb-1">خطا در دریافت اطلاعات</h3>
-                    <p className="text-sm text-gray-600 mb-4">ارتباط با سرور برقرار نشد.</p>
-                    <button onClick={() => loadData()} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 mx-auto hover:bg-blue-700 transition-colors">
-                        <RefreshCw size={18}/> تلاش مجدد
-                    </button>
-                </div>
-            </div>
         ) : (
             <>
                 {activeTab === 'dashboard' && <Dashboard orders={orders} settings={settings} currentUser={currentUser} onViewArchive={handleViewArchive} onFilterByStatus={handleDashboardFilter} onGoToPaymentApprovals={handleGoToPaymentApprovals} onGoToExitApprovals={handleGoToExitApprovals} onGoToBijakApprovals={handleGoToWarehouseApprovals} />}
