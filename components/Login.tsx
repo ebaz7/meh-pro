@@ -82,20 +82,24 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       // 1. Remove trailing slash
       inputUrl = inputUrl.replace(/\/$/, '');
 
-      // 2. Auto-add protocol if missing
-      // Logic: If it doesn't start with http:// or https://, assume http:// (for local IPs)
+      // 2. Smart Protocol Detection
       if (!inputUrl.match(/^https?:\/\//)) {
-          inputUrl = 'http://' + inputUrl;
+          // If starts with a number (like 192.168...), assume http (local IP)
+          if (/^\d/.test(inputUrl)) {
+              inputUrl = 'http://' + inputUrl;
+          } else {
+              // Otherwise assume domain with https
+              inputUrl = 'https://' + inputUrl;
+          }
       }
       
-      // 3. Save directly without regex validation to support all local IPs
+      // 3. Save directly
       setServerHost(inputUrl);
       setServerUrl(inputUrl);
       
       setShowServerConfig(false);
       setError('');
       
-      // Optional: Test connection (Ping) could go here
       alert(`تنظیمات ذخیره شد.\nآدرس: ${inputUrl}`);
   };
 
@@ -120,7 +124,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     </div>
                     <h1 className="text-2xl font-black text-gray-800">اتصال به سرور</h1>
                     <p className="text-gray-500 mt-2 text-sm text-center leading-relaxed px-4">
-                        آدرس IP سرور را وارد کنید (مثال: 192.168.1.50:3000)
+                        آدرس IP (مثال: 192.168.1.50:3000) یا دامنه سایت را وارد کنید.
                     </p>
                 </div>
                 
@@ -141,7 +145,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                 <Wifi size={20}/>
                             </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2 mr-1">اگر پورت 3000 است، حتماً :3000 را بنویسید.</p>
+                        <p className="text-[10px] text-gray-400 mt-2 mr-1">نکته: برای IP حتماً پورت (مثلاً :3000) را وارد کنید.</p>
                     </div>
 
                     <div className="pt-2">

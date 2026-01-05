@@ -109,7 +109,7 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
              throw new Error('اتصال به سرور برقرار نشد. آدرس یا اینترنت را بررسی کنید.');
         }
 
-        // Fallback to cache if network fails
+        // Fallback to cache if network fails (Offline Mode)
         if (method === 'GET') {
             if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
             if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;
