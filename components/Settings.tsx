@@ -422,11 +422,12 @@ const Settings: React.FC = () => {
           return; 
       }
       
+      // Force request again (this helps re-sync with server if key was rotated or DB cleared)
       const granted = await requestNotificationPermission(); 
       if (granted) { 
           setNotificationPreference(true); 
           setNotificationsEnabled(true); 
-          alert("نوتیفیکیشن فعال شد.");
+          alert("نوتیفیکیشن فعال شد. اتصال به سرور بروزرسانی شد.");
       } else {
           alert("دسترسی به نوتیفیکیشن مسدود است یا پشتیبانی نمی‌شود.");
       }
@@ -439,10 +440,14 @@ const Settings: React.FC = () => {
           await apiCall('/send-test-push', 'POST', { username });
           alert("درخواست تست ارسال شد.");
       } catch (e: any) {
-          // Improve Error Message
+          // Improve Error Message with Auto-Repair Prompt
           let msg = "خطا در ارسال تست";
           if (e.message && e.message.includes('404')) {
-              msg = "اشتراک نوتیفیکیشن شما در سرور یافت نشد. لطفا دکمه 'فعال‌سازی نوتیفیکیشن' را بزنید.";
+              if (confirm("اشتراک نوتیفیکیشن شما در سرور یافت نشد. آیا می‌خواهید مجدداً فعال‌سازی کنید؟")) {
+                  handleToggleNotifications();
+                  return;
+              }
+              msg = "اشتراک یافت نشد.";
           } else if (e.message) {
               msg += `: ${e.message}`;
           }
@@ -756,12 +761,49 @@ const Settings: React.FC = () => {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2 items-end">
                                             <input className="border rounded p-1.5 text-sm" placeholder="نام بانک" value={tempBankName} onChange={e => setTempBankName(e.target.value)} />
                                             <input className="border rounded p-1.5 text-sm dir-ltr text-left" placeholder="شماره حساب" value={tempAccountNum} onChange={e => setTempAccountNum(e.target.value)} />
-                                            <button type="button" onClick={addOrUpdateCompanyBank} className="bg-blue-600 text-white p-1.5 px-4 rounded-lg border border-blue-600 hover:bg-blue-700 flex items-center gap-1 font-bold text-xs">{editingBankId ? <Pencil size={16}/> : <Plus size={16}/>} {editingBankId ? 'بروزرسانی' : 'افزودن'}</button>
+                                            
+                                            {/* --- RESTORED BANK TEMPLATE SETTINGS --- */}
+                                            <select className="border rounded p-1.5 text-xs" value={tempBankLayout} onChange={e => setTempBankLayout(e.target.value)}>
+                                                <option value="">قالب پیش‌فرض (چک)</option>
+                                                {settings.printTemplates?.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                            </select>
+                                            <select className="border rounded p-1.5 text-xs" value={tempInternalLayout} onChange={e => setTempInternalLayout(e.target.value)}>
+                                                <option value="">قالب حواله داخلی</option>
+                                                {settings.printTemplates?.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                            </select>
                                         </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                                            <input className="border rounded p-1.5 text-sm dir-ltr text-left" placeholder="شماره شبا (بدون IR)" value={tempBankSheba} onChange={e => setTempBankSheba(e.target.value)} />
+                                            <label className="flex items-center gap-2 text-xs cursor-pointer border rounded p-1.5 bg-gray-50">
+                                                <input type="checkbox" checked={tempDualPrint} onChange={e => setTempDualPrint(e.target.checked)} className="w-4 h-4 text-blue-600 rounded"/>
+                                                چاپ دوگانه حواله (برداشت/واریز جدا)
+                                            </label>
+                                        </div>
+                                        
+                                        {tempDualPrint && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2 animate-fade-in">
+                                                <select className="border rounded p-1.5 text-xs bg-red-50" value={tempInternalWithdrawalLayout} onChange={e => setTempInternalWithdrawalLayout(e.target.value)}>
+                                                    <option value="">قالب برداشت (Bardasht)</option>
+                                                    {settings.printTemplates?.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                </select>
+                                                <select className="border rounded p-1.5 text-xs bg-green-50" value={tempInternalDepositLayout} onChange={e => setTempInternalDepositLayout(e.target.value)}>
+                                                    <option value="">قالب واریز (Variz)</option>
+                                                    {settings.printTemplates?.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        <button type="button" onClick={addOrUpdateCompanyBank} className="w-full bg-blue-600 text-white p-1.5 px-4 rounded-lg border border-blue-600 hover:bg-blue-700 flex items-center justify-center gap-1 font-bold text-xs mt-2">{editingBankId ? <Pencil size={16}/> : <Plus size={16}/>} {editingBankId ? 'بروزرسانی بانک' : 'افزودن بانک'}</button>
+                                        
                                         <div className="space-y-1 mt-2">
                                             {newCompanyBanks.map((bank, idx) => (
                                                 <div key={bank.id || idx} className={`flex justify-between items-center px-2 py-1.5 rounded text-xs border ${editingBankId === bank.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50'}`}>
-                                                    <div className="flex flex-col gap-0.5"><span className="font-bold">{bank.bankName}</span><span className="font-mono text-gray-500">{bank.accountNumber}</span></div>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="font-bold">{bank.bankName}</span>
+                                                        <span className="font-mono text-gray-500">{bank.accountNumber}</span>
+                                                        {bank.formLayoutId && <span className="text-[9px] text-blue-600">قالب چک: {settings.printTemplates?.find(t=>t.id===bank.formLayoutId)?.name}</span>}
+                                                    </div>
                                                     <div className="flex gap-1"><button type="button" onClick={() => editCompanyBank(bank)} className="text-blue-500"><Pencil size={14}/></button><button type="button" onClick={() => removeCompanyBank(bank.id)} className="text-red-400"><X size={14}/></button></div>
                                                 </div>
                                             ))}
