@@ -49,8 +49,7 @@ export const getLocalData = <T>(key: string, defaultData: T): T => {
 export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?: any): Promise<T> => {
     try {
         const controller = new AbortController();
-        // Increased timeout slightly for slower mobile networks
-        const timeoutId = setTimeout(() => controller.abort(), 15000); 
+        const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
         let baseUrl = '';
         const host = getServerHost();
@@ -71,8 +70,6 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
         // endpoint should start with /
         const finalUrl = `${baseUrl}${endpoint}`;
 
-        console.log(`API calling: ${method} ${finalUrl}`); // Debug log
-
         const response = await fetch(finalUrl, {
             method,
             headers: { 'Content-Type': 'application/json' },
@@ -90,16 +87,13 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
                 data = { success: true } as unknown as T;
             }
 
-            // --- CACHING LOGIC (Automatic & Instant) ---
+            // --- CACHING LOGIC ---
+            // Automatically cache successful GET requests to support "Instant Load"
             if (method === 'GET') {
                 if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(data));
                 else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, JSON.stringify(data));
                 else if (endpoint === '/settings') localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(data));
                 else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, JSON.stringify(data));
-                // Add missing caches
-                else if (endpoint === '/trade') localStorage.setItem(LS_KEYS.TRADE, JSON.stringify(data));
-                else if (endpoint === '/warehouse/items') localStorage.setItem(LS_KEYS.WH_ITEMS, JSON.stringify(data));
-                else if (endpoint === '/warehouse/transactions') localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(data));
             }
             
             return data;
@@ -118,8 +112,7 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
              throw new Error('اتصال به سرور برقرار نشد. آدرس سرور یا اینترنت را بررسی کنید.');
         }
 
-        // --- ROBUST OFFLINE FALLBACK ---
-        // If fetch fails, IMMEDIATELY try to return cached data to prevent "Zero Data" UI
+        // Fallback to cache if network fails (Offline Mode)
         if (method === 'GET') {
             if (endpoint === '/orders') return getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, INITIAL_ORDERS) as unknown as T;
             if (endpoint === '/trade') return getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []) as unknown as T;

@@ -27,11 +27,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const native = Capacitor.isNativePlatform();
     setIsNative(native);
 
-    // Load existing host
     const host = getServerHost();
     setServerUrl(host);
 
-    // If native and no host, force config screen
     if (native && !host) {
         setShowServerConfig(true);
     }
@@ -80,22 +78,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           return;
       }
       
-      // Remove trailing slash
+      // 1. Remove trailing slash
       inputUrl = inputUrl.replace(/\/$/, '');
       
-      // Smart Protocol Logic:
-      // 1. If user typed protocol, TRUST THEM completely.
-      // 2. If starts with numeric (IP), assume HTTP (local network usually no SSL).
-      // 3. Otherwise assume HTTPS (domain).
-      
-      if (!inputUrl.match(/^https?:\/\//)) {
-          // Check if it looks like an IP address (starts with number)
-          const isIpLike = /^[0-9]/.test(inputUrl);
-          if (isIpLike) {
-              inputUrl = `http://${inputUrl}`;
-          } else {
-              inputUrl = `https://${inputUrl}`;
-          }
+      // 2. Smart Protocol Handling
+      // If user provided http:// or https://, respect it.
+      // If not, default to http:// (common for local IPs).
+      if (!inputUrl.startsWith('http://') && !inputUrl.startsWith('https://')) {
+          inputUrl = `http://${inputUrl}`;
       }
       
       setServerHost(inputUrl);
@@ -104,7 +94,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       setShowServerConfig(false);
       setError('');
       
-      // Optional: Quick connectivity test could go here, but simple save is faster UX
       alert(`تنظیمات ذخیره شد:\n${inputUrl}\n\nاکنون می‌توانید وارد شوید.`);
   };
 
@@ -151,14 +140,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                             </div>
                         </div>
                         <p className="text-[10px] text-gray-400 mt-2 mr-1">
-                            مثال IP (شبکه داخلی): <span className="font-mono text-indigo-600">192.168.1.50:3000</span><br/>
-                            مثال دامنه (اینترنت): <span className="font-mono text-indigo-600">api.mydomain.com</span>
+                            مثال‌ها: <span className="font-mono text-indigo-600">192.168.1.50:3000</span> یا <span className="font-mono text-indigo-600">https://api.domain.com</span>
                         </p>
                     </div>
 
                     <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 text-[10px] text-blue-800 flex gap-2">
                         <Wifi size={16} className="shrink-0"/>
-                        <p>نکته: اگر پروتکل (http/https) را ننویسید، سیستم برای اعداد به‌صورت خودکار http و برای حروف https در نظر می‌گیرد.</p>
+                        <p>اگر از IP عددی استفاده می‌کنید، مطمئن شوید گوشی و سرور به یک شبکه (وای‌فای) متصل هستند.</p>
                     </div>
 
                     <div className="pt-2">
