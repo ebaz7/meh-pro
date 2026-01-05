@@ -12,7 +12,7 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
-  state: State = {
+  public state: State = {
     hasError: false,
     error: null,
     errorInfo: null
