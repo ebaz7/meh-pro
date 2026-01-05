@@ -21,9 +21,10 @@ import { getCurrentUser, getUsers } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod } from './types';
 import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
-import { apiCall, getLocalData, LS_KEYS } from './services/apiService'; // Imported getLocalData & keys
+import { apiCall, getLocalData, LS_KEYS } from './services/apiService'; 
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app'; 
+import { PushNotifications } from '@capacitor/push-notifications'; // Import for listener
 import { sendNotification } from './services/notificationService';
 
 function App() {
@@ -62,6 +63,28 @@ function App() {
   };
   
   const setActiveTab = (tab: string, addToHistory = true) => { setActiveTabState(tab); if (addToHistory) safePushState({ tab }, '', `#${tab}`); };
+
+  // --- NATIVE NOTIFICATION ACTION HANDLER ---
+  useEffect(() => {
+    if (isNative) {
+        // Listen for notification clicks (App closed or background)
+        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+            const data = notification.notification.data;
+            if (data && data.url) {
+                // Handle deep linking based on data.url
+                if (data.url.includes('chat') || data.url === '#chat') {
+                    setActiveTab('chat');
+                } else if (data.url.includes('manage-exit') || data.url === '#manage-exit') {
+                    setActiveTab('manage-exit');
+                } else if (data.url.includes('manage') || data.url === '#manage') {
+                    setActiveTab('manage');
+                } else if (data.url.includes('warehouse') || data.url === '#warehouse') {
+                    setActiveTab('warehouse');
+                }
+            }
+        });
+    }
+  }, []);
 
   // ... (Job Processors remain same) ...
   useEffect(() => {

@@ -99,7 +99,7 @@ setTimeout(() => { try { initWhatsApp(WAUTH_DIR); } catch(e) { console.error("WA
 
 // --- PUSH NOTIFICATION HELPERS ---
 
-const sendNativeFCM = async (token, title, body) => {
+const sendNativeFCM = async (token, title, body, url = '/') => {
     if (!FCM_SERVER_KEY) return;
     try {
         const response = await fetch('https://fcm.googleapis.com/fcm/send', {
@@ -111,6 +111,7 @@ const sendNativeFCM = async (token, title, body) => {
             body: JSON.stringify({
                 to: token,
                 notification: { title, body },
+                data: { url: url }, // Send URL in data payload for Native App
                 priority: 'high'
             })
         });
@@ -144,7 +145,7 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
     Promise.all(relevantSubs.map(sub => {
         // Native Android (APK)
         if (sub.type === 'android' && sub.keys?.auth === 'native') {
-            return sendNativeFCM(sub.endpoint, title, body);
+            return sendNativeFCM(sub.endpoint, title, body, url);
         }
         // Web Push (PWA on Android/iOS/Desktop)
         if (sub.endpoint && sub.keys && sub.keys.p256dh && sub.keys.p256dh !== 'native') {
@@ -166,10 +167,10 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
     });
 };
 
-const sendPushToUsers = (usernames, title, body) => {
+const sendPushToUsers = (usernames, title, body, url = '/') => {
     // Deduplicate usernames
     const uniqueUsers = [...new Set(usernames)];
-    uniqueUsers.forEach(u => sendWebPush(title, body, '/', u));
+    uniqueUsers.forEach(u => sendWebPush(title, body, url, u));
 };
 
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
@@ -219,7 +220,7 @@ app.post('/api/orders', (req, res) => {
     
     // Notify Financial & Admin Users
     const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username);
-    sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`); 
+    sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`, '#manage'); 
     
     res.json(db.orders); 
 });
@@ -234,7 +235,7 @@ app.put('/api/orders/:id', (req, res) => {
         
         if (req.body.status && req.body.status !== oldStatus) {
              // Notify Requester
-             sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`);
+             sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`, '#manage');
         }
         
         res.json(db.orders); 
@@ -261,7 +262,7 @@ app.post('/api/exit-permits', (req, res) => {
     
     // Notify CEO
     const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username);
-    sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber} - گیرنده: ${permit.recipientName}`);
+    sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber} - گیرنده: ${permit.recipientName}`, '#manage-exit');
     
     res.json(db.exitPermits); 
 });
@@ -275,7 +276,7 @@ app.put('/api/exit-permits/:id', (req, res) => {
         saveDb(db);
         
         if (req.body.status && req.body.status !== oldStatus) {
-             sendWebPush('تغییر وضعیت مجوز خروج', `شماره ${db.exitPermits[idx].permitNumber}: ${req.body.status}`);
+             sendWebPush('تغییر وضعیت مجوز خروج', `شماره ${db.exitPermits[idx].permitNumber}: ${req.body.status}`, '#manage-exit');
         }
         
         res.json(db.exitPermits); 
@@ -317,7 +318,7 @@ app.post('/api/warehouse/transactions', (req, res) => {
         
         // Notify CEO/Admin
         const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username);
-        sendPushToUsers(targetUsers, 'بیجک جدید صادر شد', `شماره ${t.number} - شرکت: ${t.company}`);
+        sendPushToUsers(targetUsers, 'بیجک جدید صادر شد', `شماره ${t.number} - شرکت: ${t.company}`, '#warehouse');
     } 
     db.warehouseTransactions.unshift(t); 
     saveDb(db); 
@@ -341,22 +342,25 @@ app.post('/api/chat', (req, res) => {
     let body = m.message || 'فایل ضمیمه';
     if(body.startsWith('CALL_INVITE|')) body = '📞 تماس ورودی...';
 
+    // Pass '#chat' as the URL for deep linking
+    const chatUrl = '#chat';
+
     if (m.recipient) {
         // 1. Private Message: Send to recipient
         // Important: Ensure we use 'username' for targeting as per registration
-        sendPushToUsers([m.recipient], title, body);
+        sendPushToUsers([m.recipient], title, body, chatUrl);
     } else if (m.groupId) {
         // 2. Group Message: Send to all members EXCEPT sender
         const group = db.groups.find(g => g.id === m.groupId);
         if (group) {
             // Member array contains usernames
             const targets = group.members.filter(u => u !== m.senderUsername);
-            sendPushToUsers(targets, title + ` (گروه ${group.name})`, body);
+            sendPushToUsers(targets, title + ` (گروه ${group.name})`, body, chatUrl);
         }
     } else {
         // 3. Public Channel: Send to everyone except sender
         const targets = db.users.filter(u => u.username !== m.senderUsername).map(u => u.username);
-        sendPushToUsers(targets, title + ' (عمومی)', body);
+        sendPushToUsers(targets, title + ' (عمومی)', body, chatUrl);
     }
 
     res.json(db.messages); 
