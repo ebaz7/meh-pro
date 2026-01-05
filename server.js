@@ -174,13 +174,13 @@ app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 app.get('/api/vapid-key', (req, res) => res.json({ publicKey: vapidKeys.publicKey }));
 app.post('/api/subscribe', (req, res) => { const s = req.body; const d = getDb(); if(!d.pushSubscriptions.find(x=>x.endpoint===s.endpoint)){d.pushSubscriptions.push(s); saveDb(d);} res.status(201).json({}); });
 
-// ... (Rest of API routes remain identical) ...
 // --- ORDERS ---
 app.get('/api/orders', (req, res) => {
     const db = getDb();
     const activeYearId = db.settings.activeFiscalYearId;
     if (activeYearId) {
-        return res.json(db.orders.filter(o => o.fiscalYearId === activeYearId));
+        // FIX: Include items with NO fiscalYearId (Legacy data) so they appear
+        return res.json(db.orders.filter(o => o.fiscalYearId === activeYearId || !o.fiscalYearId));
     }
     res.json(db.orders);
 });
@@ -204,18 +204,19 @@ app.post('/api/orders', (req, res) => {
     saveDb(db); 
     sendWebPush('سند جدید', `شماره ${order.trackingNumber}`); 
     
-    res.json(db.orders.filter(o => o.fiscalYearId === activeYearId)); 
+    res.json(db.orders.filter(o => o.fiscalYearId === activeYearId || !o.fiscalYearId)); 
 });
 
-app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders.filter(o => o.fiscalYearId === db.orders[idx].fiscalYearId)); } else res.sendStatus(404); });
-app.delete('/api/orders/:id', (req, res) => { const db=getDb(); const target = db.orders.find(x=>x.id===req.params.id); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders.filter(o => o.fiscalYearId === target?.fiscalYearId)); });
+app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders.filter(o => o.fiscalYearId === db.orders[idx].fiscalYearId || !o.fiscalYearId)); } else res.sendStatus(404); });
+app.delete('/api/orders/:id', (req, res) => { const db=getDb(); const target = db.orders.find(x=>x.id===req.params.id); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders.filter(o => o.fiscalYearId === target?.fiscalYearId || !o.fiscalYearId)); });
 
 // --- EXIT PERMITS ---
 app.get('/api/exit-permits', (req, res) => {
     const db = getDb();
     const activeYearId = db.settings.activeFiscalYearId;
     if (activeYearId) {
-        return res.json(db.exitPermits.filter(p => p.fiscalYearId === activeYearId));
+        // FIX: Include Legacy Data
+        return res.json(db.exitPermits.filter(p => p.fiscalYearId === activeYearId || !p.fiscalYearId));
     }
     res.json(db.exitPermits);
 });
@@ -237,11 +238,11 @@ app.post('/api/exit-permits', (req, res) => {
     
     db.exitPermits.push(permit); 
     saveDb(db); 
-    res.json(db.exitPermits.filter(p => p.fiscalYearId === activeYearId)); 
+    res.json(db.exitPermits.filter(p => p.fiscalYearId === activeYearId || !p.fiscalYearId)); 
 });
 
-app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); res.json(db.exitPermits.filter(p => p.fiscalYearId === db.exitPermits[idx].fiscalYearId)); } else res.sendStatus(404); });
-app.delete('/api/exit-permits/:id', (req, res) => { const db=getDb(); const target = db.exitPermits.find(x=>x.id===req.params.id); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits.filter(p => p.fiscalYearId === target?.fiscalYearId)); });
+app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); res.json(db.exitPermits.filter(p => p.fiscalYearId === db.exitPermits[idx].fiscalYearId || !p.fiscalYearId)); } else res.sendStatus(404); });
+app.delete('/api/exit-permits/:id', (req, res) => { const db=getDb(); const target = db.exitPermits.find(x=>x.id===req.params.id); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits.filter(p => p.fiscalYearId === target?.fiscalYearId || !p.fiscalYearId)); });
 
 app.get('/api/next-tracking-number', (req, res) => {
     const db = getDb();
@@ -264,7 +265,8 @@ app.get('/api/warehouse/transactions', (req, res) => {
     const db = getDb();
     const activeYearId = db.settings.activeFiscalYearId;
     if (activeYearId) {
-        return res.json(db.warehouseTransactions.filter(t => t.fiscalYearId === activeYearId));
+        // FIX: Include Legacy Data
+        return res.json(db.warehouseTransactions.filter(t => t.fiscalYearId === activeYearId || !t.fiscalYearId));
     }
     res.json(db.warehouseTransactions);
 });
@@ -288,11 +290,11 @@ app.post('/api/warehouse/transactions', (req, res) => {
     } 
     db.warehouseTransactions.unshift(t); 
     saveDb(db); 
-    res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === activeYearId)); 
+    res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === activeYearId || !x.fiscalYearId)); 
 });
 
-app.put('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx],...req.body}; saveDb(db); res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === db.warehouseTransactions[idx].fiscalYearId)); } else res.sendStatus(404); });
-app.delete('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const target = db.warehouseTransactions.find(x=>x.id===req.params.id); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === target?.fiscalYearId)); });
+app.put('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx],...req.body}; saveDb(db); res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === db.warehouseTransactions[idx].fiscalYearId || !x.fiscalYearId)); } else res.sendStatus(404); });
+app.delete('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const target = db.warehouseTransactions.find(x=>x.id===req.params.id); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions.filter(x => x.fiscalYearId === target?.fiscalYearId || !x.fiscalYearId)); });
 
 app.get('/api/chat', (req, res) => res.json(getDb().messages));
 app.post('/api/chat', (req, res) => { const db=getDb(); const m=req.body; m.id=Date.now().toString(); db.messages.push(m); saveDb(db); sendWebPush('پیام جدید', m.message || 'فایل'); res.json(db.messages); });
