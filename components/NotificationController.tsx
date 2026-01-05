@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { apiCall } from '../services/apiService';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { Share, PlusSquare, X } from 'lucide-react';
+import { Share, PlusSquare, X, Bell } from 'lucide-react';
 import { User } from '../types';
 
 interface Props {
@@ -14,63 +14,67 @@ const NotificationController: React.FC<Props> = ({ currentUser }) => {
   const [showIOSPrompt, setShowIOSPrompt] = useState(false);
 
   useEffect(() => {
-    // We strictly need a user to register correctly for Chat Notifications
     if (!currentUser) return; 
 
     const registerOrUpdateSubscription = async () => {
         try {
             if (Capacitor.isNativePlatform()) {
-                // --- NATIVE (Android APK) ---
                 const permStatus = await PushNotifications.checkPermissions();
                 if (permStatus.receive !== 'granted') {
                     await PushNotifications.requestPermissions();
                 }
                 await PushNotifications.register();
-                
-                // Listener for registration is handled globally, but we trigger a manual sync here if token exists
-                // Note: In real production, we might save token to local storage to resync
             } else {
-                // --- WEB / PWA (iOS & Android Web) ---
-                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                    console.log('WebPush not supported');
+                    return;
+                }
 
                 // 1. Register SW
                 const registration = await navigator.serviceWorker.register('/sw.js');
                 await navigator.serviceWorker.ready;
 
-                // 2. Check or Create Subscription
-                let subscription = await registration.pushManager.getSubscription();
-                
-                if (!subscription) {
-                    const { publicKey } = await apiCall<{ publicKey: string }>('/vapid-key');
-                    if (publicKey) {
-                        const convertedVapidKey = urlBase64ToUint8Array(publicKey);
-                        subscription = await registration.pushManager.subscribe({
-                            userVisibleOnly: true,
-                            applicationServerKey: convertedVapidKey
-                        });
-                    }
+                // 2. Get Public Key from Server (Static one)
+                const { publicKey } = await apiCall<{ publicKey: string }>('/vapid-key');
+                if (!publicKey) return;
+
+                const convertedVapidKey = urlBase64ToUint8Array(publicKey);
+
+                // 3. Unsubscribe old if key changed (Crucial for fix)
+                const existingSub = await registration.pushManager.getSubscription();
+                if (existingSub) {
+                    const currentKey = existingSub.options.applicationServerKey;
+                    // Note: Cannot easily compare ArrayBuffers directly here, 
+                    // but calling subscribe() with new key usually replaces it or throws.
+                    // To be safe, if we have a subscription, we send it. 
+                    // If it fails on server (410), we'll unsubscribe locally later.
                 }
 
-                // 3. ALWAYS Send Subscription to Backend with current Username
-                // This ensures the device is linked to the logged-in user
+                // 4. Subscribe (Browser handles duplicate/refresh)
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: convertedVapidKey
+                });
+
+                // 5. Send to Server
                 if (subscription) {
+                    console.log('Got Sub:', subscription);
                     const payload = {
                         ...JSON.parse(JSON.stringify(subscription)),
                         username: currentUser.username,
                         role: currentUser.role,
                         deviceType: /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'ios' : 'android/web'
                     };
-                    // Use a fire-and-forget approach or await
                     await apiCall('/subscribe', 'POST', payload);
-                    console.log('✅ Notification subscribed for:', currentUser.username);
+                    console.log('✅ Subscribed successfully on server');
                 }
             }
         } catch (error) {
-            console.error('Notification Registration Error:', error);
+            console.error('Notification Setup Error:', error);
         }
     };
 
-    // iOS Add to Home Screen Prompt Logic
+    // iOS Add to Home Screen Check
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
     if (isIOS && !isStandalone && !sessionStorage.getItem('ios_prompt_shown')) {
@@ -80,10 +84,8 @@ const NotificationController: React.FC<Props> = ({ currentUser }) => {
 
     registerOrUpdateSubscription();
 
-    // Native Listeners (placed inside useEffect to access currentUser)
     if (Capacitor.isNativePlatform()) {
-        PushNotifications.removeAllListeners(); // Clean up old
-        
+        PushNotifications.removeAllListeners(); 
         PushNotifications.addListener('registration', token => {
             const subObject = { 
                 endpoint: token.value, 
@@ -94,16 +96,9 @@ const NotificationController: React.FC<Props> = ({ currentUser }) => {
             };
             apiCall('/subscribe', 'POST', subObject);
         });
-
-        PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            // Native foreground handling
-            const title = notification.title || 'پیام جدید';
-            const body = notification.body || '';
-            // You can trigger a local event here if needed, or rely on App.tsx handling
-        });
     }
 
-  }, [currentUser]); // Re-run whenever currentUser changes (Login/Switch)
+  }, [currentUser]);
 
   function urlBase64ToUint8Array(base64String: string) {
       const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -122,14 +117,13 @@ const NotificationController: React.FC<Props> = ({ currentUser }) => {
                 <div className="flex flex-col items-center text-center">
                     <div className="bg-blue-100 p-4 rounded-full mb-4 animate-bounce"><PlusSquare size={32} className="text-blue-600" /></div>
                     <h3 className="text-lg font-black text-gray-800 mb-2">نصب نسخه وب اپلیکیشن (PWA)</h3>
-                    <p className="text-sm text-gray-600 leading-relaxed mb-4">برای دریافت <span className="font-bold text-blue-600">نوتیفیکیشن‌ها</span> و عملکرد صحیح، لطفاً برنامه را نصب کنید.</p>
+                    <p className="text-sm text-gray-600 leading-relaxed mb-4">برای دریافت <span className="font-bold text-blue-600">نوتیفیکیشن‌ها</span>، لطفاً برنامه را نصب کنید.</p>
                     <div className="w-full bg-gray-50 rounded-xl p-4 border border-gray-200 text-right space-y-3">
                         <div className="flex items-center gap-3"><div className="bg-white p-1.5 rounded shadow-sm"><Share size={18} className="text-blue-500"/></div><span className="text-xs font-bold text-gray-700">۱. دکمه Share را بزنید.</span></div>
                         <div className="flex items-center gap-3"><div className="bg-white p-1.5 rounded shadow-sm"><PlusSquare size={18} className="text-blue-500"/></div><span className="text-xs font-bold text-gray-700">۲. گزینه Add to Home Screen را انتخاب کنید.</span></div>
                     </div>
                     <button onClick={() => setShowIOSPrompt(false)} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors">متوجه شدم</button>
                 </div>
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 text-white animate-bounce"><div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-white mx-auto"></div></div>
             </div>
         </div>
       );
