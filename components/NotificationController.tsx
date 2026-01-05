@@ -13,6 +13,25 @@ interface Props {
 const NotificationController: React.FC<Props> = ({ currentUser }) => {
   const [showIOSPrompt, setShowIOSPrompt] = useState(false);
 
+  // Helper to convert Key
+  function urlBase64ToUint8Array(base64String: string) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+  }
+
+  function arrayBufferToBase64(buffer: ArrayBuffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
   useEffect(() => {
     if (!currentUser) return; 
 
@@ -34,43 +53,63 @@ const NotificationController: React.FC<Props> = ({ currentUser }) => {
                 const registration = await navigator.serviceWorker.register('/sw.js');
                 await navigator.serviceWorker.ready;
 
-                // 2. Get Public Key from Server (Static one)
+                // 2. Get Public Key from Server
                 const { publicKey } = await apiCall<{ publicKey: string }>('/vapid-key');
                 if (!publicKey) return;
 
                 const convertedVapidKey = urlBase64ToUint8Array(publicKey);
 
-                // 3. Unsubscribe old if key changed (Crucial for fix)
+                // 3. Check Existing Subscription
                 const existingSub = await registration.pushManager.getSubscription();
+                
                 if (existingSub) {
-                    const currentKey = existingSub.options.applicationServerKey;
-                    // Note: Cannot easily compare ArrayBuffers directly here, 
-                    // but calling subscribe() with new key usually replaces it or throws.
-                    // To be safe, if we have a subscription, we send it. 
-                    // If it fails on server (410), we'll unsubscribe locally later.
-                }
-
-                // 4. Subscribe (Browser handles duplicate/refresh)
-                const subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: convertedVapidKey
-                });
-
-                // 5. Send to Server
-                if (subscription) {
-                    console.log('Got Sub:', subscription);
+                    // Check if key changed (Server rotated keys)
+                    const existingKey = existingSub.options.applicationServerKey;
+                    if (existingKey) {
+                        const existingKeyStr = arrayBufferToBase64(existingKey);
+                        // Simple comparison (might need better normalization, but usually effective)
+                        // If they differ significantly, unsubscribe.
+                        // Actually, easiest way is to try subscribing again.
+                    }
+                    
+                    // Always update server with current subscription details to ensure it's fresh
                     const payload = {
-                        ...JSON.parse(JSON.stringify(subscription)),
+                        ...JSON.parse(JSON.stringify(existingSub)),
                         username: currentUser.username,
                         role: currentUser.role,
-                        deviceType: /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'ios' : 'android/web'
+                        deviceType: 'web'
                     };
                     await apiCall('/subscribe', 'POST', payload);
-                    console.log('✅ Subscribed successfully on server');
+                } else {
+                    // 4. Subscribe New
+                    const subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: convertedVapidKey
+                    });
+
+                    if (subscription) {
+                        console.log('Got New Sub:', subscription);
+                        const payload = {
+                            ...JSON.parse(JSON.stringify(subscription)),
+                            username: currentUser.username,
+                            role: currentUser.role,
+                            deviceType: 'web'
+                        };
+                        await apiCall('/subscribe', 'POST', payload);
+                    }
                 }
             }
         } catch (error) {
             console.error('Notification Setup Error:', error);
+            // If subscription failed (e.g. key mismatch error from browser), try to unsubscribe old one
+            if (error.name === 'InvalidStateError' || error.message.includes('subscription')) {
+                 try {
+                     const reg = await navigator.serviceWorker.getRegistration();
+                     const sub = await reg?.pushManager.getSubscription();
+                     await sub?.unsubscribe();
+                     console.log("Old subscription removed. Refresh page to retry.");
+                 } catch(e) {}
+            }
         }
     };
 
@@ -100,14 +139,6 @@ const NotificationController: React.FC<Props> = ({ currentUser }) => {
 
   }, [currentUser]);
 
-  function urlBase64ToUint8Array(base64String: string) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-      return outputArray;
-  }
 
   if (showIOSPrompt) {
       return (

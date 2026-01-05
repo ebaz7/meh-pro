@@ -27,6 +27,7 @@ const PORT = process.env.PORT || 3000;
 const SERVER_BUILD_ID = Date.now().toString();
 
 const DB_FILE = path.join(__dirname, 'database.json');
+const VAPID_FILE = path.join(__dirname, 'vapid.json'); // File to store persistent keys
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const AI_UPLOADS_DIR = path.join(__dirname, 'uploads', 'ai');
 const BACKUPS_DIR = path.join(__dirname, 'backups');
@@ -43,27 +44,29 @@ const staticOptions = { maxAge: '1y', etag: true, lastModified: true };
 app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
 app.use('/uploads', express.static(UPLOADS_DIR, staticOptions));
 
-// --- WEB PUSH CONFIGURATION (STATIC KEYS) ---
-// IMPORTANT: These must match what the client uses. Do not generate randomly on restart.
-const vapidKeys = {
-    publicKey: 'BKoY1u_r1J2y8q9z0A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2W3x4Y5z6_FIXED_KEY',
-    privateKey: 'q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0_FIXED_PRIVATE' 
-};
+// --- WEB PUSH CONFIGURATION (AUTO GENERATED VALID KEYS) ---
+let vapidKeys = { publicKey: '', privateKey: '' };
 
-// Use real generated keys if the above are placeholders, but keep them static here.
-// For this app to work immediately, we generate a pair once if they look like placeholders, 
-// BUT we print them so you can save them if needed. 
-// Ideally, use: webpush.generateVAPIDKeys() once and hardcode them.
-// Here we use a hardcoded pair for stability across restarts.
+try {
+    if (fs.existsSync(VAPID_FILE)) {
+        // Load existing keys
+        vapidKeys = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
+        console.log(">>> VAPID Keys Loaded from file.");
+    } else {
+        // Generate NEW VALID keys if missing
+        vapidKeys = webpush.generateVAPIDKeys();
+        fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
+        console.log(">>> New VAPID Keys Generated and Saved.");
+    }
 
-// Overwrite with a known working pair for development stability
-webpush.setVapidDetails(
-    'mailto:admin@example.com',
-    'BKowKy7Y_aJ2y8q9z0A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2W3x4Y5z6', // Public
-    'q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0'  // Private
-);
-// Re-expose for client
-const PUBLIC_VAPID_KEY = 'BKowKy7Y_aJ2y8q9z0A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2W3x4Y5z6';
+    webpush.setVapidDetails(
+        'mailto:admin@example.com',
+        vapidKeys.publicKey,
+        vapidKeys.privateKey
+    );
+} catch (error) {
+    console.error(">>> VAPID Key Setup Error:", error);
+}
 
 // Android Native FCM Key (Optional - for APK builds only)
 const FCM_SERVER_KEY = process.env.FCM_SERVER_KEY || ''; 
@@ -138,7 +141,9 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
     if (targetUsername) {
         // Strict filtering for specific users
         relevantSubs = subs.filter(s => s.username === targetUsername);
-        console.log(`Sending push to ${targetUsername}. Found ${relevantSubs.length} devices.`);
+        console.log(`Sending push to '${targetUsername}'. Devices found: ${relevantSubs.length}`);
+    } else {
+        console.log(`Sending broadcast push to ${subs.length} devices.`);
     }
 
     const payload = JSON.stringify({ title, body, url });
@@ -154,7 +159,7 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
         // Web Push (PWA on Android/iOS/Desktop)
         if (sub.endpoint && sub.keys && sub.keys.p256dh && sub.keys.p256dh !== 'native') {
             return webpush.sendNotification(sub, payload, options).catch(err => {
-                console.error("WebPush Send Error:", err.statusCode);
+                console.warn(`WebPush Failed (${err.statusCode}):`, err.body || err.message);
                 if (err.statusCode === 410 || err.statusCode === 404) {
                     invalidEndpoints.push(sub.endpoint);
                 }
@@ -166,7 +171,7 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
             const currentDb = getDb();
             currentDb.pushSubscriptions = currentDb.pushSubscriptions.filter(s => !invalidEndpoints.includes(s.endpoint));
             saveDb(currentDb);
-            console.log(`Removed ${invalidEndpoints.length} invalid subscriptions`);
+            console.log(`Cleaned up ${invalidEndpoints.length} invalid subscriptions`);
         }
     });
 };
@@ -178,20 +183,34 @@ const sendPushToUsers = (usernames, title, body, url = '/') => {
 };
 
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
-app.get('/api/vapid-key', (req, res) => res.json({ publicKey: PUBLIC_VAPID_KEY }));
+app.get('/api/vapid-key', (req, res) => res.json({ publicKey: vapidKeys.publicKey }));
 
 // --- NEW TEST ENDPOINT ---
 app.post('/api/send-test-push', (req, res) => {
     const { username } = req.body;
     if (!username) return res.status(400).json({error: 'Username required'});
     
-    console.log(`Sending TEST push to ${username}`);
+    console.log(`Test Push Triggered for: ${username}`);
+    
+    // Check if user has subscription
+    const db = getDb();
+    const hasSub = db.pushSubscriptions?.some(s => s.username === username);
+    
+    if (!hasSub) {
+        return res.status(404).json({ error: 'No subscription found for this user', details: 'مطمئن شوید دکمه فعال‌سازی نوتیفیکیشن را زده‌اید و مجوز مرورگر داده شده است.' });
+    }
+
     sendWebPush('تست سیستم', 'این یک پیام آزمایشی از سرور است.', '/#settings', username);
     res.json({ success: true, message: 'Push triggered' });
 });
 
 app.post('/api/subscribe', (req, res) => { 
     const s = req.body; // { endpoint, keys, type, username, role }
+    
+    if (!s || !s.endpoint) {
+        return res.status(400).json({ error: 'Invalid subscription object' });
+    }
+
     const d = getDb(); 
     if(!d.pushSubscriptions) d.pushSubscriptions = [];
     
@@ -199,32 +218,26 @@ app.post('/api/subscribe', (req, res) => {
     const existingIdx = d.pushSubscriptions.findIndex(x => x.endpoint === s.endpoint);
     
     if(existingIdx !== -1) {
-        // Update user metadata for existing subscription
         d.pushSubscriptions[existingIdx] = { ...d.pushSubscriptions[existingIdx], ...s };
-        console.log(`Updated subscription for ${s.username}`);
+        console.log(`Sub Updated for ${s.username}`);
     } else {
         d.pushSubscriptions.push(s); 
-        console.log(`New subscription for ${s.username}`);
+        console.log(`Sub Created for ${s.username}`);
     }
     
     saveDb(d); 
     
-    // Send welcome push immediately to verify
+    // Send welcome
     if (s.keys && s.keys.p256dh !== 'native') {
-        webpush.sendNotification(s, JSON.stringify({ title: 'اتصال برقرار شد', body: `نوتیفیکیشن برای ${s.username} فعال گردید.` }))
-        .catch(e => console.error("Welcome Push Failed", e));
+        webpush.sendNotification(s, JSON.stringify({ title: 'اتصال برقرار شد', body: `دستگاه شما با موفقیت ثبت شد.` }))
+        .catch(e => console.error("Welcome Push Failed", e.statusCode));
     }
     
     res.status(201).json({ success: true }); 
 });
 
-// ... (Rest of API endpoints preserved exactly as before) ...
-// --- ORDERS ---
-app.get('/api/orders', (req, res) => {
-    const db = getDb();
-    res.json(db.orders);
-});
-
+// ... (Rest of API endpoints) ...
+app.get('/api/orders', (req, res) => { const db = getDb(); res.json(db.orders); });
 app.post('/api/orders', (req, res) => { 
     const db = getDb(); 
     const order = req.body; 
@@ -232,17 +245,12 @@ app.post('/api/orders', (req, res) => {
     const activeYearId = db.settings.activeFiscalYearId;
     order.fiscalYearId = activeYearId;
     order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany);
-    
     db.orders.unshift(order); 
     saveDb(db); 
-    
-    // Notify Financial & Admin Users
     const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username);
     sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`, '#manage'); 
-    
     res.json(db.orders); 
 });
-
 app.put('/api/orders/:id', (req, res) => { 
     const db=getDb(); 
     const idx=db.orders.findIndex(x=>x.id===req.params.id); 
@@ -250,143 +258,30 @@ app.put('/api/orders/:id', (req, res) => {
         const oldStatus = db.orders[idx].status;
         db.orders[idx]={...db.orders[idx],...req.body}; 
         saveDb(db); 
-        
         if (req.body.status && req.body.status !== oldStatus) {
-             // Notify Requester
              sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`, '#manage');
         }
-        
         res.json(db.orders); 
     } else res.sendStatus(404); 
 });
 app.delete('/api/orders/:id', (req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); });
 
-// --- EXIT PERMITS ---
-app.get('/api/exit-permits', (req, res) => {
-    const db = getDb();
-    res.json(db.exitPermits);
-});
-
-app.post('/api/exit-permits', (req, res) => { 
-    const db = getDb(); 
-    const permit = req.body; 
-    permit.id = Date.now().toString(); 
-    const activeYearId = db.settings.activeFiscalYearId;
-    permit.fiscalYearId = activeYearId;
-    permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, permit.companyName);
-    
-    db.exitPermits.push(permit); 
-    saveDb(db); 
-    
-    // Notify CEO
-    const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username);
-    sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber} - گیرنده: ${permit.recipientName}`, '#manage-exit');
-    
-    res.json(db.exitPermits); 
-});
-
-app.put('/api/exit-permits/:id', (req, res) => { 
-    const db=getDb(); 
-    const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); 
-    if(idx!==-1){ 
-        const oldStatus = db.exitPermits[idx].status;
-        db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; 
-        saveDb(db);
-        
-        if (req.body.status && req.body.status !== oldStatus) {
-             sendWebPush('تغییر وضعیت مجوز خروج', `شماره ${db.exitPermits[idx].permitNumber}: ${req.body.status}`, '#manage-exit');
-        }
-        
-        res.json(db.exitPermits); 
-    } else res.sendStatus(404); 
-});
+// ... (Rest of Endpoints: Exit Permits, Warehouse, Chat etc. - Preserved as is) ...
+app.get('/api/exit-permits', (req, res) => { const db = getDb(); res.json(db.exitPermits); });
+app.post('/api/exit-permits', (req, res) => { const db = getDb(); const permit = req.body; permit.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; permit.fiscalYearId = activeYearId; permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, permit.companyName); db.exitPermits.push(permit); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber} - گیرنده: ${permit.recipientName}`, '#manage-exit'); res.json(db.exitPermits); });
+app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.exitPermits[idx].status; db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendWebPush('تغییر وضعیت مجوز خروج', `شماره ${db.exitPermits[idx].permitNumber}: ${req.body.status}`, '#manage-exit'); } res.json(db.exitPermits); } else res.sendStatus(404); });
 app.delete('/api/exit-permits/:id', (req, res) => { const db=getDb(); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits); });
-
-app.get('/api/next-tracking-number', (req, res) => {
-    const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    const company = req.query.company; 
-    const next = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, company);
-    res.json({ nextTrackingNumber: next });
-});
-
-app.get('/api/next-exit-permit-number', (req, res) => {
-    const db = getDb();
-    const activeYearId = db.settings.activeFiscalYearId;
-    const company = req.query.company;
-    const next = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, company);
-    res.json({ nextNumber: next });
-});
-
-// --- WAREHOUSE TRANSACTIONS ---
-app.get('/api/warehouse/transactions', (req, res) => {
-    const db = getDb();
-    res.json(db.warehouseTransactions);
-});
-
-app.post('/api/warehouse/transactions', (req, res) => { 
-    const db = getDb(); 
-    const t = req.body; 
-    const activeYearId = db.settings.activeFiscalYearId;
-    t.fiscalYearId = activeYearId;
-
-    if(t.type === 'OUT'){ 
-        t.number = findNextNumberByFiscalYear(db, db.warehouseTransactions.filter(x => x.type === 'OUT'), 'number', 'bijak', activeYearId, t.company);
-        notifyNewBijak(t); 
-        
-        // Notify CEO/Admin
-        const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username);
-        sendPushToUsers(targetUsers, 'بیجک جدید صادر شد', `شماره ${t.number} - شرکت: ${t.company}`, '#warehouse');
-    } 
-    db.warehouseTransactions.unshift(t); 
-    saveDb(db); 
-    res.json(db.warehouseTransactions); 
-});
-
+app.get('/api/next-tracking-number', (req, res) => { const db = getDb(); const activeYearId = db.settings.activeFiscalYearId; const company = req.query.company; const next = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, company); res.json({ nextTrackingNumber: next }); });
+app.get('/api/next-exit-permit-number', (req, res) => { const db = getDb(); const activeYearId = db.settings.activeFiscalYearId; const company = req.query.company; const next = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, company); res.json({ nextNumber: next }); });
+app.get('/api/warehouse/transactions', (req, res) => { const db = getDb(); res.json(db.warehouseTransactions); });
+app.post('/api/warehouse/transactions', (req, res) => { const db = getDb(); const t = req.body; const activeYearId = db.settings.activeFiscalYearId; t.fiscalYearId = activeYearId; if(t.type === 'OUT'){ t.number = findNextNumberByFiscalYear(db, db.warehouseTransactions.filter(x => x.type === 'OUT'), 'number', 'bijak', activeYearId, t.company); notifyNewBijak(t); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'بیجک جدید صادر شد', `شماره ${t.number} - شرکت: ${t.company}`, '#warehouse'); } db.warehouseTransactions.unshift(t); saveDb(db); res.json(db.warehouseTransactions); });
 app.put('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx],...req.body}; saveDb(db); res.json(db.warehouseTransactions); } else res.sendStatus(404); });
 app.delete('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions); });
-
-// --- CHAT & MESSAGING ---
 app.get('/api/chat', (req, res) => res.json(getDb().messages));
-app.post('/api/chat', (req, res) => { 
-    const db = getDb(); 
-    const m = req.body; 
-    m.id = Date.now().toString(); 
-    db.messages.push(m); 
-    saveDb(db); 
-    
-    // --- TARGETED PUSH FOR CHAT ---
-    const title = `پیام جدید از ${m.sender}`;
-    let body = m.message || 'فایل ضمیمه';
-    if(body.startsWith('CALL_INVITE|')) body = '📞 تماس ورودی...';
-
-    // Pass '#chat' as the URL for deep linking
-    const chatUrl = '#chat';
-
-    if (m.recipient) {
-        // 1. Private Message: Send to recipient
-        sendPushToUsers([m.recipient], title, body, chatUrl);
-    } else if (m.groupId) {
-        // 2. Group Message: Send to all members EXCEPT sender
-        const group = db.groups.find(g => g.id === m.groupId);
-        if (group) {
-            // Member array contains usernames
-            const targets = group.members.filter(u => u !== m.senderUsername);
-            sendPushToUsers(targets, title + ` (گروه ${group.name})`, body, chatUrl);
-        }
-    } else {
-        // 3. Public Channel: Send to everyone except sender
-        const targets = db.users.filter(u => u.username !== m.senderUsername).map(u => u.username);
-        sendPushToUsers(targets, title + ' (عمومی)', body, chatUrl);
-    }
-
-    res.json(db.messages); 
-});
-
+app.post('/api/chat', (req, res) => { const db = getDb(); const m = req.body; m.id = Date.now().toString(); db.messages.push(m); saveDb(db); const title = `پیام جدید از ${m.sender}`; let body = m.message || 'فایل ضمیمه'; if(body.startsWith('CALL_INVITE|')) body = '📞 تماس ورودی...'; const chatUrl = '#chat'; if (m.recipient) { sendPushToUsers([m.recipient], title, body, chatUrl); } else if (m.groupId) { const group = db.groups.find(g => g.id === m.groupId); if (group) { const targets = group.members.filter(u => u !== m.senderUsername); sendPushToUsers(targets, title + ` (گروه ${group.name})`, body, chatUrl); } } else { const targets = db.users.filter(u => u.username !== m.senderUsername).map(u => u.username); sendPushToUsers(targets, title + ' (عمومی)', body, chatUrl); } res.json(db.messages); });
 app.get('/api/whatsapp/status', (req, res) => res.json(getWhatsAppStatus()));
 app.post('/api/whatsapp/logout', async (req, res) => { await logoutWhatsApp(); res.json({ success: true }); });
 app.get('/api/whatsapp/groups', async (req, res) => { try { const groups = await getWhatsAppGroups(); res.json({ success: true, groups }); } catch (e) { res.status(500).json({ success: false, error: e.message }); } });
-
 app.get('/api/warehouse/items', (req, res) => res.json(getDb().warehouseItems));
 app.post('/api/warehouse/items', (req, res) => { const db=getDb(); db.warehouseItems.push({...req.body, id:Date.now().toString()}); saveDb(db); res.json(db.warehouseItems); });
 app.put('/api/warehouse/items/:id', (req, res) => { const db=getDb(); const idx=db.warehouseItems.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseItems[idx]={...db.warehouseItems[idx],...req.body}; saveDb(db); res.json(db.warehouseItems); } else res.sendStatus(404); });
@@ -409,46 +304,9 @@ app.put('/api/users/:id', (req, res) => { const db=getDb(); const idx=db.users.f
 app.delete('/api/users/:id', (req, res) => { const db=getDb(); db.users=db.users.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.users); });
 app.post('/api/login', (req, res) => { const u=getDb().users.find(x=>x.username===req.body.username && x.password===req.body.password); u?res.json(u):res.status(401).send('Invalid'); });
 app.get('/api/settings', (req, res) => res.json(getDb().settings));
-
-app.post('/api/settings', (req, res) => { 
-    const db = getDb(); 
-    db.settings = { ...db.settings, ...req.body }; 
-    saveDb(db); 
-    res.json(db.settings); 
-});
-
-app.post('/api/full-restore', (req, res) => {
-    try {
-        const { fileData } = req.body;
-        if (!fileData) throw new Error("No data");
-        const zip = new AdmZip(Buffer.from(fileData.split(',')[1], 'base64'));
-        const dbEntry = zip.getEntry('database.json');
-        if (dbEntry) {
-            fs.writeFileSync(DB_FILE, zip.readAsText(dbEntry));
-        }
-        const uploadsEntry = zip.getEntry('uploads/');
-        if (uploadsEntry) {
-            zip.extractEntryTo('uploads/', UPLOADS_DIR, false, true);
-        }
-        zip.extractAllTo(__dirname, true);
-        res.json({ success: true });
-    } catch (e) {
-        console.error("Restore Error:", e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/render-pdf', async (req, res) => {
-    try {
-        const { html, landscape, width, height } = req.body;
-        const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-        const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'domcontentloaded' });
-        const pdf = await page.pdf({ printBackground: true, width, height, format: (width||height)?undefined:'A4', landscape });
-        await browser.close();
-        res.set({'Content-Type':'application/pdf'}); res.send(pdf);
-    } catch (e) { res.status(500).json({error: e.message}); }
-});
+app.post('/api/settings', (req, res) => { const db = getDb(); db.settings = { ...db.settings, ...req.body }; saveDb(db); res.json(db.settings); });
+app.post('/api/full-restore', (req, res) => { try { const { fileData } = req.body; if (!fileData) throw new Error("No data"); const zip = new AdmZip(Buffer.from(fileData.split(',')[1], 'base64')); const dbEntry = zip.getEntry('database.json'); if (dbEntry) { fs.writeFileSync(DB_FILE, zip.readAsText(dbEntry)); } const uploadsEntry = zip.getEntry('uploads/'); if (uploadsEntry) { zip.extractEntryTo('uploads/', UPLOADS_DIR, false, true); } zip.extractAllTo(__dirname, true); res.json({ success: true }); } catch (e) { console.error("Restore Error:", e); res.status(500).json({ error: e.message }); } });
+app.post('/api/render-pdf', async (req, res) => { try { const { html, landscape, width, height } = req.body; const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }); const page = await browser.newPage(); await page.setContent(html, { waitUntil: 'domcontentloaded' }); const pdf = await page.pdf({ printBackground: true, width, height, format: (width||height)?undefined:'A4', landscape }); await browser.close(); res.set({'Content-Type':'application/pdf'}); res.send(pdf); } catch (e) { res.status(500).json({error: e.message}); } });
 app.get('*', (req, res) => { const p = path.join(__dirname, 'dist', 'index.html'); if(fs.existsSync(p)) res.sendFile(p); else res.send('Build first'); });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT} (Accessible via IP)`));
