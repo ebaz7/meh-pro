@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { login } from '../services/authService';
 import { getServerHost, setServerHost } from '../services/apiService';
 import { User } from '../types';
-import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw } from 'lucide-react';
+import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 interface LoginProps {
@@ -30,7 +30,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const host = getServerHost();
     setServerUrl(host);
 
-    // If on native and no host is set, show config
     if (native && !host) {
         setShowServerConfig(true);
     }
@@ -39,7 +38,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // On native, check if server URL is set
     if (isNative && !getServerHost()) {
         setError('لطفا ابتدا آدرس سرور را تنظیم کنید.');
         setShowServerConfig(true);
@@ -57,15 +55,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
     } catch (e: any) {
         setLoading(false);
+        console.error("Login Error:", e);
+        
         if (e.message === "SERVER_URL_MISSING") {
             setError("آدرس سرور تنظیم نشده است.");
             setShowServerConfig(true);
         } else if (e.message && e.message.includes('401')) {
             setError('نام کاربری یا رمز عبور اشتباه است.');
-        } else if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('Network Error'))) {
-            setError('خطا در اتصال به سرور. اینترنت یا آدرس سرور را بررسی کنید.');
         } else {
-            setError(e.message || 'خطا در ورود به سیستم.');
+            // General connection error
+            setError('خطا در اتصال به سرور. آدرس IP را چک کنید.');
         }
     }
   };
@@ -79,28 +78,28 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           return;
       }
       
-      // 1. Remove trailing slash
+      // Remove trailing slash
       inputUrl = inputUrl.replace(/\/$/, '');
-
-      // 2. Smart Protocol Detection
-      if (!inputUrl.match(/^https?:\/\//)) {
-          // If starts with a number (like 192.168...), assume http (local IP)
-          if (/^\d/.test(inputUrl)) {
-              inputUrl = 'http://' + inputUrl;
-          } else {
-              // Otherwise assume domain with https
-              inputUrl = 'https://' + inputUrl;
-          }
-      }
       
-      // 3. Save directly
-      setServerHost(inputUrl);
-      setServerUrl(inputUrl);
+      // FORCE CLEANUP
+      inputUrl = inputUrl.replace(/^https?:\/\//, ''); // Remove existing protocol to re-add correctly
+      
+      // IP Regex (Simple check for numbers and dots)
+      const isIpOrLocal = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(inputUrl) || inputUrl.startsWith('localhost') || inputUrl.startsWith('192.168');
+      
+      // Protocol Logic:
+      // Always use HTTP for IPs (Android blocks mixed content on HTTPS usually for self-signed)
+      // Use HTTP for everything unless user explicitly wants HTTPS (which needs custom setup)
+      // For this app context, http:// is the safest default for local networks.
+      const finalUrl = `http://${inputUrl}`;
+      
+      setServerHost(finalUrl);
+      setServerUrl(finalUrl); // Update UI to show what we saved
       
       setShowServerConfig(false);
       setError('');
       
-      alert(`تنظیمات ذخیره شد.\nآدرس: ${inputUrl}`);
+      alert(`تنظیمات ذخیره شد:\n${finalUrl}\n\nنکته: مطمئن شوید گوشی و سرور به یک وای‌فای متصل هستند.`);
   };
 
   return (
@@ -124,20 +123,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     </div>
                     <h1 className="text-2xl font-black text-gray-800">اتصال به سرور</h1>
                     <p className="text-gray-500 mt-2 text-sm text-center leading-relaxed px-4">
-                        آدرس IP (مثال: 192.168.1.50:3000) یا دامنه سایت را وارد کنید.
+                        آدرس IP کامپیوتر سرور را وارد کنید.
                     </p>
                 </div>
                 
                 <form onSubmit={handleSaveServer} className="space-y-5">
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور / IP</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس IP و پورت</label>
                         <div className="relative">
                             <input 
                                 type="text" 
                                 value={serverUrl} 
                                 onChange={(e) => setServerUrl(e.target.value)} 
                                 className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 pl-12 text-left dir-ltr font-mono font-bold text-gray-700 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all outline-none" 
-                                placeholder="192.168.1.X:3000"
+                                placeholder="192.168.1.100:3000"
                                 autoCapitalize="off"
                                 autoCorrect="off"
                             />
@@ -145,13 +144,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                 <Wifi size={20}/>
                             </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2 mr-1">نکته: برای IP حتماً پورت (مثلاً :3000) را وارد کنید.</p>
+                        <p className="text-[10px] text-indigo-600 mt-2 mr-1 font-bold">
+                            مثال صحیح: 192.168.1.50:3000
+                        </p>
+                    </div>
+
+                    <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-[10px] text-amber-800 flex gap-2">
+                        <AlertTriangle size={16} className="shrink-0"/>
+                        <p>حتماً بررسی کنید که فایروال ویندوز سرور خاموش باشد یا پورت 3000 باز باشد.</p>
                     </div>
 
                     <div className="pt-2">
                         <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 text-lg">
                             <Save size={20}/>
-                            ذخیره و اتصال
+                            ذخیره و تست اتصال
                         </button>
                         <button type="button" onClick={() => setShowServerConfig(false)} className="w-full mt-3 text-gray-500 py-3 rounded-xl font-medium hover:bg-gray-50 transition-all">
                             بازگشت به ورود
@@ -210,8 +216,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         )}
       </div>
       
-      <div className="absolute bottom-4 text-center text-gray-400 text-[10px] dir-ltr font-mono">
-          v1.0.6 | {isNative ? (serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'Disconnected') : 'Web Mode'}
+      <div className="absolute bottom-4 text-center text-gray-400 text-[10px] dir-ltr font-mono opacity-50">
+          {isNative ? (serverUrl || 'No Server Set') : 'Web Mode'}
       </div>
     </div>
   );
