@@ -23,7 +23,7 @@ import { Loader2, Bell, X } from 'lucide-react';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
 import { apiCall } from './services/apiService';
 import { Capacitor } from '@capacitor/core';
-import { App as CapacitorApp } from '@capacitor/app'; // Ensure this is imported
+import { App as CapacitorApp } from '@capacitor/app'; 
 import { sendNotification } from './services/notificationService';
 
 function App() {
@@ -243,25 +243,28 @@ function App() {
      });
   };
 
-  // --- CRITICAL FIX FOR "ZEROING OUT" ---
-  // This listener ensures that when you switch back to the app from background,
-  // the data is immediately re-fetched.
+  // --- CRITICAL FIX FOR "FREEZING/EMPTY MENU" ON RESUME ---
   useEffect(() => {
-      let appListener: any;
+      // Listener to handle app state changes (Background -> Foreground)
+      const handleAppStateChange = async (state: any) => {
+          if (state.isActive && currentUser) {
+              console.log("App resumed from background. Reloading data...");
+              // Force reload data to refresh state that might have been cleared by OS
+              await loadData(true);
+          }
+      };
+
+      let listener: any;
       if (Capacitor.isNativePlatform()) {
-          console.log("Adding App State Listener...");
-          appListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-              console.log("App State Changed. Active:", isActive);
-              if (isActive && currentUser) {
-                  // Reload data immediately when app comes to foreground
-                  loadData(true);
-              }
+          CapacitorApp.addListener('appStateChange', handleAppStateChange).then(l => {
+              listener = l;
           });
       }
+
       return () => {
-          if (appListener) appListener.remove();
+          if (listener) listener.remove();
       };
-  }, [currentUser]); // Re-bind if user changes
+  }, [currentUser]); // Re-bind if user logs in/out
 
   useEffect(() => { 
       if (currentUser) { 

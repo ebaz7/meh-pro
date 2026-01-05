@@ -42,7 +42,6 @@ const NotificationController: React.FC = () => {
 
             await PushNotifications.addListener('registrationError', err => {
                 console.error('Push Registration Error:', err.error);
-                // alert('خطا در اتصال به سرویس نوتیفیکیشن گوگل. آیا فایل google-services.json را کپی کرده‌اید؟');
             });
 
             await PushNotifications.addListener('pushNotificationReceived', notification => {
@@ -51,20 +50,24 @@ const NotificationController: React.FC = () => {
 
             await PushNotifications.addListener('pushNotificationActionPerformed', notification => {
                 console.log('Push Action:', notification.actionId);
-                // Here you can handle navigation when user taps notification
+                // Handle navigation when user taps notification
                 window.focus();
             });
 
-            // Check if already granted and register
-            const permStatus = await PushNotifications.checkPermissions();
-            if (permStatus.receive === 'granted') {
-                await PushNotifications.register();
-            } else {
-                // Request if not granted
-                const request = await PushNotifications.requestPermissions();
-                if (request.receive === 'granted') {
+            // 3. Request Permissions & Register
+            // We explicitly check/request permissions here on mount
+            try {
+                const permStatus = await PushNotifications.checkPermissions();
+                if (permStatus.receive === 'granted') {
                     await PushNotifications.register();
+                } else {
+                    const request = await PushNotifications.requestPermissions();
+                    if (request.receive === 'granted') {
+                        await PushNotifications.register();
+                    }
                 }
+            } catch (e) {
+                console.error("Error requesting push permissions", e);
             }
         } else {
             // Web Logic (PWA)
@@ -102,10 +105,8 @@ const NotificationController: React.FC = () => {
       await apiCall('/subscribe', 'POST', subscription);
     };
 
-    // Always init on native to ensure channels are created
-    if (Capacitor.isNativePlatform() || localStorage.getItem('app_notification_pref') === 'true') {
-        initNotifications();
-    }
+    // Always attempt init on mount
+    initNotifications();
 
   }, []);
 

@@ -30,7 +30,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const host = getServerHost();
     setServerUrl(host);
 
-    // اگر روی موبایل هستیم و آدرس تنظیم نشده، صفحه تنظیمات را باز کن
+    // If on native and no host is set, show config
     if (native && !host) {
         setShowServerConfig(true);
     }
@@ -39,7 +39,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // در موبایل، چک می‌کنیم آدرس سرور هست یا نه
+    // On native, check if server URL is set
     if (isNative && !getServerHost()) {
         setError('لطفا ابتدا آدرس سرور را تنظیم کنید.');
         setShowServerConfig(true);
@@ -78,10 +78,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
       
       let finalUrl = serverUrl.trim();
-      // افزودن خودکار http اگر کاربر وارد نکرد
-      if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      
+      // Auto-add protocol if missing
+      // Logic: If it doesn't start with http/https, assume http
+      if (!finalUrl.match(/^https?:\/\//)) {
           finalUrl = 'http://' + finalUrl;
       }
+      
+      // Remove trailing slash
       finalUrl = finalUrl.replace(/\/$/, '');
 
       setServerHost(finalUrl);
@@ -118,7 +122,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 
                 <form onSubmit={handleSaveServer} className="space-y-5">
                     <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور / دامین</label>
+                        <label className="text-xs font-bold text-gray-500 block mb-2 mr-1">آدرس سرور / IP</label>
                         <div className="relative">
                             <input 
                                 type="text" 
@@ -132,7 +136,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                                 <Wifi size={20}/>
                             </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2 mr-1">مثال: http://192.168.1.50:3000 یا https://api.mydomain.com</p>
+                        <p className="text-[10px] text-gray-400 mt-2 mr-1">مثال: 192.168.1.50:3000 (بدون http هم قبول می‌شود)</p>
                     </div>
 
                     <div className="pt-2">
@@ -198,7 +202,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       </div>
       
       <div className="absolute bottom-4 text-center text-gray-400 text-[10px] dir-ltr font-mono">
-          v1.0.4 | {isNative ? (serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'Disconnected') : 'Web Mode'}
+          v1.0.5 | {isNative ? (serverUrl ? serverUrl.replace(/^https?:\/\//, '') : 'Disconnected') : 'Web Mode'}
       </div>
     </div>
   );
