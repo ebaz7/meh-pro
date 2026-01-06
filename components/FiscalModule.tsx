@@ -99,7 +99,7 @@ export const FiscalYearManager: React.FC = () => {
         const defaultExit = currentSettings.currentExitPermitNumber ? currentSettings.currentExitPermitNumber + 1 : 1000;
 
         companies.forEach(c => {
-            const seq = year.companySequences?.[c.name];
+            const seq = year.companySequences?.[c.name] || {};
             
             // Warehouse Bijak: Use specific company sequence if available in settings, else 1
             const currentBijak = currentSettings.warehouseSequences?.[c.name];
@@ -107,10 +107,9 @@ export const FiscalYearManager: React.FC = () => {
 
             configMap[c.name] = {
                 // Priority: 1. Existing Fiscal Config, 2. Current System Counter, 3. Default 1000
-                // Fix: Use optional chaining to safely access sequence properties
-                pay: seq?.startTrackingNumber ? String(seq.startTrackingNumber) : String(defaultPay),
-                exit: seq?.startExitPermitNumber ? String(seq.startExitPermitNumber) : String(defaultExit),
-                bijak: seq?.startBijakNumber ? String(seq.startBijakNumber) : String(defaultBijak)
+                pay: seq.startTrackingNumber ? String(seq.startTrackingNumber) : String(defaultPay),
+                exit: seq.startExitPermitNumber ? String(seq.startExitPermitNumber) : String(defaultExit),
+                bijak: seq.startBijakNumber ? String(seq.startBijakNumber) : String(defaultBijak)
             };
         });
         setCompanyConfig(configMap);
