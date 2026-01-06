@@ -12,6 +12,8 @@ import AdmZip from 'adm-zip';
 import cron from 'node-cron';
 import puppeteer from 'puppeteer';
 import webpush from 'web-push'; 
+import https from 'https';
+import http from 'http';
 
 process.on('uncaughtException', (err) => { console.error('>>> CRITICAL ERROR:', err.message); });
 process.on('unhandledRejection', (reason) => { console.error('>>> CRITICAL REJECTION:', reason); });
@@ -23,17 +25,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// --- PORT CONFIGURATION ---
+// STRICTLY use the environment variable provided by the user/service.
+// Default to 3000 only if nothing is set in .env
 const PORT = process.env.PORT || 3000;
+
 const SERVER_BUILD_ID = Date.now().toString();
 
 const DB_FILE = path.join(__dirname, 'database.json');
-const VAPID_FILE = path.join(__dirname, 'vapid.json'); // File to store persistent keys
+const VAPID_FILE = path.join(__dirname, 'vapid.json'); 
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const AI_UPLOADS_DIR = path.join(__dirname, 'uploads', 'ai');
 const BACKUPS_DIR = path.join(__dirname, 'backups');
 const WAUTH_DIR = path.join(__dirname, 'wauth');
+const SSL_DIR = path.join(__dirname, 'ssl'); 
 
-[UPLOADS_DIR, AI_UPLOADS_DIR, BACKUPS_DIR, WAUTH_DIR].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); });
+[UPLOADS_DIR, AI_UPLOADS_DIR, BACKUPS_DIR, WAUTH_DIR, SSL_DIR].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); });
+
+app.set('trust proxy', 1); 
 
 app.use(cors()); 
 app.use(compression()); 
@@ -44,31 +54,20 @@ const staticOptions = { maxAge: '1y', etag: true, lastModified: true };
 app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
 app.use('/uploads', express.static(UPLOADS_DIR, staticOptions));
 
-// --- WEB PUSH CONFIGURATION (AUTO GENERATED VALID KEYS) ---
+// --- WEB PUSH CONFIGURATION ---
 let vapidKeys = { publicKey: '', privateKey: '' };
-
 try {
     if (fs.existsSync(VAPID_FILE)) {
-        // Load existing keys
         vapidKeys = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
         console.log(">>> VAPID Keys Loaded from file.");
     } else {
-        // Generate NEW VALID keys if missing
         vapidKeys = webpush.generateVAPIDKeys();
         fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
         console.log(">>> New VAPID Keys Generated and Saved.");
     }
+    webpush.setVapidDetails('mailto:admin@example.com', vapidKeys.publicKey, vapidKeys.privateKey);
+} catch (error) { console.error(">>> VAPID Key Setup Error:", error); }
 
-    webpush.setVapidDetails(
-        'mailto:admin@example.com',
-        vapidKeys.publicKey,
-        vapidKeys.privateKey
-    );
-} catch (error) {
-    console.error(">>> VAPID Key Setup Error:", error);
-}
-
-// Android Native FCM Key (Optional - for APK builds only)
 const FCM_SERVER_KEY = process.env.FCM_SERVER_KEY || ''; 
 
 const getDb = () => {
@@ -106,63 +105,37 @@ const db = getDb();
 if (db.settings?.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { console.error("Telegram Error:", e.message); }
 setTimeout(() => { try { initWhatsApp(WAUTH_DIR); } catch(e) { console.error("WA Error:", e); } }, 3000);
 
-// --- PUSH NOTIFICATION HELPERS ---
-
 const sendNativeFCM = async (token, title, body, url = '/') => {
     if (!FCM_SERVER_KEY) return;
     try {
         const response = await fetch('https://fcm.googleapis.com/fcm/send', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `key=${FCM_SERVER_KEY}`
-            },
-            body: JSON.stringify({
-                to: token,
-                notification: { title, body },
-                data: { url: url }, // Send URL in data payload for Native App
-                priority: 'high'
-            })
+            headers: { 'Content-Type': 'application/json', 'Authorization': `key=${FCM_SERVER_KEY}` },
+            body: JSON.stringify({ to: token, notification: { title, body }, data: { url: url }, priority: 'high' })
         });
-        if (!response.ok) {
-            console.error("FCM Error:", await response.text());
-        }
-    } catch (e) {
-        console.error("FCM Network Error", e);
-    }
+        if (!response.ok) console.error("FCM Error:", await response.text());
+    } catch (e) { console.error("FCM Network Error", e); }
 };
 
 const sendWebPush = (title, body, url = '/', targetUsername = null) => {
     const db = getDb();
     const subs = db.pushSubscriptions || [];
-    
-    // Filter subscriptions
     let relevantSubs = subs;
     if (targetUsername) {
-        // Strict filtering for specific users
         relevantSubs = subs.filter(s => s.username === targetUsername);
         console.log(`Sending push to '${targetUsername}'. Devices found: ${relevantSubs.length}`);
     } else {
         console.log(`Sending broadcast push to ${subs.length} devices.`);
     }
-
     const payload = JSON.stringify({ title, body, url });
     const options = { headers: { 'Urgency': 'high' } };
-
     let invalidEndpoints = [];
-
     Promise.all(relevantSubs.map(sub => {
-        // Native Android (APK)
-        if (sub.type === 'android' && sub.keys?.auth === 'native') {
-            return sendNativeFCM(sub.endpoint, title, body, url);
-        }
-        // Web Push (PWA on Android/iOS/Desktop)
+        if (sub.type === 'android' && sub.keys?.auth === 'native') return sendNativeFCM(sub.endpoint, title, body, url);
         if (sub.endpoint && sub.keys && sub.keys.p256dh && sub.keys.p256dh !== 'native') {
             return webpush.sendNotification(sub, payload, options).catch(err => {
                 console.warn(`WebPush Failed (${err.statusCode}):`, err.body || err.message);
-                if (err.statusCode === 410 || err.statusCode === 404) {
-                    invalidEndpoints.push(sub.endpoint);
-                }
+                if (err.statusCode === 410 || err.statusCode === 404) invalidEndpoints.push(sub.endpoint);
             });
         }
         return Promise.resolve();
@@ -177,7 +150,6 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
 };
 
 const sendPushToUsers = (usernames, title, body, url = '/') => {
-    // Deduplicate usernames
     const uniqueUsers = [...new Set(usernames)];
     uniqueUsers.forEach(u => sendWebPush(title, body, url, u));
 };
@@ -185,88 +157,35 @@ const sendPushToUsers = (usernames, title, body, url = '/') => {
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 app.get('/api/vapid-key', (req, res) => res.json({ publicKey: vapidKeys.publicKey }));
 
-// --- NEW TEST ENDPOINT ---
 app.post('/api/send-test-push', (req, res) => {
     const { username } = req.body;
     if (!username) return res.status(400).json({error: 'Username required'});
-    
-    console.log(`Test Push Triggered for: ${username}`);
-    
-    // Check if user has subscription
     const db = getDb();
     const hasSub = db.pushSubscriptions?.some(s => s.username === username);
-    
-    if (!hasSub) {
-        return res.status(404).json({ error: 'No subscription found for this user', details: 'مطمئن شوید دکمه فعال‌سازی نوتیفیکیشن را زده‌اید و مجوز مرورگر داده شده است.' });
-    }
-
+    if (!hasSub) return res.status(404).json({ error: 'No subscription found for this user', details: 'مطمئن شوید دکمه فعال‌سازی نوتیفیکیشن را زده‌اید و مجوز مرورگر داده شده است.' });
     sendWebPush('تست سیستم', 'این یک پیام آزمایشی از سرور است.', '/#settings', username);
     res.json({ success: true, message: 'Push triggered' });
 });
 
 app.post('/api/subscribe', (req, res) => { 
-    const s = req.body; // { endpoint, keys, type, username, role }
-    
-    if (!s || !s.endpoint) {
-        return res.status(400).json({ error: 'Invalid subscription object' });
-    }
-
+    const s = req.body; 
+    if (!s || !s.endpoint) return res.status(400).json({ error: 'Invalid subscription object' });
     const d = getDb(); 
     if(!d.pushSubscriptions) d.pushSubscriptions = [];
-    
-    // Check if endpoint exists
     const existingIdx = d.pushSubscriptions.findIndex(x => x.endpoint === s.endpoint);
-    
-    if(existingIdx !== -1) {
-        d.pushSubscriptions[existingIdx] = { ...d.pushSubscriptions[existingIdx], ...s };
-        console.log(`Sub Updated for ${s.username}`);
-    } else {
-        d.pushSubscriptions.push(s); 
-        console.log(`Sub Created for ${s.username}`);
-    }
-    
+    if(existingIdx !== -1) { d.pushSubscriptions[existingIdx] = { ...d.pushSubscriptions[existingIdx], ...s }; } 
+    else { d.pushSubscriptions.push(s); }
     saveDb(d); 
-    
-    // Send welcome
     if (s.keys && s.keys.p256dh !== 'native') {
-        webpush.sendNotification(s, JSON.stringify({ title: 'اتصال برقرار شد', body: `دستگاه شما با موفقیت ثبت شد.` }))
-        .catch(e => console.error("Welcome Push Failed", e.statusCode));
+        webpush.sendNotification(s, JSON.stringify({ title: 'اتصال برقرار شد', body: `دستگاه شما با موفقیت ثبت شد.` })).catch(e => console.error("Welcome Push Failed", e.statusCode));
     }
-    
     res.status(201).json({ success: true }); 
 });
 
-// ... (Rest of API endpoints) ...
 app.get('/api/orders', (req, res) => { const db = getDb(); res.json(db.orders); });
-app.post('/api/orders', (req, res) => { 
-    const db = getDb(); 
-    const order = req.body; 
-    order.id = Date.now().toString(); 
-    const activeYearId = db.settings.activeFiscalYearId;
-    order.fiscalYearId = activeYearId;
-    order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany);
-    db.orders.unshift(order); 
-    saveDb(db); 
-    const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username);
-    sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`, '#manage'); 
-    res.json(db.orders); 
-});
-app.put('/api/orders/:id', (req, res) => { 
-    const db=getDb(); 
-    const idx=db.orders.findIndex(x=>x.id===req.params.id); 
-    if(idx!==-1){ 
-        const oldStatus = db.orders[idx].status;
-        db.orders[idx]={...db.orders[idx],...req.body}; 
-        saveDb(db); 
-        if (req.body.status && req.body.status !== oldStatus) {
-             sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`, '#manage');
-        }
-        res.json(db.orders); 
-    } else res.sendStatus(404); 
-});
+app.post('/api/orders', (req, res) => { const db = getDb(); const order = req.body; order.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; order.fiscalYearId = activeYearId; order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany); db.orders.unshift(order); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`, '#manage'); res.json(db.orders); });
+app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.orders[idx].status; db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`, '#manage'); } res.json(db.orders); } else res.sendStatus(404); });
 app.delete('/api/orders/:id', (req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); });
-
-// ... (Rest of Endpoints: Exit Permits, Warehouse, Chat etc. - Preserved as is) ...
 app.get('/api/exit-permits', (req, res) => { const db = getDb(); res.json(db.exitPermits); });
 app.post('/api/exit-permits', (req, res) => { const db = getDb(); const permit = req.body; permit.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; permit.fiscalYearId = activeYearId; permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, permit.companyName); db.exitPermits.push(permit); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber} - گیرنده: ${permit.recipientName}`, '#manage-exit'); res.json(db.exitPermits); });
 app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.exitPermits[idx].status; db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendWebPush('تغییر وضعیت مجوز خروج', `شماره ${db.exitPermits[idx].permitNumber}: ${req.body.status}`, '#manage-exit'); } res.json(db.exitPermits); } else res.sendStatus(404); });
@@ -309,4 +228,17 @@ app.post('/api/full-restore', (req, res) => { try { const { fileData } = req.bod
 app.post('/api/render-pdf', async (req, res) => { try { const { html, landscape, width, height } = req.body; const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }); const page = await browser.newPage(); await page.setContent(html, { waitUntil: 'domcontentloaded' }); const pdf = await page.pdf({ printBackground: true, width, height, format: (width||height)?undefined:'A4', landscape }); await browser.close(); res.set({'Content-Type':'application/pdf'}); res.send(pdf); } catch (e) { res.status(500).json({error: e.message}); } });
 app.get('*', (req, res) => { const p = path.join(__dirname, 'dist', 'index.html'); if(fs.existsSync(p)) res.sendFile(p); else res.send('Build first'); });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT} (Accessible via IP)`));
+// --- START SERVER ---
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n>>> Server running on port ${PORT}`);
+    console.log(`>>> You chose this port manually.`);
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`\n!!! ERROR: Port ${PORT} is busy! !!!`);
+        console.error("Please change the port in .env file or free up the port.");
+    } else {
+        console.error(err);
+    }
+});

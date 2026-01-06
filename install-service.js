@@ -18,9 +18,10 @@ console.log("---------------------------------------------------------");
 console.log("   Payment System - Windows Service Installer            ");
 console.log("---------------------------------------------------------");
 
-// 2. Ask for Port
-rl.question('Please enter the port number to run the server (default: 3000): ', (inputPort) => {
-  const port = inputPort.trim() || '3000';
+// 2. Ask for Port (Default 80 for ArvanCloud Compatibility)
+rl.question('Please enter the port number (Press Enter for 80): ', (inputPort) => {
+  // If user types nothing, use 80. If they type something, use that.
+  const port = inputPort.trim() || '80';
   console.log(`> Using Port: ${port}`);
 
   // 3. Create/Update .env file
@@ -35,15 +36,13 @@ rl.question('Please enter the port number to run the server (default: 3000): ', 
   }
 
   // 4. Configure Service
-  // PUPPETEER FIX: Explicitly set the cache dir to be inside the project folder
-  // This ensures the service (running as Local System) can find the browser downloaded by the user
   const puppeteerCache = path.join(__dirname, '.cache', 'puppeteer');
 
   const svc = new Service({
     name: 'PaymentSystem',
     description: 'Payment Order Management System Web Server',
     script: path.join(__dirname, 'server.js'),
-    workingDirectory: __dirname, // CRITICAL: Ensures DB and Auth files are found
+    workingDirectory: __dirname, // CRITICAL
     env: [{
       name: "PORT",
       value: port
@@ -61,14 +60,19 @@ rl.question('Please enter the port number to run the server (default: 3000): ', 
   });
 
   svc.on('alreadyinstalled', function() {
-    console.log('> Service is already installed.');
-    console.log('> Attempting to start it...');
-    svc.start();
+    console.log('\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    console.log(' WARNING: The service "PaymentSystem" is ALREADY INSTALLED!');
+    console.log('------------------------------------------------------------');
+    console.log(' TO FIX AND CHANGE PORT:');
+    console.log(' 1. Run: node uninstall-service.js');
+    console.log(' 2. Run this script again: node install-service.js');
+    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n');
+    // We try to start it anyway, but port won't change until reinstall
+    svc.start(); 
   });
 
   svc.on('start', function() {
     console.log(`> Service started! App is running on http://localhost:${port}`);
-    console.log('> Telegram & WhatsApp bots are starting in the background.');
     console.log('> You can now close this window.');
     rl.close();
   });
@@ -79,6 +83,6 @@ rl.question('Please enter the port number to run the server (default: 3000): ', 
   });
 
   // 6. Install
-  console.log('> Installing Windows Service (This may prompt for Admin permissions)...');
+  console.log('> Installing Windows Service...');
   svc.install();
 });
