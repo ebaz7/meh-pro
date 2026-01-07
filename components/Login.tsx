@@ -144,7 +144,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         <Settings size={24} />
       </button>
 
-      <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 relative overflow-hidden">
+      <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 relative overflow-hidden animate-fade-in">
         
         {showServerConfig ? (
             <div className="animate-fade-in space-y-6">

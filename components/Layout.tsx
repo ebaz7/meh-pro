@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, PlusCircle, ListChecks, FileText, Users, LogOut, User as UserIcon, Settings, Bell, BellOff, MessageSquare, X, Check, Container, KeyRound, Save, Upload, Camera, Download, Share, ChevronRight, Home, Send, BrainCircuit, Mic, StopCircle, Loader2, Truck, ClipboardList, Package, Printer, CheckSquare, ShieldCheck, Shield, Phone, RefreshCw, Smartphone, MonitorDown, BellRing, Smartphone as MobileIcon, Trash2 } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, ListChecks, FileText, Users, LogOut, User as UserIcon, Settings, Bell, BellOff, MessageSquare, X, Check, Container, KeyRound, Save, Upload, Camera, Download, Share, ChevronRight, Home, Send, BrainCircuit, Mic, StopCircle, Loader2, Truck, ClipboardList, Package, Printer, CheckSquare, ShieldCheck, Shield, Phone, RefreshCw, Smartphone, MonitorDown, BellRing, Smartphone as MobileIcon, Trash2, Menu } from 'lucide-react';
 import { User, UserRole, AppNotification, SystemSettings } from '../types';
 import { logout, hasPermission, getRolePermissions, updateUser } from '../services/authService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp, sendNotification } from '../services/notificationService';
@@ -28,6 +28,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   const notifRef = useRef<HTMLDivElement>(null);
   const mobileNotifRef = useRef<HTMLDivElement>(null);
   
+  // Mobile Drawer State
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  
   // PWA & Install State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isIOS, setIsIOS] = useState(false);
@@ -49,14 +52,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  // AI Voice Assistant State
-  const [showVoiceModal, setShowVoiceModal] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [processingVoice, setProcessingVoice] = useState(false);
-  const [voiceResult, setVoiceResult] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const [recordingMimeType, setRecordingMimeType] = useState<string>('');
-
   // Update Detection State
   const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
@@ -74,7 +69,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   }, [showProfileModal, currentUser]);
 
   useEffect(() => {
-    // SAFE CHECK: Check if Notification API exists and doesn't throw
     if (Capacitor.isNativePlatform()) {
         setNotifEnabled(isNotificationEnabledInApp());
     } else {
@@ -126,7 +120,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
     });
     
     const handleClickOutside = (event: MouseEvent) => { 
-        // Logic to close dropdown if clicked outside
         const target = event.target as Element;
         if (showNotifDropdown && !target.closest('.notification-dropdown-container') && !target.closest('.notification-trigger')) {
             setShowNotifDropdown(false);
@@ -157,7 +150,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   const handleLogout = () => { logout(); onLogout(); };
   
   const handleToggleNotif = async () => { 
-      // CRITICAL FIX: Prevent crash on mobile by handling permissions safely
       if (!Capacitor.isNativePlatform()) {
           if (typeof window === 'undefined' || !('Notification' in window)) {
               alert("این دستگاه/مرورگر از اعلان‌های وب پشتیبانی نمی‌کند.");
@@ -184,7 +176,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
               onAddNotification("سیستم دستور پرداخت", "نوتیفیکیشن‌ها با موفقیت فعال شدند."); 
           } else {
               setNotifEnabled(false);
-              // Don't show alert for native as requestNotificationPermission handles the error internally now
               if (!Capacitor.isNativePlatform()) {
                   if (Notification.permission === 'denied') {
                       alert("دسترسی به نوتیفیکیشن توسط شما مسدود شده است.");
@@ -195,17 +186,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
           } 
       } catch (err) {
           console.error("Notification toggle error:", err);
-          // Only alert if not native, to avoid disrupting user experience on mobile crashes
           if(!Capacitor.isNativePlatform()) alert("خطا در فعال‌سازی نوتیفیکیشن");
       }
   };
 
-  const handleTestNotification = async () => {
-      onAddNotification("تست سیستم", `این یک پیام آزمایشی است (${new Date().toLocaleTimeString('fa-IR')}).`);
-      // sendNotification handled inside App.tsx or implicitly by onAddNotification hook
-      await sendNotification("تست سیستم", "این یک پیام آزمایشی روی دستگاه شماست.");
-  };
-  
   const handleInstallClick = () => { 
       if (isIOS) {
           setShowIOSPrompt(true);
@@ -219,7 +203,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
       }
   };
 
-  // ... (Profile update handlers kept same) ...
   const handleUpdateProfile = async (e: React.FormEvent) => { 
       e.preventDefault(); 
       const updates: Partial<User> = {}; 
@@ -245,9 +228,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
       reader.readAsDataURL(file); 
   };
 
-  const handleStartRecording = async () => { /* ... Voice Logic ... */ };
-  const handleStopRecording = () => { /* ... Voice Logic ... */ };
-
   const unreadCount = notifications.filter(n => !n.read).length;
   const perms = settings ? getRolePermissions(currentUser.role, settings, currentUser) : null;
   const canCreatePayment = perms ? perms.canCreatePaymentOrder === true : false;
@@ -270,6 +250,14 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   if (canSeeTrade) navItems.push({ id: 'trade', label: 'بازرگانی', icon: Container });
   if (hasPermission(currentUser, 'manage_users')) navItems.push({ id: 'users', label: 'کاربران', icon: Users });
   if (canSeeSettings) navItems.push({ id: 'settings', label: 'تنظیمات', icon: Settings });
+
+  // Mobile Specific Nav Items (Bottom Bar)
+  const bottomNavItems = [
+      { id: 'dashboard', label: 'خانه', icon: Home },
+      { id: 'create', label: 'ثبت', icon: PlusCircle, show: canCreatePayment },
+      { id: 'manage', label: 'کارتابل', icon: ListChecks, show: perms?.canViewPaymentOrders },
+      { id: 'chat', label: 'گفتگو', icon: MessageSquare },
+  ].filter(i => i.show !== false);
 
   const NotificationDropdown = () => ( 
     <div className="notification-dropdown-container fixed top-16 left-4 right-4 md:absolute md:top-auto md:bottom-16 md:left-2 md:right-auto md:w-80 bg-white rounded-xl shadow-2xl border border-gray-200 text-gray-800 z-[9999] overflow-hidden origin-top md:origin-bottom-left animate-scale-in max-h-[60vh] flex flex-col">
@@ -321,22 +309,10 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   return (
     <div className="flex min-h-[100dvh] bg-gray-50 text-gray-800 font-sans relative">
       
-      {/* ... (Update Banner, iOS Prompt, AI Voice Modal, Profile Modal code preserved) ... */}
+      {/* ... (Update Banner, iOS Prompt, Profile Modal code preserved) ... */}
       {isUpdateAvailable && (<div className="fixed top-0 left-0 right-0 bg-blue-600 text-white z-[9999] p-3 text-center shadow-lg animate-slide-down flex justify-center items-center gap-4"><div className="flex items-center gap-2"><RefreshCw size={20} className="animate-spin"/><span className="font-bold text-sm">نسخه جدید نرم‌افزار در دسترس است!</span></div><button onClick={handleReload} className="bg-white text-blue-600 px-4 py-1 rounded-full text-xs font-bold hover:bg-blue-50 transition-colors shadow-sm">بروزرسانی (رفرش)</button></div>)}
-      {showIOSPrompt && (<div className="fixed inset-0 bg-black/80 z-[100] flex items-end md:items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setShowIOSPrompt(false)}><div className="bg-white w-full max-w-sm rounded-t-2xl md:rounded-2xl p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}><button className="absolute top-3 right-3 text-gray-400 hover:text-red-500" onClick={() => setShowIOSPrompt(false)}><X size={24}/></button><div className="flex flex-col items-center text-center"><Smartphone size={48} className="text-blue-600 mb-4" /><h3 className="text-xl font-bold text-gray-800 mb-2">نصب روی آیفون</h3><p className="text-sm text-gray-500 mb-6 leading-relaxed">برای نصب اپلیکیشن، دکمه <span className="inline-block mx-1"><Share size={16}/></span> (اشتراک‌گذاری) در پایین مرورگر سافاری را بزنید و سپس گزینه <span className="font-bold text-gray-800">Add to Home Screen</span> را انتخاب کنید.</p><div className="w-full bg-gray-100 rounded-xl p-4 flex items-center justify-center gap-4 mb-4"><span className="text-xs font-mono text-gray-400">1. Share</span><ChevronRight size={16} className="text-gray-400"/><span className="text-xs font-bold text-gray-700">2. Add to Home Screen</span></div><button onClick={() => setShowIOSPrompt(false)} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">متوجه شدم</button></div></div></div>)}
       
-      {/* Hide Global AI Voice Button in Chat Tab */}
-      {activeTab !== 'chat' && (
-        <div className="fixed bottom-24 left-4 md:bottom-8 md:left-8 z-[60]">
-            <button onClick={() => setShowVoiceModal(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center group" title="دستیار صوتی">
-                <Mic size={24} className="group-hover:animate-pulse"/>
-            </button>
-        </div>
-      )}
-
-      {showVoiceModal && (<div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center relative overflow-hidden"><button onClick={() => { setShowVoiceModal(false); setVoiceResult(null); setIsRecording(false); }} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={20}/></button><h3 className="text-xl font-black text-gray-800 mb-2">دستیار صوتی هوشمند</h3><p className="text-xs text-gray-500 mb-6">دستور خود را بگویید (مثلاً: ثبت ۵ میلیون برای علی...)</p><div className="flex justify-center mb-6"><button onClick={isRecording ? handleStopRecording : handleStartRecording} className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-100 text-red-600 scale-110 shadow-[0_0_0_10px_rgba(239,68,68,0.2)]' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>{isRecording ? <StopCircle size={40} className="animate-pulse"/> : <Mic size={40}/>}</button></div>{processingVoice && (<div className="flex items-center justify-center gap-2 text-blue-600 text-sm font-bold animate-pulse mb-4"><Loader2 size={16} className="animate-spin"/> در حال پردازش...</div>)}{voiceResult && (<div className={`p-4 rounded-xl text-sm text-right mb-4 ${voiceResult.includes("ثبت شد") ? 'bg-green-50 text-green-800' : 'bg-gray-50'}`}><p className="font-bold mb-1">پاسخ:</p><p className="whitespace-pre-wrap">{voiceResult}</p></div>)}</div></div>)}
-      
-      {/* ... Profile Modal ... */}
+      {/* Profile Modal */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative">
@@ -361,7 +337,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
                             <div className="space-y-1"><label className="text-xs font-bold text-gray-500">تکرار رمز</label><input type="password" value={profileForm.confirmPassword} onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="******"/></div>
                         </div>
                         <div className="space-y-1"><label className="text-xs font-bold text-gray-500">شماره موبایل (واتساپ)</label><input type="tel" value={profileForm.phoneNumber} onChange={e => setProfileForm({...profileForm, phoneNumber: e.target.value})} className="w-full border rounded-lg p-2 text-sm dir-ltr" placeholder="98912..."/></div>
-                        <div className="space-y-1"><label className="text-xs font-bold text-gray-500">آیدی تلگرام (عدد)</label><input type="text" value={profileForm.telegramChatId} onChange={e => setProfileForm({...profileForm, telegramChatId: e.target.value})} className="w-full border rounded-lg p-2 text-sm dir-ltr" placeholder="Chat ID"/></div>
                         
                         <label className="flex items-center gap-2 text-sm cursor-pointer bg-gray-50 p-3 rounded-lg">
                             <input type="checkbox" checked={profileForm.receiveNotifications} onChange={e => setProfileForm({...profileForm, receiveNotifications: e.target.checked})} className="w-4 h-4 text-blue-600 rounded" />
@@ -383,13 +358,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
               {navItems.map((item) => { const Icon = item.icon; return (<React.Fragment key={item.id}><button onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300 hover:bg-slate-700'}`}><Icon size={20} /><span className="font-medium">{item.label}</span></button></React.Fragment>); })}
               
-              {(!isStandalone && (deferredPrompt || isIOS)) && (
-                  <button onClick={handleInstallClick} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-teal-300 hover:bg-slate-700 hover:text-white transition-colors border border-teal-800/30 mt-4">
-                      <MonitorDown size={20} />
-                      <span className="font-medium">نصب برنامه (PWA)</span>
-                  </button>
-              )}
-
               <div className="pt-4 mt-2 border-t border-slate-700 relative" ref={notifRef}>
                   <button onClick={() => setShowNotifDropdown(!showNotifDropdown)} className={`notification-trigger w-full flex items-center gap-3 px-4 py-2 rounded-lg transition-colors text-sm relative ${unreadCount > 0 ? 'text-white bg-slate-700' : 'text-slate-400 hover:bg-slate-700'}`}><div className="relative"><Bell size={18} />{unreadCount > 0 && (<span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-pulse">{unreadCount}</span>)}</div><span>مرکز اعلان‌ها</span></button>
                   {showNotifDropdown && <NotificationDropdown />}
@@ -399,31 +367,85 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
           <div className="p-4 border-t border-slate-700"><button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-slate-700 rounded-lg transition-colors"><LogOut size={20} /><span>خروج از سیستم</span></button></div>
       </aside>
       
+      {/* Mobile Drawer (Full Menu) */}
+      {showMobileMenu && (
+          <div className="fixed inset-0 z-[60] md:hidden animate-fade-in">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowMobileMenu(false)}></div>
+              <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto animate-slide-up pb-24">
+                  <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+                      <h3 className="font-black text-lg text-gray-800">منوی کامل سیستم</h3>
+                      <button onClick={() => setShowMobileMenu(false)} className="p-2 bg-gray-100 rounded-full"><X size={20}/></button>
+                  </div>
+                  <div className="p-4 grid grid-cols-2 gap-3">
+                      {navItems.map((item) => {
+                          const Icon = item.icon;
+                          const isActive = activeTab === item.id;
+                          return (
+                              <button 
+                                key={item.id} 
+                                onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
+                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${isActive ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-gray-50 text-gray-700 border-gray-100 hover:bg-gray-100'}`}
+                              >
+                                  <Icon size={28} strokeWidth={1.5} />
+                                  <span className="text-xs font-bold">{item.label}</span>
+                              </button>
+                          );
+                      })}
+                      <button onClick={handleLogout} className="flex flex-col items-center gap-2 p-4 rounded-2xl border bg-red-50 text-red-600 border-red-100">
+                          <LogOut size={28} strokeWidth={1.5} />
+                          <span className="text-xs font-bold">خروج از سیستم</span>
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t p-2 flex justify-between z-50 no-print shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] overflow-x-auto safe-pb" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom))', height: 'calc(60px + env(safe-area-inset-bottom))' }}>
-        <div className="flex w-full justify-between items-center px-2">
-            {navItems.map((item) => { const Icon = item.icon; return (<button key={item.id} onClick={() => setActiveTab(item.id)} className={`p-1 rounded-lg flex flex-col items-center justify-center text-xs min-w-[60px] flex-shrink-0 ${activeTab === item.id ? 'text-blue-600 font-bold' : 'text-gray-500'}`}><Icon size={24} strokeWidth={activeTab === item.id ? 2.5 : 2}/><span className="mt-1 whitespace-nowrap text-[9px] truncate w-full text-center">{item.label}</span></button>); })}
-            <button onClick={handleLogout} className="p-1 rounded-lg flex flex-col items-center justify-center text-xs text-red-500 min-w-[50px] flex-shrink-0"><LogOut size={24} /><span className="mt-1 text-[9px]">خروج</span></button>
-        </div>
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center py-3 pb-safe z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        {bottomNavItems.map((item) => { 
+            const Icon = item.icon; 
+            return (
+                <button 
+                    key={item.id} 
+                    onClick={() => setActiveTab(item.id)} 
+                    className={`flex flex-col items-center gap-1 ${activeTab === item.id ? 'text-blue-600' : 'text-gray-400'}`}
+                >
+                    <Icon size={24} strokeWidth={activeTab === item.id ? 2.5 : 2} />
+                    <span className="text-[10px] font-bold">{item.label}</span>
+                </button>
+            ); 
+        })}
+        
+        {/* Menu Button */}
+        <button 
+            onClick={() => setShowMobileMenu(true)} 
+            className={`flex flex-col items-center gap-1 ${showMobileMenu ? 'text-blue-600' : 'text-gray-400'}`}
+        >
+            <Menu size={24} strokeWidth={showMobileMenu ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">سایر</span>
+        </button>
       </div>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-[100dvh] overflow-hidden relative min-w-0">
+        {/* Mobile Header */}
         <header className="bg-white shadow-sm p-4 md:hidden no-print flex items-center justify-between shrink-0 relative z-40 safe-pt">
             <div className="flex items-center gap-3">
                 {activeTab !== 'dashboard' && (<button onClick={() => setActiveTab('dashboard')} className="p-1.5 -mr-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight size={24} /></button>)}
-                <div className="flex items-center gap-2" onClick={() => setShowProfileModal(true)}><div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-gray-300">{currentUser.avatar ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover"/> : <UserIcon size={16} className="text-gray-500 m-2" />}</div><div><h1 className="font-bold text-gray-800 text-sm">{activeTab === 'dashboard' ? 'سیستم مالی' : navItems.find(i => i.id === activeTab)?.label}</h1><div className="text-[10px] text-gray-500">{currentUser.fullName}</div></div></div>
+                <div className="flex items-center gap-2" onClick={() => setShowProfileModal(true)}>
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm border border-blue-200">
+                        {currentUser.fullName.charAt(0)}
+                    </div>
+                    <div>
+                        <h1 className="font-bold text-gray-800 text-sm">{navItems.find(i => i.id === activeTab)?.label || 'سیستم مالی'}</h1>
+                        <div className="text-[10px] text-gray-500">{currentUser.fullName}</div>
+                    </div>
+                </div>
             </div>
             <div className="flex items-center gap-2">
-                {(!isStandalone && (deferredPrompt || isIOS)) && (
-                    <button onClick={handleInstallClick} className="p-2 bg-teal-50 text-teal-600 rounded-lg text-xs font-bold flex items-center gap-1">
-                        <Download size={16} />
-                        <span className="hidden xs:inline">نصب</span>
-                    </button>
-                )}
                 <div className="relative notification-trigger" ref={mobileNotifRef}>
                     <button onClick={() => setShowNotifDropdown(!showNotifDropdown)} className="relative p-2 rounded-full hover:bg-gray-100">
-                        <Bell size={20} className="text-gray-600" />
+                        <Bell size={24} className="text-gray-600" />
                         {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white"></span>}
                     </button>
                     {showNotifDropdown && <NotificationDropdown />}

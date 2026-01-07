@@ -8,6 +8,7 @@ import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Ar
 import PrintVoucher from './PrintVoucher';
 import EditOrderModal from './EditOrderModal';
 import { apiCall } from '../services/apiService';
+import MobileOrderCard from './mobile/MobileOrderCard'; // Reuse the card component
 
 interface ManageOrdersProps {
   orders: PaymentOrder[];
@@ -24,8 +25,6 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
   const [editingOrder, setEditingOrder] = useState<PaymentOrder | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Removed blocking loading state for fast approvals
-  
   const [showFilters, setShowFilters] = useState(false);
   const [amountRange, setAmountRange] = useState({ min: '', max: '' });
   const [dateRange, setDateRange] = useState({
@@ -36,6 +35,14 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
   const [companyFilter, setCompanyFilter] = useState('');
   
   const [currentStatusFilter, setCurrentStatusFilter] = useState<any>(statusFilter || null);
+
+  // Check if mobile
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+      const handleResize = () => setIsMobile(window.innerWidth < 768);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
       setActiveTab(initialTab);
@@ -131,12 +138,10 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
     
     if (window.confirm(msg)) {
         try {
-            // Optimistic update: Update DB and UI immediately
             const updatedOrders = await updateOrderStatus(id, nextStatus, currentUser); 
-            refreshData(); // Re-fetch or use returned updatedOrders to update parent state if passed
+            refreshData(); 
             setViewOrder(null); 
             
-            // BACKGROUND PROCESSING: Queue WhatsApp notification
             const order = updatedOrders.find(o => o.id === id);
             if (order) {
                 const event = new CustomEvent('QUEUE_WHATSAPP_JOB', { 
@@ -168,7 +173,6 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
               await apiCall(`/orders/${id}`, 'PUT', { status: OrderStatus.REVOCATION_PENDING_FINANCE, updatedAt: Date.now() });
               await refreshData();
               setViewOrder(null);
-              // Trigger background job for revocation if needed
           } catch (e) {
               alert('خطا در عملیات ابطال.');
           }
@@ -190,7 +194,6 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
   };
 
   const handleExportCSV = () => {
-      // ... (Same export logic) ...
       if (filteredOrders.length === 0) { alert("هیچ سفارشی موجود نیست."); return; }
       const headers = ["شماره دستور", "تاریخ", "گیرنده", "مبلغ", "شرکت پرداخت کننده", "بانک/روش", "شرح", "وضعیت", "درخواست کننده"];
       const rows = filteredOrders.map(o => {
@@ -293,6 +296,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
     <>
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
         <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col gap-4">
+            {/* Search and Tabs - Stacked on Mobile */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div className="flex bg-gray-100 p-1 rounded-lg w-full lg:w-auto">
                     <button onClick={() => { setActiveTab('current'); setCurrentStatusFilter(null); }} className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'current' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}><ListChecks size={18} /> کارتابل جاری</button>
@@ -354,89 +358,110 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
             </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-right min-w-[800px]">
-            <thead className="bg-gray-50 text-gray-600 font-medium">
-              <tr>
-                <th className="px-6 py-4">ش. دستور</th>
-                <th className="px-6 py-4">تاریخ</th>
-                <th className="px-6 py-4">گیرنده / شرح</th>
-                <th className="px-6 py-4">شرکت پرداخت کننده</th>
-                <th className="px-6 py-4">بانک / روش</th>
-                <th className="px-6 py-4">مبلغ کل</th>
-                <th className="px-6 py-4">وضعیت</th>
-                <th className="px-6 py-4 text-center">عملیات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredOrders.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-8 text-gray-400">موردی یافت نشد</td></tr>
-              ) : (
-                  filteredOrders.map((order) => {
-                      const isRevocation = isRevocationStatus(order.status);
-                      const rowClass = isRevocation ? "bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500 transition-colors" : "hover:bg-gray-50/80 transition-colors";
+        {/* --- RESPONSIVE LIST RENDERING --- */}
+        {isMobile ? (
+            <div className="p-4 bg-gray-50 min-h-[400px]">
+                {filteredOrders.length === 0 ? (
+                    <div className="text-center text-gray-400 py-10">موردی یافت نشد</div>
+                ) : (
+                    filteredOrders.map(order => (
+                        <MobileOrderCard 
+                            key={order.id} 
+                            order={order} 
+                            onView={setViewOrder} 
+                            onDelete={handleDelete}
+                            canDelete={canDelete(order)}
+                        />
+                    ))
+                )}
+            </div>
+        ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right min-w-[800px]">
+                <thead className="bg-gray-50 text-gray-600 font-medium">
+                  <tr>
+                    <th className="px-6 py-4">ش. دستور</th>
+                    <th className="px-6 py-4">تاریخ</th>
+                    <th className="px-6 py-4">گیرنده / شرح</th>
+                    <th className="px-6 py-4">شرکت پرداخت کننده</th>
+                    <th className="px-6 py-4">بانک / روش</th>
+                    <th className="px-6 py-4">مبلغ کل</th>
+                    <th className="px-6 py-4">وضعیت</th>
+                    <th className="px-6 py-4 text-center">عملیات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredOrders.length === 0 ? (
+                      <tr><td colSpan={8} className="text-center py-8 text-gray-400">موردی یافت نشد</td></tr>
+                  ) : (
+                      filteredOrders.map((order) => {
+                          const isRevocation = isRevocationStatus(order.status);
+                          const rowClass = isRevocation ? "bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500 transition-colors" : "hover:bg-gray-50/80 transition-colors";
 
-                      return (
-                      <tr key={order.id} className={rowClass}>
-                        <td className="px-6 py-4 font-mono text-gray-500">#{order.trackingNumber}</td>
-                        <td className="px-6 py-4 text-gray-700">{formatDate(order.date)}</td>
-                        <td className="px-6 py-4 font-medium text-gray-900 max-w-[200px]"><div className="truncate font-bold">{order.payee}</div><div className="text-xs text-gray-500 truncate mt-1">{order.description}</div><div className="flex gap-1 mt-1">{order.attachments?.map((a,i) => <a key={i} href={a.data} target="_blank" className="text-blue-500 text-[10px] bg-blue-50 px-1 rounded flex items-center"><Paperclip size={10}/></a>)}</div></td>
-                        <td className="px-6 py-4 text-xs font-bold text-gray-700">{order.payingCompany || '-'}</td>
-                        <td className="px-6 py-4 text-xs text-gray-600">
-                            {order.paymentDetails.map((d, i) => (
-                                <div key={i} className="truncate max-w-[120px]" title={d.bankName || d.method}>
-                                    {d.bankName ? d.bankName : d.method === PaymentMethod.CASH ? 'صندوق' : d.method}
-                                </div>
-                            ))}
-                        </td>
-                        <td className="px-6 py-4 font-bold text-gray-900">{formatCurrency(order.totalAmount)}</td>
-                        <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                order.status === OrderStatus.APPROVED_CEO ? 'bg-green-50 text-green-700 border-green-200' : 
-                                order.status === OrderStatus.REVOKED ? 'bg-gray-100 text-gray-700 border-gray-300' :
-                                order.status === OrderStatus.REJECTED ? 'bg-red-50 text-red-700 border-red-200' : 
-                                isRevocation ? 'bg-red-100 text-red-800 border-red-200 animate-pulse' :
-                                'bg-yellow-50 text-yellow-700 border-yellow-200'
-                            }`}>
-                                {isRevocation && <RefreshCcw size={12} className="ml-1 animate-spin-slow"/>}
-                                {getStatusLabel(order.status)}
-                            </span>
-                            {order.status === OrderStatus.REJECTED && order.rejectionReason && (
-                                <div className="text-[10px] text-red-500 mt-1 max-w-[140px] truncate" title={order.rejectionReason}>دلیل: {order.rejectionReason}</div>
-                            )}
-                        </td>
-                        <td className="px-6 py-4"><div className="flex justify-center items-center gap-2">
-                             <button 
-                                onClick={() => setViewOrder(order)} 
-                                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs transition-colors shadow-sm ${isRevocation ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-                             >
-                                <Eye size={16}/> مشاهده
-                             </button>
-                             {canDelete(order) && <button onClick={() => handleDelete(order.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="حذف"><Trash2 size={16}/></button>}
-                        </div></td>
-                      </tr>
-                  )})
-              )}
-            </tbody>
-          </table>
-        </div>
+                          return (
+                          <tr key={order.id} className={rowClass}>
+                            <td className="px-6 py-4 font-mono text-gray-500">#{order.trackingNumber}</td>
+                            <td className="px-6 py-4 text-gray-700">{formatDate(order.date)}</td>
+                            <td className="px-6 py-4 font-medium text-gray-900 max-w-[200px]"><div className="truncate font-bold">{order.payee}</div><div className="text-xs text-gray-500 truncate mt-1">{order.description}</div><div className="flex gap-1 mt-1">{order.attachments?.map((a,i) => <a key={i} href={a.data} target="_blank" className="text-blue-500 text-[10px] bg-blue-50 px-1 rounded flex items-center"><Paperclip size={10}/></a>)}</div></td>
+                            <td className="px-6 py-4 text-xs font-bold text-gray-700">{order.payingCompany || '-'}</td>
+                            <td className="px-6 py-4 text-xs text-gray-600">
+                                {order.paymentDetails.map((d, i) => (
+                                    <div key={i} className="truncate max-w-[120px]" title={d.bankName || d.method}>
+                                        {d.bankName ? d.bankName : d.method === PaymentMethod.CASH ? 'صندوق' : d.method}
+                                    </div>
+                                ))}
+                            </td>
+                            <td className="px-6 py-4 font-bold text-gray-900">{formatCurrency(order.totalAmount)}</td>
+                            <td className="px-6 py-4">
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                    order.status === OrderStatus.APPROVED_CEO ? 'bg-green-50 text-green-700 border-green-200' : 
+                                    order.status === OrderStatus.REVOKED ? 'bg-gray-100 text-gray-700 border-gray-300' :
+                                    order.status === OrderStatus.REJECTED ? 'bg-red-50 text-red-700 border-red-200' : 
+                                    isRevocation ? 'bg-red-100 text-red-800 border-red-200 animate-pulse' :
+                                    'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                }`}>
+                                    {isRevocation && <RefreshCcw size={12} className="ml-1 animate-spin-slow"/>}
+                                    {getStatusLabel(order.status)}
+                                </span>
+                                {order.status === OrderStatus.REJECTED && order.rejectionReason && (
+                                    <div className="text-[10px] text-red-500 mt-1 max-w-[140px] truncate" title={order.rejectionReason}>دلیل: {order.rejectionReason}</div>
+                                )}
+                            </td>
+                            <td className="px-6 py-4"><div className="flex justify-center items-center gap-2">
+                                 <button 
+                                    onClick={() => setViewOrder(order)} 
+                                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs transition-colors shadow-sm ${isRevocation ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                                 >
+                                    <Eye size={16}/> مشاهده
+                                 </button>
+                                 {canDelete(order) && <button onClick={() => handleDelete(order.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="حذف"><Trash2 size={16}/></button>}
+                            </div></td>
+                          </tr>
+                      )})
+                  )}
+                </tbody>
+              </table>
+            </div>
+        )}
       </div>
       
       {viewOrder && (
-          <PrintVoucher 
-            order={viewOrder} 
-            onClose={() => setViewOrder(null)} 
-            settings={settings}
-            onApprove={canApprove(viewOrder) ? () => handleApprove(viewOrder.id, viewOrder.status) : undefined}
-            onReject={canApprove(viewOrder) ? () => handleReject(viewOrder.id) : undefined}
-            onEdit={canEdit(viewOrder) ? () => handleEdit(viewOrder) : undefined}
-            onRevoke={
-                (!isRevocationStatus(viewOrder.status) && viewOrder.status !== OrderStatus.REVOKED && 
-                (currentUser.role === UserRole.ADMIN || viewOrder.requester === currentUser.fullName)) 
-                ? () => handleRevoke(viewOrder.id) 
-                : undefined
-            }
-          />
+          <div className={isMobile ? "fixed inset-0 z-[100] bg-white overflow-y-auto" : ""}>
+              <PrintVoucher 
+                order={viewOrder} 
+                onClose={() => setViewOrder(null)} 
+                settings={settings}
+                onApprove={canApprove(viewOrder) ? () => handleApprove(viewOrder.id, viewOrder.status) : undefined}
+                onReject={canApprove(viewOrder) ? () => handleReject(viewOrder.id) : undefined}
+                onEdit={canEdit(viewOrder) ? () => handleEdit(viewOrder) : undefined}
+                onRevoke={
+                    (!isRevocationStatus(viewOrder.status) && viewOrder.status !== OrderStatus.REVOKED && 
+                    (currentUser.role === UserRole.ADMIN || viewOrder.requester === currentUser.fullName)) 
+                    ? () => handleRevoke(viewOrder.id) 
+                    : undefined
+                }
+              />
+          </div>
       )}
       
       {editingOrder && <EditOrderModal order={editingOrder} onClose={() => setEditingOrder(null)} onSave={refreshData} />}

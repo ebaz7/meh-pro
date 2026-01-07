@@ -26,18 +26,13 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app'; 
 import { PushNotifications } from '@capacitor/push-notifications'; 
 import { sendNotification } from './services/notificationService';
-
-// MOBILE IMPORTS
 import useIsMobile from './hooks/useIsMobile';
-import MobileLayout from './components/mobile/MobileLayout';
-import MobileDashboard from './components/mobile/MobileDashboard';
-import MobileOrderList from './components/mobile/MobileOrderList';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTabState] = useState('dashboard');
   const [orders, setOrders] = useState<PaymentOrder[]>([]);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]); // Lifted State
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]); 
   const [settings, setSettings] = useState<SystemSettings | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -56,12 +51,8 @@ function App() {
   const IDLE_LIMIT = 60 * 60 * 1000; 
   const NOTIFICATION_CHECK_KEY = 'last_notification_check';
   
-  // Track last message ID to detect new ones
   const lastChatMsgIdRef = useRef<string | null>(null);
-
   const isNative = Capacitor.isNativePlatform();
-  
-  // DETECT MOBILE
   const isMobile = useIsMobile();
 
   const safePushState = (state: any, title: string, url?: string) => { 
@@ -80,15 +71,8 @@ function App() {
         PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
             const data = notification.notification.data;
             if (data && data.url) {
-                if (data.url.includes('chat') || data.url === '#chat') {
-                    setActiveTab('chat');
-                } else if (data.url.includes('manage-exit') || data.url === '#manage-exit') {
-                    setActiveTab('manage-exit');
-                } else if (data.url.includes('manage') || data.url === '#manage') {
-                    setActiveTab('manage');
-                } else if (data.url.includes('warehouse') || data.url === '#warehouse') {
-                    setActiveTab('warehouse');
-                }
+                const target = data.url.replace('#', '');
+                setActiveTab(target);
             }
         });
     }
@@ -302,30 +286,6 @@ function App() {
   const handleGoToWarehouseApprovals = () => { setWarehouseInitialTab('approvals'); setActiveTab('warehouse'); };
 
   if (!currentUser) return <Login onLogin={handleLogin} />;
-
-  // --- RENDER LOGIC ---
-  
-  if (isMobile) {
-      return (
-        <ErrorBoundary>
-            <MobileLayout 
-                activeTab={activeTab} 
-                setActiveTab={setActiveTab} 
-                currentUser={currentUser} 
-                onLogout={handleLogout}
-                unreadCount={notifications.filter(n => !n.read).length}
-            >
-                {activeTab === 'dashboard' && <MobileDashboard orders={orders} currentUser={currentUser} onNavigate={setActiveTab} />}
-                {activeTab === 'create' && <CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} />}
-                {activeTab === 'manage' && <MobileOrderList orders={orders} currentUser={currentUser} refreshData={() => loadData(true)} />}
-                
-                {/* Fallback to desktop views for complex modules if not fully converted yet, wrapped for mobile scrolling */}
-                {activeTab === 'settings' && <div className="pb-20"><Settings /></div>}
-                {activeTab === 'chat' && <ChatRoom currentUser={currentUser} preloadedMessages={chatMessages} onRefresh={() => loadData(true)} />}
-            </MobileLayout>
-        </ErrorBoundary>
-      );
-  }
 
   return (
     <ErrorBoundary>
