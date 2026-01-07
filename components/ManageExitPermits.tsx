@@ -41,32 +41,32 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- STRICT & SIMPLE APPROVAL LOGIC (UPDATED WITH DIRECT ROLE CHECK) ---
+  // --- STRICT APPROVAL LOGIC (BYPASSES PERMISSIONS OBJ TO ENSURE VISIBILITY) ---
   const canApprove = (p: ExitPermit) => {
-      // 0. Admin always can
-      if (currentUser.role === UserRole.ADMIN) return true;
-
       const role = currentUser.role;
       const status = p.status;
 
-      // 1. CEO Step (Start)
+      // 0. Admin always can
+      if (role === UserRole.ADMIN) return true;
+
+      // 1. CEO Step
       if (status === ExitPermitStatus.PENDING_CEO) {
-          return role === UserRole.CEO || !!permissions.canApproveExitCeo;
+          return role === UserRole.CEO;
       }
       
-      // 2. Factory Manager Step (After CEO)
+      // 2. Factory Manager Step
       if (status === ExitPermitStatus.PENDING_FACTORY) {
-          return role === UserRole.FACTORY_MANAGER || role === UserRole.CEO || !!permissions.canApproveExitFactory;
+          return role === UserRole.FACTORY_MANAGER || role === UserRole.CEO;
       }
       
-      // 3. Warehouse Step (After Factory)
+      // 3. Warehouse Step
       if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          return role === UserRole.WAREHOUSE_KEEPER || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitWarehouse;
+          return role === UserRole.WAREHOUSE_KEEPER || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER;
       }
       
       // 4. Security Step (Final Exit)
       if (status === ExitPermitStatus.PENDING_SECURITY) {
-          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || role === UserRole.ADMIN || !!permissions.canApproveExitSecurity;
+          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER; // Added seniors for safety
       }
       
       return false;
