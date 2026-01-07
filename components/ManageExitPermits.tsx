@@ -40,33 +40,32 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- RESTORED ROBUST LOGIC ---
+  // --- REVISED APPROVAL LOGIC (Explicit Checks) ---
   const canApprove = (p: ExitPermit) => {
       // Archive Check
       if (activeTab === 'archive' && !permissions.canEditExitArchive) return false;
       
-      // 1. Pending CEO (For CEO/Admin)
-      if (p.status === ExitPermitStatus.PENDING_CEO) {
-          return currentUser.role === UserRole.CEO || currentUser.role === UserRole.ADMIN || permissions.canApproveExitCeo;
+      const role = currentUser.role;
+      const status = p.status;
+
+      // 1. Pending CEO (Admin / CEO)
+      if (status === ExitPermitStatus.PENDING_CEO) {
+          return role === UserRole.CEO || role === UserRole.ADMIN || permissions.canApproveExitCeo;
       }
       
-      // 2. Pending Factory (For Factory Manager/Admin/CEO)
-      if (p.status === ExitPermitStatus.PENDING_FACTORY) {
-          return currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || permissions.canApproveExitFactory;
+      // 2. Pending Factory (Admin / CEO / Factory Manager)
+      if (status === ExitPermitStatus.PENDING_FACTORY) {
+          return role === UserRole.FACTORY_MANAGER || role === UserRole.ADMIN || role === UserRole.CEO || permissions.canApproveExitFactory;
       }
       
-      // 3. Pending Warehouse (For Warehouse/Admin/CEO/Factory Manager)
-      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          // If specific role exists, prioritize it, otherwise check generic permissions
-          if (currentUser.role === UserRole.WAREHOUSE_KEEPER) return true;
-          if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER) return true;
-          if (permissions.canApproveExitWarehouse) return true;
-          return false;
+      // 3. Pending Warehouse (Admin / CEO / Warehouse Keeper / Factory Manager)
+      if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          return role === UserRole.WAREHOUSE_KEEPER || role === UserRole.ADMIN || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER || permissions.canApproveExitWarehouse;
       }
       
-      // 4. Pending Security (For Security/Admin/CEO)
-      if (p.status === ExitPermitStatus.PENDING_SECURITY) {
-          return currentUser.role === UserRole.SECURITY_GUARD || currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || permissions.canApproveExitSecurity;
+      // 4. Pending Security (Admin / CEO / Security Roles)
+      if (status === ExitPermitStatus.PENDING_SECURITY) {
+          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || role === UserRole.ADMIN || role === UserRole.CEO || permissions.canApproveExitSecurity;
       }
       
       return false;
@@ -428,8 +427,8 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                                 </div>
                                             )}
                                             
-                                            {/* GENERAL APPROVE */}
-                                            {canApprove(p) && (
+                                            {/* GENERAL APPROVE - Hide if Security Box is Shown */}
+                                            {canApprove(p) && !canShowSecurityBox(p) && (
                                                 <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-100 text-green-600 p-2 rounded-lg hover:bg-green-200" title="تایید"><CheckCircle size={16}/></button>
                                             )}
                                         </>

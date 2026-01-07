@@ -1,4 +1,3 @@
-
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
@@ -12,23 +11,26 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-class ErrorBoundary extends React.Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-    errorInfo: null
-  };
+class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null
+    };
+  }
 
-  public static getDerivedStateFromError(error: Error): Partial<State> {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
     this.setState({ errorInfo });
   }
 
-  public render() {
+  render() {
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
@@ -49,7 +51,7 @@ class ErrorBoundary extends React.Component<Props, State> {
 
             <button 
               onClick={() => {
-                  localStorage.removeItem('app_current_user'); // Optional: logout user to reset state
+                  localStorage.removeItem('app_current_user'); 
                   window.location.reload();
               }} 
               className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
