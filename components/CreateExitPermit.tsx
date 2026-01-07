@@ -56,6 +56,8 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
       try {
           const totalCartons = items.reduce((acc, i) => acc + (Number(i.cartonCount) || 0), 0);
           const totalWeight = items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+          const goodsSummary = items.map(i => i.goodsName).join('، ');
+          const recipientSummary = destinations.map(d => d.recipientName).join('، ');
 
           const permit: ExitPermit = {
               id: generateUUID(),
@@ -64,8 +66,8 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
               requester: currentUser.fullName,
               items: items,
               destinations: destinations,
-              goodsName: items.map(i => i.goodsName).join('، '),
-              recipientName: destinations.map(d => d.recipientName).join('، '),
+              goodsName: goodsSummary,
+              recipientName: recipientSummary,
               cartonCount: totalCartons,
               weight: totalWeight,
               plateNumber: driverInfo.plateNumber,
@@ -91,8 +93,12 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
                           const base64 = canvas.toDataURL('image/png').split(',')[1];
                           
                           let caption = `🚛 *درخواست مجوز خروج جدید*\n`;
-                          caption += `شماره: ${permit.permitNumber}\n`;
-                          caption += `درخواست کننده: ${permit.requester}\n\n`;
+                          caption += `🔢 شماره: ${permit.permitNumber}\n`;
+                          caption += `📅 تاریخ: ${formatDate(permit.date)}\n`;
+                          caption += `📦 کالا: ${goodsSummary}\n`;
+                          caption += `👤 گیرنده: ${recipientSummary}\n`;
+                          caption += `🔢 تعداد: ${totalCartons} کارتن\n`;
+                          caption += `👤 درخواست کننده: ${permit.requester}\n\n`;
                           caption += `لطفا جهت بررسی و تایید اقدام نمایید.`;
 
                           await apiCall('/send-whatsapp', 'POST', { 
@@ -104,7 +110,7 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
                   } catch(e) { console.error("Auto send error", e); }
               }
               onSuccess();
-          }, 1500);
+          }, 2000);
 
       } catch (e) { alert('خطا در ثبت درخواست'); setIsSubmitting(false); }
   };
@@ -118,8 +124,10 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in max-w-4xl mx-auto relative">
         {createdPermit && (
-            <div className="hidden-print-export" style={{position: 'absolute', top: '-9999px', left: '-9999px', width: '800px'}}>
-                <PrintExitPermit permit={createdPermit} onClose={()=>{}} embed />
+            <div className="hidden-print-export" style={{position: 'absolute', top: '-9999px', left: '-9999px', width: '210mm'}}>
+                <div id={`print-permit-${createdPermit.id}`}>
+                    <PrintExitPermit permit={createdPermit} onClose={()=>{}} embed />
+                </div>
             </div>
         )}
         <div className="p-6 border-b border-gray-100 flex items-center gap-3"><div className="bg-orange-50 p-2 rounded-lg text-orange-600"><Truck size={24} /></div><h2 className="text-xl font-bold text-gray-800">ثبت درخواست خروج بار (مدیر فروش)</h2></div>

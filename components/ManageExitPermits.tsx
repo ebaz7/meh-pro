@@ -40,7 +40,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- REVISED APPROVAL VISIBILITY ---
   const canApprove = (p: ExitPermit) => {
       // Archive Check
       if (activeTab === 'archive' && !permissions.canEditExitArchive) return false;
@@ -193,54 +192,71 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                       const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
                       const base64 = canvas.toDataURL('image/png').split(',')[1];
                       const users = await getUsers();
+                      
+                      // Identify Notification Groups
+                      const group1 = settings?.exitPermitNotificationGroup;
+                      const group2 = settings?.exitPermitSecondGroupConfig?.groupId;
+
+                      // --- LOGIC PER STEP ---
 
                       if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
-                          // Sent to Factory Manager
+                          // CEO Approved -> Send to Factory Manager AND Group 1
                           const isEdited = (permitToApprove.updatedAt || 0) > (permitToApprove.createdAt || 0) + 60000;
                           const title = isEdited ? "📢 *اطلاعیه: مجوز خروج صادر شد (اصلاحیه)*" : "📢 *اطلاعیه: مجوز خروج صادر شد*";
                           const caption = generateFullCaption(updatedPermitMock, title);
 
+                          // 1. Factory Manager
                           const target = users.find(u => u.role === UserRole.FACTORY_MANAGER && u.phoneNumber);
                           if (target) { try { await apiCall('/send-whatsapp', 'POST', { number: target.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {} }
 
-                          if (settings?.exitPermitNotificationGroup) {
-                              await sendWithRetry({ number: settings.exitPermitNotificationGroup, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3);
+                          // 2. Group 1
+                          if (group1) {
+                              await sendWithRetry({ number: group1, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3);
                           }
                       } 
                       else if (nextStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
-                          // Sent to Warehouse
-                          const caption = generateFullCaption(updatedPermitMock, "🏭 *تایید مدیر کارخانه انجام شد* (ارسال به سرپرست انبار)");
+                          // Factory Approved -> Send to Warehouse AND Group 2
+                          const caption = generateFullCaption(updatedPermitMock, "🏭 *تایید مدیر کارخانه انجام شد* (مجوز ورود به انبار)");
+                          
+                          // 1. Warehouse Keeper
                           const warehouseUsers = users.filter(u => u.role === UserRole.WAREHOUSE_KEEPER && u.phoneNumber);
                           for (const whUser of warehouseUsers) {
                             try { await apiCall('/send-whatsapp', 'POST', { number: whUser.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {}
                           }
+
+                          // 2. Group 2
+                          if (group2) {
+                              await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          }
                       }
                       else if (nextStatus === ExitPermitStatus.PENDING_SECURITY) {
-                          // Sent to Security
+                          // Warehouse Confirmed -> Send to Security AND Group 2
                           const caption = generateFullCaption(updatedPermitMock, "📦 *تایید انبار و توزین نهایی انجام شد* (ارسال به انتظامات)");
+                          
+                          // 1. Security
                           const securityUsers = users.filter(u => (u.role === UserRole.SECURITY_GUARD || u.role === UserRole.SECURITY_HEAD) && u.phoneNumber);
                           for (const sec of securityUsers) {
                             try { await apiCall('/send-whatsapp', 'POST', { number: sec.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {}
                           }
-                      }
-                      else if (nextStatus === ExitPermitStatus.EXITED) {
-                          // Final Exit
-                          const caption = generateFullCaption(updatedPermitMock, "✅ *خروج نهایی بار از کارخانه ثبت شد*", true);
-                          const target = users.find(u => u.fullName === updatedPermitMock.requester && u.phoneNumber);
-                          if (target) { try { await apiCall('/send-whatsapp', 'POST', { number: target.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch(e) {} }
-                          
-                          if (settings?.exitPermitNotificationGroup) {
-                              const success = await sendWithRetry({ number: settings.exitPermitNotificationGroup, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3);
-                              if (success) { await updateExitPermitStatus(id, ExitPermitStatus.EXITED, currentUser, { sentToGroup: true }); }
+
+                          // 2. Group 2
+                          if (group2) {
+                              await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
                           }
                       }
+                      else if (nextStatus === ExitPermitStatus.EXITED) {
+                          // Security Exited -> Send to Group 1 AND Group 2 (With emphasis on time)
+                          const caption = generateFullCaption(updatedPermitMock, "✅ *خروج نهایی بار از کارخانه ثبت شد*", true);
+                          
+                          // 1. Group 1
+                          if (group1) {
+                              const success = await sendWithRetry({ number: group1, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3);
+                              if (success) { await updateExitPermitStatus(id, ExitPermitStatus.EXITED, currentUser, { sentToGroup: true }); }
+                          }
 
-                      // Second Group Logic
-                      if (settings?.exitPermitSecondGroupConfig?.groupId) {
-                          const conf = settings.exitPermitSecondGroupConfig;
-                          if (conf.activeStatuses.includes(nextStatus)) {
-                              let secondGroupCaption = generateFullCaption(updatedPermitMock, `📢 *اطلاعیه خروج (گروه دوم) - وضعیت: ${nextStatus}*`, nextStatus === ExitPermitStatus.EXITED);
-                              await sendWithRetry({ number: conf.groupId, message: secondGroupCaption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          // 2. Group 2
+                          if (group2) {
+                              await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
                           }
                       }
 
