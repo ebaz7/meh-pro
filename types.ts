@@ -15,12 +15,12 @@ export enum UserRole {
 export enum PaymentMethod {
   TRANSFER = 'حواله بانکی',
   CHEQUE = 'چک',
+  CASH = 'نقد',
+  POS = 'کارتخوان',
   SHEBA = 'شبا',
-  INTERNAL_TRANSFER = 'انتقال داخلی',
   SATNA = 'ساتنا',
   PAYA = 'پایا',
-  CASH = 'نقد',
-  POS = 'کارتخوان'
+  INTERNAL_TRANSFER = 'حواله داخلی'
 }
 
 export enum OrderStatus {
@@ -35,58 +35,13 @@ export enum OrderStatus {
   REVOKED = 'باطل شده'
 }
 
-export enum ExitPermitStatus {
-  PENDING_CEO = 'در انتظار تایید مدیرعامل',
-  PENDING_FACTORY = 'تایید مدیرعامل / در انتظار خروج (کارخانه)',
-  PENDING_WAREHOUSE = 'در انتظار تایید انبار',
-  PENDING_SECURITY = 'در انتظار تایید انتظامات',
-  EXITED = 'خارج شده (بایگانی)',
-  REJECTED = 'رد شده'
-}
-
-export enum SecurityStatus {
-  PENDING_SUPERVISOR = 'در انتظار تایید سرپرست',
-  APPROVED_SUPERVISOR_CHECK = 'تایید سرپرست / در انتظار مدیر',
-  PENDING_FACTORY = 'در انتظار تایید مدیر کارخانه',
-  APPROVED_FACTORY_CHECK = 'تایید مدیر کارخانه / در انتظار مدیرعامل',
-  PENDING_CEO = 'در انتظار تایید مدیرعامل',
-  ARCHIVED = 'بایگانی شده',
-  REJECTED = 'رد شده'
-}
-
-export enum TradeStage {
-  LICENSES = 'مجوزها و پروفرما',
-  INSURANCE = 'بیمه',
-  ALLOCATION_QUEUE = 'در صف تخصیص ارز',
-  ALLOCATION_APPROVED = 'تخصیص یافته',
-  CURRENCY_PURCHASE = 'خرید ارز',
-  SHIPPING_DOCS = 'اسناد حمل',
-  INSPECTION = 'گواهی بازرسی',
-  CLEARANCE_DOCS = 'ترخیصیه و قبض انبار',
-  GREEN_LEAF = 'برگ سبز',
-  INTERNAL_SHIPPING = 'حمل داخلی',
-  AGENT_FEES = 'هزینه‌های ترخیص'
-}
-
-export interface User {
-  id: string;
-  username: string;
-  password?: string;
-  fullName: string;
-  role: UserRole | string;
-  avatar?: string;
-  phoneNumber?: string;
-  telegramChatId?: string;
-  canManageTrade?: boolean;
-  receiveNotifications?: boolean;
-}
-
 export interface PaymentDetail {
   id: string;
   method: PaymentMethod;
   amount: number;
-  bankName?: string;
   chequeNumber?: string;
+  bankName?: string;
+  description?: string;
   chequeDate?: string;
   sheba?: string;
   recipientBank?: string;
@@ -94,7 +49,6 @@ export interface PaymentDetail {
   destinationAccount?: string;
   destinationOwner?: string;
   destinationBranch?: string;
-  description?: string;
 }
 
 export interface PaymentOrder {
@@ -106,101 +60,30 @@ export interface PaymentOrder {
   description: string;
   status: OrderStatus;
   requester: string;
-  payingCompany: string;
+  createdAt: number;
+  updatedAt?: number;
   paymentDetails: PaymentDetail[];
   attachments?: { fileName: string, data: string }[];
+  payingCompany?: string;
   approverFinancial?: string;
   approverManager?: string;
   approverCeo?: string;
   rejectionReason?: string;
   rejectedBy?: string;
-  createdAt: number;
-  updatedAt?: number;
   fiscalYearId?: string;
 }
 
-export interface ExitPermitItem {
+export interface User {
   id: string;
-  goodsName: string;
-  cartonCount: number | string;
-  weight: number | string;
-  deliveredCartonCount?: number;
-  deliveredWeight?: number;
-}
-
-export interface ExitPermitDestination {
-  id: string;
-  recipientName: string;
-  address: string;
-  phone?: string;
-}
-
-export interface ExitPermit {
-  id: string;
-  permitNumber: number;
-  date: string;
-  requester: string;
-  items: ExitPermitItem[];
-  destinations: ExitPermitDestination[];
-  goodsName?: string;
-  recipientName?: string;
-  destinationAddress?: string;
-  cartonCount?: number;
-  weight?: number;
-  plateNumber?: string;
-  driverName?: string;
-  description?: string;
-  status: ExitPermitStatus;
-  approverCeo?: string;
-  approverFactory?: string;
-  approverWarehouse?: string;
-  approverSecurity?: string;
-  exitTime?: string;
-  rejectionReason?: string;
-  rejectedBy?: string;
-  createdAt: number;
-  updatedAt?: number;
-  sentToGroup?: boolean;
-  fiscalYearId?: string;
-}
-
-export interface WarehouseItem {
-  id: string;
-  name: string;
-  code: string;
-  unit: string;
-  containerCapacity?: number;
-}
-
-export interface WarehouseTransactionItem {
-  itemId: string;
-  itemName: string;
-  quantity: number;
-  weight: number;
-  unitPrice?: number;
-}
-
-export interface WarehouseTransaction {
-  id: string;
-  type: 'IN' | 'OUT';
-  date: string;
-  company: string;
-  number?: number;
-  proformaNumber?: string;
-  recipientName?: string;
-  driverName?: string;
-  plateNumber?: string;
-  destination?: string;
-  items: WarehouseTransactionItem[];
-  description?: string;
-  createdAt: number;
-  createdBy: string;
-  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
-  approvedBy?: string;
-  rejectionReason?: string;
-  rejectedBy?: string;
-  updatedAt?: number;
-  fiscalYearId?: string;
+  username: string;
+  password?: string;
+  fullName: string;
+  role: string;
+  canManageTrade?: boolean;
+  avatar?: string;
+  telegramChatId?: string;
+  phoneNumber?: string;
+  receiveNotifications?: boolean;
 }
 
 export interface AppNotification {
@@ -209,6 +92,34 @@ export interface AppNotification {
   message: string;
   timestamp: number;
   read: boolean;
+}
+
+export interface CompanyBank {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  sheba?: string;
+  formLayoutId?: string;
+  internalTransferTemplateId?: string;
+  enableDualPrint?: boolean;
+  internalWithdrawalTemplateId?: string;
+  internalDepositTemplateId?: string;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  logo?: string;
+  showInWarehouse?: boolean;
+  banks?: CompanyBank[];
+  letterhead?: string;
+  registrationNumber?: string;
+  nationalId?: string;
+  address?: string;
+  phone?: string;
+  fax?: string;
+  postalCode?: string;
+  economicCode?: string;
 }
 
 export interface RolePermissions {
@@ -222,10 +133,10 @@ export interface RolePermissions {
   canEditAll?: boolean;
   canDeleteOwn?: boolean;
   canDeleteAll?: boolean;
-  
   canManageTrade?: boolean;
   canManageSettings?: boolean;
   
+  // Exit Permit Permissions
   canCreateExitPermit?: boolean;
   canViewExitPermits?: boolean;
   canApproveExitCeo?: boolean;
@@ -235,10 +146,12 @@ export interface RolePermissions {
   canViewExitArchive?: boolean;
   canEditExitArchive?: boolean;
 
+  // Warehouse Permissions
   canManageWarehouse?: boolean;
   canViewWarehouseReports?: boolean;
   canApproveBijak?: boolean;
 
+  // Security Permissions
   canViewSecurity?: boolean;
   canCreateSecurityLog?: boolean;
   canApproveSecuritySupervisor?: boolean;
@@ -253,124 +166,7 @@ export interface Contact {
   id: string;
   name: string;
   number: string;
-  isGroup?: boolean;
-}
-
-export interface CompanyBank {
-  id: string;
-  bankName: string;
-  accountNumber?: string;
-  sheba?: string;
-  formLayoutId?: string;
-  enableDualPrint?: boolean;
-  internalTransferTemplateId?: string;
-  internalWithdrawalTemplateId?: string;
-  internalDepositTemplateId?: string;
-}
-
-export interface Company {
-  id: string;
-  name: string;
-  logo?: string;
-  letterhead?: string;
-  banks?: CompanyBank[];
-  showInWarehouse?: boolean;
-  nationalId?: string;
-  registrationNumber?: string;
-  address?: string;
-  postalCode?: string;
-  phone?: string;
-  fax?: string;
-  economicCode?: string;
-}
-
-export interface DailyGuardInfo {
-  name: string;
-  entry: string;
-  exit: string;
-}
-
-export interface DailySecurityMeta {
-  dailyDescription?: string;
-  morningGuard?: DailyGuardInfo;
-  eveningGuard?: DailyGuardInfo;
-  nightGuard?: DailyGuardInfo;
-  isFactoryDailyApproved?: boolean;
-  isCeoDailyApproved?: boolean;
-  isDelaySupervisorApproved?: boolean;
-  isDelayFactoryApproved?: boolean;
-  isDelayCeoApproved?: boolean;
-}
-
-export interface PrintField {
-  id: string;
-  key: string;
-  label: string;
-  x: number;
-  y: number;
-  width?: number;
-  fontSize: number;
-  align?: 'left' | 'center' | 'right';
-  isBold?: boolean;
-  letterSpacing?: number;
-}
-
-export interface PrintTemplate {
-  id: string;
-  name: string;
-  width: number;
-  height: number;
-  pageSize: 'A4' | 'A5';
-  orientation: 'portrait' | 'landscape';
-  backgroundImage?: string;
-  fields: PrintField[];
-}
-
-export interface CompanySequenceConfig {
-  startTrackingNumber?: number;
-  startExitPermitNumber?: number;
-  startBijakNumber?: number;
-}
-
-export interface FiscalYear {
-  id: string;
-  label: string;
-  isClosed: boolean;
-  companySequences: Record<string, CompanySequenceConfig>;
-  createdAt: number;
-}
-
-export interface SystemSettings {
-  currentTrackingNumber: number;
-  currentExitPermitNumber: number;
-  companyNames: string[];
-  companies?: Company[];
-  defaultCompany: string;
-  bankNames: string[];
-  operatingBankNames?: string[];
-  commodityGroups: string[];
-  rolePermissions: Record<string, RolePermissions>;
-  customRoles?: CustomRole[];
-  savedContacts?: Contact[];
-  pwaIcon?: string;
-  telegramBotToken?: string;
-  telegramAdminId?: string;
-  smsApiKey?: string;
-  smsSenderNumber?: string;
-  googleCalendarId?: string;
-  whatsappNumber?: string;
-  geminiApiKey?: string;
-  insuranceCompanies?: string[];
-  warehouseSequences?: Record<string, number>;
-  exitPermitNotificationGroup?: string;
-  exitPermitNotificationGroup2?: string;
-  companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>;
-  defaultWarehouseGroup?: string;
-  defaultSalesManager?: string;
-  dailySecurityMeta?: Record<string, DailySecurityMeta>;
-  printTemplates?: PrintTemplate[];
-  activeFiscalYearId?: string;
-  fiscalYears?: FiscalYear[];
+  isGroup: boolean;
 }
 
 export interface ChatMessage {
@@ -382,18 +178,22 @@ export interface ChatMessage {
   timestamp: number;
   recipient?: string;
   groupId?: string;
-  attachment?: { fileName: string; url: string };
+  attachment?: { fileName: string, url: string };
   audioUrl?: string;
-  replyTo?: { id: string; sender: string; message: string };
+  replyTo?: {
+    id: string;
+    sender: string;
+    message: string;
+  };
   isEdited?: boolean;
 }
 
 export interface ChatGroup {
   id: string;
   name: string;
-  icon?: string;
-  members: string[];
+  members: string[]; // usernames
   createdBy: string;
+  icon?: string;
 }
 
 export interface GroupTask {
@@ -404,6 +204,30 @@ export interface GroupTask {
   isCompleted: boolean;
   createdBy: string;
   createdAt: number;
+}
+
+export enum TradeStage {
+  LICENSES = 'مجوزها و پروفرما',
+  INSURANCE = 'بیمه',
+  ALLOCATION_QUEUE = 'در صف تخصیص ارز',
+  ALLOCATION_APPROVED = 'تخصیص یافته',
+  CURRENCY_PURCHASE = 'خرید ارز',
+  SHIPPING_DOCS = 'اسناد حمل',
+  INSPECTION = 'گواهی بازرسی',
+  CLEARANCE_DOCS = 'ترخیصیه و قبض انبار',
+  GREEN_LEAF = 'برگ سبز',
+  INTERNAL_SHIPPING = 'حمل داخلی',
+  AGENT_FEES = 'هزینه‌های ترخیص',
+  FINAL_CALCULATION = 'قیمت تمام شده'
+}
+
+export interface TradeItem {
+  id: string;
+  name: string;
+  weight: number;
+  unitPrice: number;
+  totalPrice: number;
+  hsCode?: string;
 }
 
 export interface TradeTransaction {
@@ -426,11 +250,11 @@ export interface CurrencyTranche {
   date: string;
   amount: number;
   currencyType: string;
-  brokerName: string;
-  exchangeName: string;
   rate?: number;
   rialAmount?: number;
   currencyFee?: number;
+  exchangeName?: string;
+  brokerName?: string;
   isDelivered?: boolean;
   deliveryDate?: string;
   returnAmount?: number;
@@ -453,11 +277,11 @@ export interface CurrencyPurchaseData {
   isDelivered?: boolean;
   tranches?: CurrencyTranche[];
   guaranteeCheque?: {
-    amount: number;
-    bank: string;
-    chequeNumber: string;
-    dueDate: string;
-    isDelivered?: boolean;
+      amount: string;
+      bank: string;
+      chequeNumber: string;
+      dueDate: string;
+      isDelivered?: boolean;
   };
 }
 
@@ -468,22 +292,14 @@ export interface TradeStageData {
   costRial: number;
   costCurrency: number;
   currencyType: string;
-  attachments: { fileName: string; url: string }[];
+  attachments: { fileName: string, url: string }[];
   updatedAt: number;
   updatedBy: string;
+  // Specific fields
   queueDate?: string;
   allocationDate?: string;
   allocationCode?: string;
   allocationExpiry?: string;
-}
-
-export interface TradeItem {
-  id: string;
-  name: string;
-  hsCode?: string;
-  weight: number;
-  unitPrice: number;
-  totalPrice: number;
 }
 
 export type ShippingDocType = 'Commercial Invoice' | 'Packing List' | 'Bill of Lading' | 'Certificate of Origin';
@@ -515,14 +331,20 @@ export interface ShippingDocument {
   documentDate: string;
   createdAt: number;
   createdBy: string;
-  attachments: { fileName: string; url: string }[];
-  invoiceItems?: InvoiceItem[];
-  packingItems?: PackingItem[];
-  freightCost?: number;
+  attachments: { fileName: string, url: string }[];
+  
+  // Invoice Specific
   currency?: string;
+  invoiceItems?: InvoiceItem[];
+  freightCost?: number;
+
+  // Packing List Specific
+  packingItems?: PackingItem[];
   netWeight?: number;
   grossWeight?: number;
   packagesCount?: number;
+
+  // BL Specific
   vesselName?: string;
   portOfLoading?: string;
   portOfDischarge?: string;
@@ -535,7 +357,7 @@ export interface InspectionCertificate {
   company: string;
   certificateNumber: string;
   amount: number;
-  description: string;
+  description?: string;
 }
 
 export interface InspectionPayment {
@@ -544,15 +366,15 @@ export interface InspectionPayment {
   amount: number;
   date: string;
   bank: string;
-  description: string;
+  description?: string;
 }
 
 export interface InspectionData {
   certificates: InspectionCertificate[];
   payments: InspectionPayment[];
-  certificateNumber?: string;
-  inspectionCompany?: string;
-  totalInvoiceAmount?: number;
+  certificateNumber?: string; // Legacy
+  inspectionCompany?: string; // Legacy
+  totalInvoiceAmount?: number; // Legacy
 }
 
 export interface WarehouseReceipt {
@@ -595,11 +417,11 @@ export interface GreenLeafGuarantee {
   chequeDate: string;
   chequeAmount: number;
   isDelivered: boolean;
-  cashAmount: number;
+  cashAmount?: number;
   cashBank?: string;
   cashDate?: string;
   part?: string;
-  guaranteeBank?: string;
+  guaranteeBank?: string; // Legacy
 }
 
 export interface GreenLeafTax {
@@ -659,34 +481,35 @@ export interface TradeRecord {
   orderNumber?: string;
   goodsName: string;
   registrationNumber?: string;
-  registrationDate?: string;
-  registrationExpiry?: string;
   sellerName: string;
   commodityGroup: string;
   mainCurrency: string;
-  currencyAllocationType?: string;
-  allocationCurrencyRank?: 'Type1' | 'Type2';
-  operatingBank?: string;
   items: TradeItem[];
-  freightCost: number;
+  freightCost?: number;
   startDate: string;
   status: 'Active' | 'Completed';
-  stages: Record<TradeStage, TradeStageData>;
+  stages: Record<string, TradeStageData>;
   createdAt: number;
   createdBy: string;
   isArchived?: boolean;
-  isPriority?: boolean;
   isCommitmentFulfilled?: boolean;
   
+  registrationDate?: string;
+  registrationExpiry?: string;
+  currencyAllocationType?: string; // Bank, Export, Free...
+  allocationCurrencyRank?: 'Type1' | 'Type2';
+  operatingBank?: string;
+  isPriority?: boolean;
+
   licenseData?: { transactions: TradeTransaction[] };
-  insuranceData?: {
-    policyNumber: string;
-    company: string;
-    cost: number;
-    bank: string;
-    endorsements: InsuranceEndorsement[];
-    isPaid?: boolean;
-    paymentDate?: string;
+  insuranceData?: { 
+      policyNumber: string; 
+      company: string; 
+      cost: number; 
+      bank: string; 
+      endorsements?: InsuranceEndorsement[];
+      isPaid?: boolean;
+      paymentDate?: string;
   };
   currencyPurchaseData?: CurrencyPurchaseData;
   shippingDocuments?: ShippingDocument[];
@@ -695,8 +518,124 @@ export interface TradeRecord {
   greenLeafData?: GreenLeafData;
   internalShippingData?: InternalShippingData;
   agentData?: AgentData;
+  
+  // Legacy fields fallback
   exchangeRate?: number;
+}
+
+export enum ExitPermitStatus {
+  PENDING_CEO = 'در انتظار تایید مدیرعامل',
+  PENDING_FACTORY = 'تایید مدیرعامل / در انتظار خروج (کارخانه)',
+  PENDING_WAREHOUSE = 'تایید مدیر کارخانه / در انتظار انبار',
+  PENDING_SECURITY = 'تایید انبار / در انتظار انتظامات',
+  EXITED = 'خارج شده (بایگانی)',
+  REJECTED = 'رد شده'
+}
+
+export interface ExitPermitItem {
+  id: string;
+  goodsName: string;
+  cartonCount: number;
+  weight: number;
+  deliveredCartonCount?: number;
+  deliveredWeight?: number;
+}
+
+export interface ExitPermitDestination {
+  id: string;
+  recipientName: string;
+  address: string;
+  phone: string;
+}
+
+export interface ExitPermit {
+  id: string;
+  permitNumber: number;
+  date: string;
+  requester: string;
+  goodsName: string; // Summary
+  recipientName: string; // Summary
+  cartonCount: number; // Summary
+  weight?: number; // Summary
+  destinationAddress?: string; // Legacy
+  
+  items: ExitPermitItem[];
+  destinations: ExitPermitDestination[];
+
+  plateNumber?: string;
+  driverName?: string;
+  description?: string;
+  
+  status: ExitPermitStatus;
+  
+  approverCeo?: string;
+  approverFactory?: string;
+  approverWarehouse?: string;
+  approverSecurity?: string;
+  
+  exitTime?: string;
+  
+  rejectionReason?: string;
+  rejectedBy?: string;
+  
+  createdAt?: number;
+  updatedAt?: number;
+  
+  sentToGroup?: boolean;
   fiscalYearId?: string;
+}
+
+export interface WarehouseItem {
+  id: string;
+  name: string;
+  code: string;
+  unit: string;
+  containerCapacity?: number;
+}
+
+export interface WarehouseTransactionItem {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  weight: number;
+  unitPrice?: number;
+}
+
+export interface WarehouseTransaction {
+  id: string;
+  type: 'IN' | 'OUT';
+  date: string;
+  company: string;
+  number: number; // Bijak Number or 0 for IN
+  items: WarehouseTransactionItem[];
+  
+  proformaNumber?: string; // For IN
+  
+  recipientName?: string; // For OUT
+  driverName?: string;
+  plateNumber?: string;
+  destination?: string;
+  
+  createdAt: number;
+  createdBy: string;
+  
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvedBy?: string;
+  rejectionReason?: string;
+  rejectedBy?: string;
+  updatedAt?: number;
+  description?: string;
+  fiscalYearId?: string;
+}
+
+export enum SecurityStatus {
+  PENDING_SUPERVISOR = 'در انتظار تایید سرپرست',
+  PENDING_FACTORY = 'تایید سرپرست / در انتظار مدیر کارخانه',
+  APPROVED_FACTORY_CHECK = 'تایید مدیر کارخانه / منتظر ارسال به مدیرعامل', // Intermediate check
+  PENDING_CEO = 'تایید شده / در انتظار تایید نهایی مدیرعامل',
+  ARCHIVED = 'بایگانی شده',
+  REJECTED = 'رد شده',
+  APPROVED_SUPERVISOR_CHECK = 'تایید سرپرست / منتظر ارسال به مدیر' // Delay specific
 }
 
 export interface SecurityLog {
@@ -715,13 +654,16 @@ export interface SecurityLog {
   receiver: string;
   workDescription: string;
   permitProvider: string;
+  
   registrant: string;
   status: SecurityStatus;
-  createdAt: number;
+  
   approverSupervisor?: string;
   approverFactory?: string;
   approverCeo?: string;
+  
   rejectionReason?: string;
+  createdAt: number;
 }
 
 export interface PersonnelDelay {
@@ -733,13 +675,16 @@ export interface PersonnelDelay {
   delayAmount: string;
   repeatCount: string;
   instruction?: string;
+  
   registrant: string;
   status: SecurityStatus;
-  createdAt: number;
+  
   approverSupervisor?: string;
   approverFactory?: string;
   approverCeo?: string;
+  
   rejectionReason?: string;
+  createdAt: number;
 }
 
 export interface SecurityIncident {
@@ -749,15 +694,118 @@ export interface SecurityIncident {
   subject: string;
   description: string;
   shift: string;
-  registrant: string;
   witnesses?: string;
+  
+  registrant: string;
   status: SecurityStatus;
-  createdAt: number;
+  
   shiftManagerOpinion?: string;
+  approverSupervisor?: string;
+  
+  approverFactory?: string;
   hrAction?: string;
   safetyAction?: string;
-  approverSupervisor?: string;
-  approverFactory?: string;
+  
   approverCeo?: string;
+  
   rejectionReason?: string;
+  createdAt: number;
 }
+
+export interface DailySecurityMeta {
+  dailyDescription?: string;
+  morningGuard?: { name: string, entry: string, exit: string };
+  eveningGuard?: { name: string, entry: string, exit: string };
+  nightGuard?: { name: string, entry: string, exit: string };
+  
+  // Checkbox states for daily approvals
+  isFactoryDailyApproved?: boolean;
+  isCeoDailyApproved?: boolean;
+  
+  isDelaySupervisorApproved?: boolean;
+  isDelayFactoryApproved?: boolean;
+  isDelayCeoApproved?: boolean;
+}
+
+export interface PrintField {
+    id: string;
+    key: string;
+    label: string;
+    x: number; // mm
+    y: number; // mm
+    width?: number; // mm
+    fontSize: number; // pt
+    isBold?: boolean;
+    align?: 'left' | 'center' | 'right';
+    letterSpacing?: number; // px
+}
+
+export interface PrintTemplate {
+    id: string;
+    name: string;
+    width: number; // mm
+    height: number; // mm
+    pageSize: 'A4' | 'A5';
+    orientation: 'portrait' | 'landscape';
+    backgroundImage?: string; // base64
+    fields: PrintField[];
+}
+
+export interface CompanySequenceConfig {
+    startTrackingNumber?: number;
+    startExitPermitNumber?: number;
+    startBijakNumber?: number;
+}
+
+export interface FiscalYear {
+    id: string;
+    label: string; // e.g. "1403"
+    isClosed: boolean;
+    createdAt: number;
+    // Map company name to sequence config
+    companySequences?: Record<string, CompanySequenceConfig>;
+}
+
+export interface SecondGroupConfig {
+    groupId: string;
+    activeStatuses: string[]; // List of ExitPermitStatus
+}
+
+export interface SystemSettings { 
+    currentTrackingNumber: number; 
+    currentExitPermitNumber: number; 
+    companyNames: string[]; 
+    companies?: Company[]; 
+    defaultCompany: string; 
+    bankNames: string[]; 
+    operatingBankNames?: string[]; 
+    commodityGroups: string[]; 
+    rolePermissions: Record<string, RolePermissions>; 
+    customRoles?: CustomRole[]; 
+    savedContacts?: Contact[]; 
+    pwaIcon?: string; 
+    telegramBotToken?: string; 
+    telegramAdminId?: string; 
+    smsApiKey?: string; 
+    smsSenderNumber?: string; 
+    googleCalendarId?: string; 
+    whatsappNumber?: string; 
+    geminiApiKey?: string; 
+    insuranceCompanies?: string[]; 
+    warehouseSequences?: Record<string, number>; 
+    exitPermitNotificationGroup?: string; 
+    
+    // NEW: Configuration for the second group with filters
+    exitPermitSecondGroupConfig?: SecondGroupConfig;
+
+    companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
+    defaultWarehouseGroup?: string; 
+    defaultSalesManager?: string; 
+    dailySecurityMeta?: Record<string, DailySecurityMeta>; 
+    printTemplates?: PrintTemplate[]; 
+    
+    // FISCAL YEAR SETTINGS
+    activeFiscalYearId?: string;
+    fiscalYears?: FiscalYear[];
+}
+    
