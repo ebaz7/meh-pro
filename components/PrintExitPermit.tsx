@@ -122,7 +122,7 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
       }
   };
 
-  // Combine Settings Contacts AND Groups
+  // Combine Settings Contacts AND Groups into filterable list
   const filteredContacts = settings?.savedContacts?.filter(c => 
     c.name.toLowerCase().includes(contactSearch.toLowerCase()) || 
     c.number.includes(contactSearch)

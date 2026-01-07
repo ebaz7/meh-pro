@@ -44,6 +44,7 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     const isStandardRole = Object.values(UserRole).includes(userRole as UserRole);
 
+    // BASE DEFAULTS
     const defaults: RolePermissions = {
         canViewAll: isStandardRole && (userRole !== UserRole.USER && userRole !== UserRole.SALES_MANAGER && userRole !== UserRole.WAREHOUSE_KEEPER && userRole !== UserRole.SECURITY_GUARD && userRole !== UserRole.SECURITY_HEAD),
         
@@ -71,8 +72,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         
         canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         
-        // EXPLICIT APPROVAL PERMISSIONS (Corrected logic for Factory Manager)
+        // EXPLICIT APPROVAL PERMISSIONS
         canApproveExitCeo: isStandardRole && (userRole === UserRole.CEO || userRole === UserRole.ADMIN),
+        // FORCE FACTORY MANAGER TRUE HERE DEFAULT
         canApproveExitFactory: isStandardRole && (userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         canApproveExitWarehouse: isStandardRole && (userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER),
         canApproveExitSecurity: isStandardRole && (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
@@ -97,13 +99,21 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         const merged = { ...defaults, ...settings.rolePermissions[userRole] };
         
-        // Force Factory Manager Permission even if settings are weird
+        // --- CRITICAL FIX: FORCE FACTORY MANAGER PERMISSION ---
+        // Even if settings DB has it as false/undefined, we override it here.
         if (userRole === UserRole.FACTORY_MANAGER) {
             merged.canApproveExitFactory = true;
+            merged.canViewExitPermits = true;
         }
-
+        
         if (userObject && userObject.canManageTrade) merged.canManageTrade = true;
         return merged;
+    }
+    
+    // Also apply force here for default fallback
+    if (userRole === UserRole.FACTORY_MANAGER) {
+        defaults.canApproveExitFactory = true;
+        defaults.canViewExitPermits = true;
     }
     
     if (userObject && userObject.canManageTrade) defaults.canManageTrade = true;
