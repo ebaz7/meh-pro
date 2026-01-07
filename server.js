@@ -182,6 +182,19 @@ app.post('/api/subscribe', (req, res) => {
     res.status(201).json({ success: true }); 
 });
 
+// --- NEW ROUTE FOR WHATSAPP ---
+app.post('/api/send-whatsapp', async (req, res) => {
+    try {
+        const { number, message, mediaData } = req.body;
+        await sendWhatsAppMessage(number, message, mediaData);
+        res.json({ success: true });
+    } catch (e) {
+        console.error("WA Send Error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+// -----------------------------
+
 app.get('/api/orders', (req, res) => { const db = getDb(); res.json(db.orders); });
 app.post('/api/orders', (req, res) => { const db = getDb(); const order = req.body; order.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; order.fiscalYearId = activeYearId; order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany); db.orders.unshift(order); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`, '#manage'); res.json(db.orders); });
 app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.orders[idx].status; db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`, '#manage'); } res.json(db.orders); } else res.sendStatus(404); });

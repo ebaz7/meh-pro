@@ -40,61 +40,64 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- SIMPLIFIED PERMISSION LOGIC ---
-  
-  const canShowApproveButton = (p: ExitPermit) => {
-      // Admin and CEO always allow override (except for Security step which is specific)
-      const isSuperUser = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO;
-
-      // 1. CEO Approval
-      if (p.status === ExitPermitStatus.PENDING_CEO) {
-          return isSuperUser || permissions.canApproveExitCeo;
-      }
-
-      // 2. Factory Manager Approval
-      if (p.status === ExitPermitStatus.PENDING_FACTORY) {
-          return isSuperUser || currentUser.role === UserRole.FACTORY_MANAGER || permissions.canApproveExitFactory;
-      }
-
-      // 3. Warehouse Keeper Approval
-      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          // Factory Manager can also approve Warehouse step if needed (as supervisor)
-          return isSuperUser || 
-                 currentUser.role === UserRole.WAREHOUSE_KEEPER || 
-                 currentUser.role === UserRole.FACTORY_MANAGER ||
-                 permissions.canApproveExitWarehouse;
-      }
-
-      return false;
-  };
-
-  const canShowSecurityBox = (p: ExitPermit) => {
-      if (p.status !== ExitPermitStatus.PENDING_SECURITY) return false;
+  // --- RESTORED ROBUST LOGIC ---
+  const canApprove = (p: ExitPermit) => {
+      // Archive Check
+      if (activeTab === 'archive' && !permissions.canEditExitArchive) return false;
       
-      return currentUser.role === UserRole.SECURITY_GUARD || 
-             currentUser.role === UserRole.SECURITY_HEAD || 
-             currentUser.role === UserRole.ADMIN || 
-             currentUser.role === UserRole.CEO ||
-             permissions.canApproveExitSecurity;
+      // 1. Pending CEO (For CEO/Admin)
+      if (p.status === ExitPermitStatus.PENDING_CEO) {
+          return currentUser.role === UserRole.CEO || currentUser.role === UserRole.ADMIN || permissions.canApproveExitCeo;
+      }
+      
+      // 2. Pending Factory (For Factory Manager/Admin/CEO)
+      if (p.status === ExitPermitStatus.PENDING_FACTORY) {
+          return currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || permissions.canApproveExitFactory;
+      }
+      
+      // 3. Pending Warehouse (For Warehouse/Admin/CEO/Factory Manager)
+      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          // If specific role exists, prioritize it, otherwise check generic permissions
+          if (currentUser.role === UserRole.WAREHOUSE_KEEPER) return true;
+          if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER) return true;
+          if (permissions.canApproveExitWarehouse) return true;
+          return false;
+      }
+      
+      // 4. Pending Security (For Security/Admin/CEO)
+      if (p.status === ExitPermitStatus.PENDING_SECURITY) {
+          return currentUser.role === UserRole.SECURITY_GUARD || currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || permissions.canApproveExitSecurity;
+      }
+      
+      return false;
   };
 
   const canEdit = (p: ExitPermit) => {
       if (currentUser.role === UserRole.ADMIN) return true;
       if (p.status === ExitPermitStatus.EXITED) return !!permissions.canEditExitArchive;
-      // Allow editing if created by user and not fully finalized
-      if (p.requester === currentUser.fullName) return true;
-      // Allow specific roles to edit
-      if (currentUser.role === UserRole.CEO || currentUser.role === UserRole.SALES_MANAGER) return true;
+      
+      // At this point p.status is NOT EXITED because of the check above
+      if (permissions.canEditAll) return true;
+      
+      // Allow user to edit their own request if rejected or pending (depending on policy)
+      if (permissions.canEditOwn && p.requester === currentUser.fullName) return true;
+      
+      // Specific Override: Sales Manager can edit created permits if not finalized
+      if (currentUser.role === UserRole.SALES_MANAGER) return true;
+
       return false;
   };
 
   const canShare = (p: ExitPermit) => {
-      // Allow almost anyone involved to resend whatsapp if needed
       return currentUser.role === UserRole.ADMIN || 
              currentUser.role === UserRole.CEO || 
              currentUser.role === UserRole.SALES_MANAGER ||
              currentUser.role === UserRole.FACTORY_MANAGER || 
              currentUser.role === UserRole.WAREHOUSE_KEEPER;
+  };
+
+  const canShowSecurityBox = (p: ExitPermit) => {
+      return p.status === ExitPermitStatus.PENDING_SECURITY && canApprove(p);
   };
 
   const generateFullCaption = (permit: ExitPermit, header: string, emphasizeTime: boolean = false) => {
@@ -148,14 +151,12 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   };
 
   const handleApproveAction = async (id: string, currentStatus: ExitPermitStatus, dataOverride?: any) => {
-      // 1. Warehouse Logic: Open Modal first
       if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE && !dataOverride) {
           const p = permits.find(x => x.id === id);
           if (p) setWarehouseFinalizePermit(p);
           return;
       }
 
-      // 2. Determine Next Status
       let nextStatus = currentStatus;
       let extra: any = {};
 
@@ -175,13 +176,13 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           setIsProcessingId(id); 
           setAutoSendWatermark(null); 
           try {
-              // A. Update Status in DB
+              // 1. Update Status
               await updateExitPermitStatus(id, nextStatus, currentUser, extra);
               
-              // B. Prepare Mock Data for Image Generation
+              // 2. Prepare Mock Data for Image Generation (Before re-fetch)
               const updatedPermitMock = { ...permitToApprove, ...dataOverride, status: nextStatus, ...extra };
               
-              // Set approver name based on transition
+              // Fill Approvers specifically for the snapshot
               if (nextStatus === ExitPermitStatus.PENDING_FACTORY) updatedPermitMock.approverCeo = currentUser.fullName;
               if (nextStatus === ExitPermitStatus.PENDING_WAREHOUSE) { 
                   updatedPermitMock.approverCeo = permitToApprove.approverCeo || 'تایید شده'; 
@@ -199,13 +200,13 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                   updatedPermitMock.approverSecurity = currentUser.fullName; 
               }
 
-              // C. Trigger Hidden Render
+              // Trigger Hidden Render
               setPermitForAutoSend(updatedPermitMock);
               
-              // D. Wait for DOM Render
+              // 3. Wait for DOM Render (Increased timeout for stability)
               await new Promise(resolve => setTimeout(resolve, 3000));
 
-              // E. Capture & Send WhatsApp
+              // 4. Capture & Send
               const element = document.getElementById(`print-permit-${updatedPermitMock.id}`);
               if (element) {
                   try {
@@ -214,61 +215,70 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                       const base64 = canvas.toDataURL('image/png').split(',')[1];
                       const users = await getUsers();
                       
+                      // Identify Notification Groups
                       const group1 = settings?.exitPermitNotificationGroup;
                       const group2 = settings?.exitPermitSecondGroupConfig?.groupId;
 
-                      // --- NOTIFICATION LOGIC ---
+                      // --- LOGIC PER STEP ---
 
                       if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
-                          // CEO Approved -> Factory + Group 1
-                          const title = "📢 *اطلاعیه: مجوز خروج صادر شد (منتظر تایید کارخانه)*";
+                          // CEO Approved -> Send to Factory Manager AND Group 1
+                          const title = "📢 *اطلاعیه: مجوز خروج صادر شد*";
                           const caption = generateFullCaption(updatedPermitMock, title);
 
-                          // Factory Manager
+                          // 1. Factory Manager
                           const target = users.find(u => u.role === UserRole.FACTORY_MANAGER && u.phoneNumber);
                           if (target) { try { await apiCall('/send-whatsapp', 'POST', { number: target.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {} }
 
-                          // Group 1
-                          if (group1) await sendWithRetry({ number: group1, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3);
+                          // 2. Group 1
+                          if (group1) {
+                              await sendWithRetry({ number: group1, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3);
+                          }
                       } 
                       else if (nextStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
-                          // Factory Approved -> Warehouse + Group 2
+                          // Factory Approved -> Send to Warehouse AND Group 2
                           const caption = generateFullCaption(updatedPermitMock, "🏭 *تایید مدیر کارخانه انجام شد* (مجوز ورود به انبار)");
                           
-                          // Warehouse Keepers
+                          // 1. Warehouse Keeper
                           const warehouseUsers = users.filter(u => u.role === UserRole.WAREHOUSE_KEEPER && u.phoneNumber);
                           for (const whUser of warehouseUsers) {
                             try { await apiCall('/send-whatsapp', 'POST', { number: whUser.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {}
                           }
 
-                          // Group 2
-                          if (group2) await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          // 2. Group 2
+                          if (group2) {
+                              await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          }
                       }
                       else if (nextStatus === ExitPermitStatus.PENDING_SECURITY) {
-                          // Warehouse Approved -> Security + Group 2
+                          // Warehouse Confirmed -> Send to Security AND Group 2
                           const caption = generateFullCaption(updatedPermitMock, "📦 *تایید انبار و توزین نهایی انجام شد* (ارسال به انتظامات)");
                           
-                          // Security
+                          // 1. Security
                           const securityUsers = users.filter(u => (u.role === UserRole.SECURITY_GUARD || u.role === UserRole.SECURITY_HEAD) && u.phoneNumber);
                           for (const sec of securityUsers) {
                             try { await apiCall('/send-whatsapp', 'POST', { number: sec.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {}
                           }
 
-                          // Group 2
-                          if (group2) await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          // 2. Group 2
+                          if (group2) {
+                              await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          }
                       }
                       else if (nextStatus === ExitPermitStatus.EXITED) {
-                          // Security Approved -> Group 1 + Group 2
+                          // Security Exited -> Send to Group 1 AND Group 2 (With emphasis on time)
                           const caption = generateFullCaption(updatedPermitMock, "✅ *خروج نهایی بار از کارخانه ثبت شد*", true);
                           
-                          // Group 1
+                          // 1. Group 1
                           if (group1) {
                               const success = await sendWithRetry({ number: group1, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3);
                               if (success) { await updateExitPermitStatus(id, ExitPermitStatus.EXITED, currentUser, { sentToGroup: true }); }
                           }
 
-                          // Group 2
-                          if (group2) await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          // 2. Group 2
+                          if (group2) {
+                              await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2);
+                          }
                       }
 
                   } catch (e) { console.error("Error in auto-send logic", e); }
@@ -300,10 +310,17 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               // @ts-ignore
               const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
               const base64 = canvas.toDataURL('image/png').split(',')[1];
-              let caption = generateFullCaption(permit, "📢 *ارسال مجدد مجوز خروج*");
+              let caption = "";
+              if (permit.status === ExitPermitStatus.EXITED) caption = generateFullCaption(permit, "✅ *خروج نهایی بار از کارخانه ثبت شد* (ارسال مجدد)", true);
+              else caption = generateFullCaption(permit, "📢 *اطلاعیه: مجوز خروج صادر شد (ارسال مجدد)*");
+              
+              // Use /api/send-whatsapp to avoid 404
               await apiCall('/send-whatsapp', 'POST', { number: settings.exitPermitNotificationGroup, message: caption, mediaData: { data: base64, mimeType: 'image/png' } });
+              
               alert('با موفقیت ارسال شد.');
-          } catch (e) { alert('خطا در ارسال به واتساپ.'); }
+          } catch (e: any) { 
+              alert('خطا در ارسال به واتساپ: ' + (e.message || 'Unknown')); 
+          }
       } else { alert('تنظیمات گروه واتساپ یافت نشد یا خطا در تولید تصویر.'); }
       setPermitForAutoSend(null);
       setIsProcessingId(null);
@@ -412,14 +429,14 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                             )}
                                             
                                             {/* GENERAL APPROVE */}
-                                            {canShowApproveButton(p) && (
+                                            {canApprove(p) && (
                                                 <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-100 text-green-600 p-2 rounded-lg hover:bg-green-200" title="تایید"><CheckCircle size={16}/></button>
                                             )}
                                         </>
                                     )}
 
                                     {canEdit(p) && <button onClick={() => setEditingPermit(p)} className="bg-amber-50 text-amber-600 p-2 rounded-lg hover:bg-amber-100"><Edit size={16}/></button>}
-                                    {(p.status !== ExitPermitStatus.EXITED && p.status !== ExitPermitStatus.REJECTED && canShowApproveButton(p)) && <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100" title="رد"><XCircle size={16}/></button>}
+                                    {(p.status !== ExitPermitStatus.EXITED && p.status !== ExitPermitStatus.REJECTED && canApprove(p)) && <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100" title="رد"><XCircle size={16}/></button>}
                                     {currentUser.role === UserRole.ADMIN && <button onClick={() => handleDelete(p.id)} className="text-red-300 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                                 </div>
                             </td>
@@ -428,7 +445,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                 </tbody>
             </table>
         </div>
-        {viewPermit && (<PrintExitPermit permit={viewPermit} onClose={() => setViewPermit(null)} settings={settings} onApprove={canShowApproveButton(viewPermit) ? () => handleApproveAction(viewPermit.id, viewPermit.status) : undefined} onReject={(viewPermit.status !== ExitPermitStatus.EXITED && canShowApproveButton(viewPermit)) ? () => handleReject(viewPermit.id) : undefined} onEdit={canEdit(viewPermit) ? () => { setEditingPermit(viewPermit); setViewPermit(null); } : undefined} />)}
+        {viewPermit && (<PrintExitPermit permit={viewPermit} onClose={() => setViewPermit(null)} settings={settings} onApprove={canApprove(viewPermit) ? () => handleApproveAction(viewPermit.id, viewPermit.status) : undefined} onReject={(viewPermit.status !== ExitPermitStatus.EXITED && canApprove(viewPermit)) ? () => handleReject(viewPermit.id) : undefined} onEdit={canEdit(viewPermit) ? () => { setEditingPermit(viewPermit); setViewPermit(null); } : undefined} />)}
         {editingPermit && <EditExitPermitModal permit={editingPermit} onClose={() => setEditingPermit(null)} onSave={loadData} />}
     </div>
   );
