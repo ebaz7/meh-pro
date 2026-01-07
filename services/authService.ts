@@ -42,17 +42,18 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 };
 
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
+    // 1. Define Defaults
     const isStandardRole = Object.values(UserRole).includes(userRole as UserRole);
 
-    const defaults: RolePermissions = {
+    let perms: RolePermissions = {
         canViewAll: isStandardRole && (userRole !== UserRole.USER && userRole !== UserRole.SALES_MANAGER && userRole !== UserRole.WAREHOUSE_KEEPER && userRole !== UserRole.SECURITY_GUARD && userRole !== UserRole.SECURITY_HEAD),
         
         canCreatePaymentOrder: isStandardRole && (userRole !== UserRole.FACTORY_MANAGER && userRole !== UserRole.WAREHOUSE_KEEPER && userRole !== UserRole.SALES_MANAGER && userRole !== UserRole.SECURITY_GUARD && userRole !== UserRole.SECURITY_HEAD), 
         
         canViewPaymentOrders: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.MANAGER || userRole === UserRole.FINANCIAL),
         
-        // --- EXIT PERMIT PERMISSIONS ---
-        canViewExitPermits: true, // Allow viewing for relevant roles, filtered by logic later
+        // --- EXIT PERMIT PERMISSIONS (DEFAULTS) ---
+        canViewExitPermits: true, 
 
         canApproveFinancial: isStandardRole && (userRole === UserRole.FINANCIAL || userRole === UserRole.ADMIN),
         canApproveManager: isStandardRole && (userRole === UserRole.MANAGER || userRole === UserRole.ADMIN),
@@ -69,54 +70,68 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         
         canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         
-        // --- EXPLICIT APPROVAL CHAIN PERMISSIONS ---
+        // --- APPROVAL WORKFLOW DEFAULTS ---
         canApproveExitCeo: isStandardRole && (userRole === UserRole.CEO || userRole === UserRole.ADMIN),
-        
-        // FORCE TRUE for Factory Manager
         canApproveExitFactory: isStandardRole && (userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
-        
-        // FORCE TRUE for Warehouse Keeper
         canApproveExitWarehouse: isStandardRole && (userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER),
-        
-        // FORCE TRUE for Security
         canApproveExitSecurity: isStandardRole && (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         
         canViewExitArchive: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.WAREHOUSE_KEEPER),
         canEditExitArchive: isStandardRole && (userRole === UserRole.ADMIN),
 
         canManageWarehouse: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.WAREHOUSE_KEEPER), 
-        
         canViewWarehouseReports: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.CEO || userRole === UserRole.SALES_MANAGER),
-        
         canApproveBijak: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO),
-
         canViewSecurity: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.SECURITY_GUARD),
         canCreateSecurityLog: isStandardRole && (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN),
         canApproveSecuritySupervisor: isStandardRole && (userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN)
     };
 
-    // Override from settings if available, BUT enforce critical permissions
+    // 2. Merge with Settings (if any)
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
-        const merged = { ...defaults, ...settings.rolePermissions[userRole] };
-        
-        // FORCE OVERRIDES TO FIX BUG
-        if (userRole === UserRole.FACTORY_MANAGER) {
-            merged.canApproveExitFactory = true;
-            merged.canViewExitPermits = true;
-        }
-        if (userRole === UserRole.WAREHOUSE_KEEPER) {
-            merged.canApproveExitWarehouse = true;
-            merged.canViewExitPermits = true;
-        }
-        if (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD) {
-            merged.canApproveExitSecurity = true;
-            merged.canViewExitPermits = true;
-        }
+        perms = { ...perms, ...settings.rolePermissions[userRole] };
+    }
 
-        if (userObject && userObject.canManageTrade) merged.canManageTrade = true;
-        return merged;
+    // 3. FORCE CRITICAL PERMISSIONS (Overrides Settings)
+    // This ensures that even if settings are messed up, the workflow still works.
+    if (userRole === UserRole.ADMIN) {
+        Object.keys(perms).forEach(k => { (perms as any)[k] = true; });
     }
     
-    if (userObject && userObject.canManageTrade) defaults.canManageTrade = true;
-    return defaults;
+    // CEO
+    if (userRole === UserRole.CEO) {
+        perms.canApproveExitCeo = true;
+        perms.canViewExitPermits = true;
+    }
+
+    // Factory Manager
+    if (userRole === UserRole.FACTORY_MANAGER) {
+        perms.canApproveExitFactory = true;
+        perms.canViewExitPermits = true;
+    }
+
+    // Warehouse Keeper
+    if (userRole === UserRole.WAREHOUSE_KEEPER) {
+        perms.canApproveExitWarehouse = true;
+        perms.canViewExitPermits = true;
+        perms.canManageWarehouse = true;
+    }
+
+    // Security
+    if (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD) {
+        perms.canApproveExitSecurity = true;
+        perms.canViewExitPermits = true;
+        perms.canViewSecurity = true;
+    }
+
+    // Sales Manager
+    if (userRole === UserRole.SALES_MANAGER) {
+        perms.canCreateExitPermit = true;
+        perms.canViewExitPermits = true;
+    }
+
+    // User Object Override
+    if (userObject && userObject.canManageTrade) perms.canManageTrade = true;
+
+    return perms;
 };
