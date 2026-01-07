@@ -372,10 +372,18 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
           <div className="fixed inset-0 z-[60] md:hidden animate-fade-in">
               <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowMobileMenu(false)}></div>
               <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto animate-slide-up pb-24">
+                  {/* MODIFIED HEADER: Added Logout Button here */}
                   <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
-                      <h3 className="font-black text-lg text-gray-800">منوی کامل سیستم</h3>
+                      <div className="flex items-center gap-2">
+                          <button onClick={handleLogout} className="p-2 bg-red-50 text-red-600 rounded-full flex items-center gap-1">
+                              <LogOut size={16} />
+                              <span className="text-xs font-bold">خروج</span>
+                          </button>
+                      </div>
+                      <h3 className="font-black text-lg text-gray-800 absolute left-1/2 transform -translate-x-1/2">منوی کامل</h3>
                       <button onClick={() => setShowMobileMenu(false)} className="p-2 bg-gray-100 rounded-full"><X size={20}/></button>
                   </div>
+                  
                   <div className="p-4 grid grid-cols-2 gap-3">
                       {navItems.map((item) => {
                           const Icon = item.icon;
@@ -391,10 +399,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
                               </button>
                           );
                       })}
-                      <button onClick={handleLogout} className="flex flex-col items-center gap-2 p-4 rounded-2xl border bg-red-50 text-red-600 border-red-100">
-                          <LogOut size={28} strokeWidth={1.5} />
-                          <span className="text-xs font-bold">خروج از سیستم</span>
-                      </button>
+                      {/* Removed Logout from grid to avoid accidental clicks */}
                   </div>
               </div>
           </div>

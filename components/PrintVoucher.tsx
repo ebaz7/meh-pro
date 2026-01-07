@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PaymentOrder, OrderStatus, PaymentMethod, SystemSettings } from '../types';
 import { formatCurrency, formatDate, getStatusLabel, numberToPersianWords, formatNumberString, getShamsiDateFromIso } from '../constants';
 import { X, Printer, FileDown, Loader2, CheckCircle, XCircle, Pencil, Share2, Users, Search, RotateCcw, AlertTriangle, FileText, LayoutTemplate, EyeOff, Eye, Settings2, ChevronLeft, ChevronRight, Calendar, MapPin, Layers } from 'lucide-react';
@@ -39,6 +39,10 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
   // NEW: Dual Print Mode State (full, withdrawal, deposit)
   const [dualPrintMode, setDualPrintMode] = useState<'full' | 'withdrawal' | 'deposit'>('full');
 
+  // Scale State for Mobile Fit
+  const [scale, setScale] = useState(1);
+  const containerWrapperRef = useRef<HTMLDivElement>(null);
+
   // Determine which line to show
   const paymentLines = order.paymentDetails;
   const currentLine = paymentLines[currentLineIndex];
@@ -73,6 +77,31 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
   // -- NEW: Manual Override State for Date and Place --
   const [overrideDate, setOverrideDate] = useState({ year: '', month: '', day: '' });
   const [overridePlace, setOverridePlace] = useState('');
+
+  // Auto-Scale Logic
+  useEffect(() => {
+    const handleResize = () => {
+        if (embed) return; // Don't scale if embedded (headless mode)
+        const wrapper = containerWrapperRef.current;
+        if (wrapper) {
+            const wrapperWidth = wrapper.clientWidth;
+            // Target width in PX (approx 210mm = 794px)
+            const targetWidth = 794; 
+            
+            // Only scale down if screen is smaller than content + padding
+            if (wrapperWidth < targetWidth + 40) {
+                const newScale = (wrapperWidth - 32) / targetWidth; // 32px padding safety
+                setScale(newScale);
+            } else {
+                setScale(1);
+            }
+        }
+    };
+
+    handleResize(); // Initial call
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [embed, printMode]); // Re-calc if mode changes
 
   // Reset Dual Print Mode when line changes
   useEffect(() => {
@@ -602,13 +631,16 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
       </div>
       
       {/* Container specifically for on-screen viewing */}
-      <div className="flex-1 w-full overflow-y-auto flex justify-center pb-10">
-          {/* Dynamic sizing for preview container */}
+      <div className="flex-1 w-full overflow-y-auto flex justify-center pb-10" ref={containerWrapperRef}>
+          {/* Dynamic sizing for preview container with scaling */}
           <div style={{ 
               width: (printMode === 'bank_form' && dynamicTemplate) ? `${dynamicTemplate.width || 210}mm` : '210mm', 
               height: (printMode === 'bank_form' && dynamicTemplate) ? `${dynamicTemplate.height || 297}mm` : '148mm', 
               backgroundColor: 'white', 
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)' 
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              transform: `scale(${scale})`,
+              transformOrigin: 'top center',
+              marginBottom: `${(1 - scale) * -100}px` // Negative margin to reduce whitespace when scaled down
           }}>
             {contentToRender}
           </div>
