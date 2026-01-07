@@ -24,6 +24,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const [activeTab, setActiveTab] = useState<'current' | 'archive'>('current');
   const [activeStatusFilter, setActiveStatusFilter] = useState<'pending' | null>(statusFilter || null);
   
+  // Initialize with current time for easier input
   const [showExitTimeInput, setShowExitTimeInput] = useState<string | null>(null); 
   const [exitTimeValue, setExitTimeValue] = useState('');
   const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
@@ -40,29 +41,32 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- STRICT & SIMPLE APPROVAL LOGIC (UPDATED WITH PERMISSIONS) ---
+  // --- STRICT & SIMPLE APPROVAL LOGIC (UPDATED WITH DIRECT ROLE CHECK) ---
   const canApprove = (p: ExitPermit) => {
       // 0. Admin always can
       if (currentUser.role === UserRole.ADMIN) return true;
 
+      const role = currentUser.role;
+      const status = p.status;
+
       // 1. CEO Step (Start)
-      if (p.status === ExitPermitStatus.PENDING_CEO) {
-          return currentUser.role === UserRole.CEO || !!permissions.canApproveExitCeo;
+      if (status === ExitPermitStatus.PENDING_CEO) {
+          return role === UserRole.CEO || !!permissions.canApproveExitCeo;
       }
       
       // 2. Factory Manager Step (After CEO)
-      if (p.status === ExitPermitStatus.PENDING_FACTORY) {
-          return currentUser.role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitFactory;
+      if (status === ExitPermitStatus.PENDING_FACTORY) {
+          return role === UserRole.FACTORY_MANAGER || role === UserRole.CEO || !!permissions.canApproveExitFactory;
       }
       
       // 3. Warehouse Step (After Factory)
-      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          return currentUser.role === UserRole.WAREHOUSE_KEEPER || !!permissions.canApproveExitWarehouse;
+      if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          return role === UserRole.WAREHOUSE_KEEPER || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitWarehouse;
       }
       
       // 4. Security Step (Final Exit)
-      if (p.status === ExitPermitStatus.PENDING_SECURITY) {
-          return currentUser.role === UserRole.SECURITY_GUARD || currentUser.role === UserRole.SECURITY_HEAD || !!permissions.canApproveExitSecurity;
+      if (status === ExitPermitStatus.PENDING_SECURITY) {
+          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || role === UserRole.ADMIN || !!permissions.canApproveExitSecurity;
       }
       
       return false;
@@ -85,7 +89,14 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       return p.status === ExitPermitStatus.PENDING_SECURITY && canApprove(p);
   };
 
-  // --- UPDATED CAPTION GENERATOR: DETAILED ITEMS ---
+  const handleSecurityClick = (permitId: string) => {
+      // Pre-fill time when clicking
+      const now = new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
+      setExitTimeValue(now);
+      setShowExitTimeInput(permitId);
+  };
+
+  // ... (Rest of the component remains largely unchanged, just ensuring canApprove is used correctly) ...
   const generateFullCaption = (permit: ExitPermit, header: string, emphasizeTime: boolean = false) => {
       let c = `${header}\n`;
       if (emphasizeTime && permit.exitTime) c += `\n🕒 *ساعت خروج: ${permit.exitTime}* 🕒\n\n`;
@@ -169,15 +180,15 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       // --- SECURITY EXIT LOGIC ---
       else if (currentStatus === ExitPermitStatus.PENDING_SECURITY) {
           nextStatus = ExitPermitStatus.EXITED;
-          const autoTime = new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
-          extra.exitTime = exitTimeValue || autoTime;
+          const finalTime = exitTimeValue || new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
+          extra.exitTime = finalTime;
       }
       
       const permitToApprove = permits.find(p => p.id === id);
       if (!permitToApprove) return;
 
       const confirmMsg = currentStatus === ExitPermitStatus.PENDING_SECURITY 
-          ? `ثبت خروج نهایی؟ ساعت: ${extra.exitTime || 'اکنون'}` 
+          ? `ثبت خروج نهایی؟ ساعت: ${extra.exitTime}` 
           : 'آیا تایید می‌کنید؟';
 
       if(dataOverride || window.confirm(confirmMsg)) {
@@ -431,16 +442,16 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
                                             {/* SECURITY ACTION (Auto/Manual Time) */}
                                             {isSecurityStep(p) && (
-                                                <div className="flex items-center gap-2 bg-amber-50 p-1 rounded-lg border border-amber-200">
+                                                <div className="flex items-center gap-1 bg-amber-50 p-1 rounded-lg border border-amber-200">
                                                     <input 
-                                                        className="w-16 border rounded p-1 text-[10px] text-center font-mono" 
-                                                        placeholder="ساعت..." 
+                                                        className="w-14 border rounded p-1 text-[12px] text-center font-bold font-mono bg-white" 
+                                                        placeholder="--:--" 
                                                         value={showExitTimeInput === p.id ? exitTimeValue : ''} 
-                                                        onFocus={() => setShowExitTimeInput(p.id)} 
+                                                        onFocus={() => handleSecurityClick(p.id)} 
                                                         onChange={e => setExitTimeValue(e.target.value)} 
                                                     />
-                                                    <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-amber-600 text-white p-1 rounded hover:bg-amber-700" title={exitTimeValue ? "ثبت با ساعت وارد شده" : "ثبت با ساعت فعلی (اتومات)"}>
-                                                        {exitTimeValue ? <CheckCircle size={14}/> : <Clock size={14}/>}
+                                                    <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-amber-600 text-white p-1.5 rounded hover:bg-amber-700 shadow-sm" title="ثبت خروج نهایی">
+                                                        <CheckCircle size={16}/>
                                                     </button>
                                                 </div>
                                             )}

@@ -57,11 +57,17 @@ export default function PrintExitPermit({ permit, onClose, onApprove, onReject, 
     return () => window.removeEventListener('resize', handleResize);
   }, [embed]);
 
-  const Stamp = ({ title, name, date }: { title: string, name: string, date?: string }) => (
-      <div className="border-2 border-blue-800 text-blue-800 rounded-xl p-2 rotate-[-5deg] opacity-90 inline-block bg-white/80 print:bg-transparent shadow-sm">
-          <div className="text-[10px] font-bold border-b border-blue-800 mb-1 pb-1 text-center">{title}</div>
+  const Stamp = ({ title, name, date, time, isSecurity }: { title: string, name: string, date?: string, time?: string, isSecurity?: boolean }) => (
+      <div className={`border-2 ${isSecurity ? 'border-black text-black' : 'border-blue-800 text-blue-800'} rounded-xl p-2 rotate-[-5deg] opacity-90 inline-block bg-white/80 print:bg-transparent shadow-sm min-w-[90px]`}>
+          <div className="text-[10px] font-bold border-b border-current mb-1 pb-1 text-center">{title}</div>
           <div className="text-sm font-black text-center px-2">{name}</div>
           {date && <div className="text-[10px] text-center mt-1">{date}</div>}
+          {time && (
+              <div className="mt-2 border-t border-dashed border-gray-400 pt-1">
+                  <div className="text-[9px] font-bold text-center">ساعت خروج:</div>
+                  <div className="text-xl font-black text-center font-mono">{time}</div>
+              </div>
+          )}
       </div>
   );
 
@@ -162,7 +168,7 @@ export default function PrintExitPermit({ permit, onClose, onApprove, onReject, 
             direction: 'rtl', 
             width: '210mm', 
             height: '296mm', 
-            padding: '15mm', 
+            padding: '10mm', 
             boxSizing: 'border-box',
             margin: '0 auto',
             maxHeight: '296mm',
@@ -171,62 +177,62 @@ export default function PrintExitPermit({ permit, onClose, onApprove, onReject, 
             {watermark === 'DELETED' && (<div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none overflow-hidden"><div className="border-[12px] border-red-500 text-red-500 font-black text-9xl opacity-40 rotate-[-45deg] p-10 rounded-3xl whitespace-nowrap bg-white/50 backdrop-blur-[2px]">حذف شد</div></div>)}
             {watermark === 'EDITED' && (<div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none overflow-hidden"><div className="border-[12px] border-orange-500 text-orange-500 font-black text-9xl opacity-40 rotate-[-45deg] p-10 rounded-3xl whitespace-nowrap bg-white/50 backdrop-blur-[2px]">اصلاحیه</div></div>)}
 
-            <div className="flex justify-between items-center border-b-4 border-black pb-4 mb-8">
+            <div className="flex justify-between items-center border-b-4 border-black pb-4 mb-4">
                 <div className="flex flex-col"><h1 className="text-3xl font-black mb-1">مجوز خروج کالا از کارخانه</h1><p className="text-sm font-bold text-gray-600">سیستم مکانیزه مدیریت بار و خروج</p></div>
-                <div className="text-left space-y-2"><div className="text-xl font-black bg-gray-100 px-4 py-2 border-2 border-black rounded-lg">شماره: {permit.permitNumber}</div><div className="text-sm font-bold">تاریخ: {formatDate(permit.date)}</div>{permit.exitTime && <div className="text-sm font-black text-blue-700 flex items-center gap-1 justify-end"><Clock size={16}/> خروج: {permit.exitTime}</div>}</div>
+                <div className="text-left space-y-2"><div className="text-xl font-black bg-gray-100 px-4 py-2 border-2 border-black rounded-lg">شماره: {permit.permitNumber}</div><div className="text-sm font-bold">تاریخ: {formatDate(permit.date)}</div></div>
             </div>
-            <div className="flex-1 space-y-8">
-                <div className="space-y-2"><h3 className="font-black text-lg flex items-center gap-2"><Package size={20}/> لیست اقلام و کالاها</h3>
+            <div className="flex-1 space-y-6">
+                <div className="space-y-1"><h3 className="font-black text-lg flex items-center gap-2"><Package size={20}/> لیست اقلام و کالاها</h3>
                     <table className="w-full text-sm border-collapse border-2 border-black text-center">
                         <thead>
                             <tr className="bg-gray-100 text-base">
-                                <th className="border-2 border-black p-3 w-12" rowSpan={2}>#</th>
-                                <th className="border-2 border-black p-3 text-center" rowSpan={2}>شرح کالا / محصول</th>
-                                <th className="border-2 border-black p-2" colSpan={showDeliveryColumns ? 2 : 1}>تعداد (کارتن)</th>
-                                <th className="border-2 border-black p-2" colSpan={showDeliveryColumns ? 2 : 1}>وزن (KG)</th>
+                                <th className="border-2 border-black p-2 w-10" rowSpan={2}>#</th>
+                                <th className="border-2 border-black p-2 text-center" rowSpan={2}>شرح کالا / محصول</th>
+                                <th className="border-2 border-black p-1" colSpan={showDeliveryColumns ? 2 : 1}>تعداد (کارتن)</th>
+                                <th className="border-2 border-black p-1" colSpan={showDeliveryColumns ? 2 : 1}>وزن (KG)</th>
                             </tr>
                             {showDeliveryColumns && (
                                 <tr className="bg-gray-50 text-xs">
-                                    <th className="border-2 border-black p-1 text-gray-500 w-24">درخواستی</th>
-                                    <th className="border-2 border-black p-1 w-24 bg-green-50 text-green-800">خروجی</th>
-                                    <th className="border-2 border-black p-1 text-gray-500 w-24">درخواستی</th>
-                                    <th className="border-2 border-black p-1 w-24 bg-green-50 text-green-800">خروجی</th>
+                                    <th className="border-2 border-black p-1 text-gray-500 w-20">درخواستی</th>
+                                    <th className="border-2 border-black p-1 w-20 bg-green-50 text-green-800">خروجی</th>
+                                    <th className="border-2 border-black p-1 text-gray-500 w-20">درخواستی</th>
+                                    <th className="border-2 border-black p-1 w-20 bg-green-50 text-green-800">خروجی</th>
                                 </tr>
                             )}
                         </thead>
                         <tbody>
                             {displayItems.map((item, idx) => (
-                                <tr key={idx} className="text-lg">
-                                    <td className="border-2 border-black p-3">{idx + 1}</td>
-                                    <td className="border-2 border-black p-3 font-bold text-center align-middle">{item.goodsName}</td>
+                                <tr key={idx} className="text-base">
+                                    <td className="border-2 border-black p-2">{idx + 1}</td>
+                                    <td className="border-2 border-black p-2 font-bold text-center align-middle">{item.goodsName}</td>
                                     {showDeliveryColumns ? (
                                         <>
-                                            <td className="border-2 border-black p-3 font-mono text-gray-400 bg-gray-50/50">{item.cartonCount}</td>
-                                            <td className="border-2 border-black p-3 font-mono font-bold bg-green-50/30">{item.deliveredCartonCount ?? item.cartonCount}</td>
-                                            <td className="border-2 border-black p-3 font-mono text-gray-400 bg-gray-50/50">{item.weight}</td>
-                                            <td className="border-2 border-black p-3 font-mono font-bold bg-green-50/30">{item.deliveredWeight ?? item.weight}</td>
+                                            <td className="border-2 border-black p-2 font-mono text-gray-400 bg-gray-50/50">{item.cartonCount}</td>
+                                            <td className="border-2 border-black p-2 font-mono font-bold bg-green-50/30">{item.deliveredCartonCount ?? item.cartonCount}</td>
+                                            <td className="border-2 border-black p-2 font-mono text-gray-400 bg-gray-50/50">{item.weight}</td>
+                                            <td className="border-2 border-black p-2 font-mono font-bold bg-green-50/30">{item.deliveredWeight ?? item.weight}</td>
                                         </>
                                     ) : (
                                         <>
-                                            <td className="border-2 border-black p-3 font-mono font-bold">{item.cartonCount}</td>
-                                            <td className="border-2 border-black p-3 font-mono font-bold">{item.weight}</td>
+                                            <td className="border-2 border-black p-2 font-mono font-bold">{item.cartonCount}</td>
+                                            <td className="border-2 border-black p-2 font-mono font-bold">{item.weight}</td>
                                         </>
                                     )}
                                 </tr>
                             ))}
-                            <tr className="bg-gray-100 text-lg font-black">
-                                <td colSpan={2} className="border-2 border-black p-3 text-left pl-6">جمع کل:</td>
+                            <tr className="bg-gray-100 text-base font-black">
+                                <td colSpan={2} className="border-2 border-black p-2 text-left pl-6">جمع کل:</td>
                                 {showDeliveryColumns ? (
                                     <>
-                                        <td className="border-2 border-black p-3 font-mono text-gray-500">{totalCartonsReq}</td>
-                                        <td className="border-2 border-black p-3 font-mono text-black">{totalCartonsDel}</td>
-                                        <td className="border-2 border-black p-3 font-mono text-gray-500">{totalWeightReq}</td>
-                                        <td className="border-2 border-black p-3 font-mono text-black">{totalWeightDel}</td>
+                                        <td className="border-2 border-black p-2 font-mono text-gray-500">{totalCartonsReq}</td>
+                                        <td className="border-2 border-black p-2 font-mono text-black">{totalCartonsDel}</td>
+                                        <td className="border-2 border-black p-2 font-mono text-gray-500">{totalWeightReq}</td>
+                                        <td className="border-2 border-black p-2 font-mono text-black">{totalWeightDel}</td>
                                     </>
                                 ) : (
                                     <>
-                                        <td className="border-2 border-black p-3 font-mono">{totalCartonsReq}</td>
-                                        <td className="border-2 border-black p-3 font-mono">{totalWeightReq}</td>
+                                        <td className="border-2 border-black p-2 font-mono">{totalCartonsReq}</td>
+                                        <td className="border-2 border-black p-2 font-mono">{totalWeightReq}</td>
                                     </>
                                 )}
                             </tr>
@@ -234,8 +240,8 @@ export default function PrintExitPermit({ permit, onClose, onApprove, onReject, 
                     </table>
                 </div>
 
-                <div className="space-y-2"><h3 className="font-black text-lg flex items-center gap-2"><MapPin size={20}/> مشخصات گیرنده</h3>
-                    <div className="border-2 border-black rounded-xl p-4 bg-gray-50 text-sm space-y-2">
+                <div className="space-y-1"><h3 className="font-black text-lg flex items-center gap-2"><MapPin size={20}/> مشخصات گیرنده</h3>
+                    <div className="border-2 border-black rounded-xl p-3 bg-gray-50 text-sm space-y-2">
                         {displayDestinations.map((dest, idx) => (
                             <div key={idx} className="border-b-2 border-gray-200 pb-2 last:border-0 last:pb-0">
                                 <div className="grid grid-cols-2 gap-4">
@@ -249,23 +255,40 @@ export default function PrintExitPermit({ permit, onClose, onApprove, onReject, 
                 </div>
 
                 {(permit.driverName || permit.plateNumber) && (
-                    <div className="space-y-2"><h3 className="font-black text-lg flex items-center gap-2"><Truck size={20}/> مشخصات حمل</h3><div className="border-2 border-black rounded-xl p-4 bg-gray-50 text-sm flex gap-8"><div><span className="font-bold text-gray-500 ml-2">نام راننده:</span> <span className="font-bold text-lg">{permit.driverName}</span></div><div><span className="font-bold text-gray-500 ml-2">شماره پلاک:</span> <span className="font-mono font-bold text-lg dir-ltr">{permit.plateNumber}</span></div></div></div>
+                    <div className="space-y-1"><h3 className="font-black text-lg flex items-center gap-2"><Truck size={20}/> مشخصات حمل</h3><div className="border-2 border-black rounded-xl p-3 bg-gray-50 text-sm flex gap-8"><div><span className="font-bold text-gray-500 ml-2">نام راننده:</span> <span className="font-bold text-lg">{permit.driverName}</span></div><div><span className="font-bold text-gray-500 ml-2">شماره پلاک:</span> <span className="font-mono font-bold text-lg dir-ltr">{permit.plateNumber}</span></div></div></div>
                 )}
                 
-                {permit.description && (<div className="space-y-2"><h3 className="font-black text-lg">توضیحات تکمیلی</h3><div className="border-2 border-black rounded-xl p-4 bg-white text-sm min-h-[60px]">{permit.description}</div></div>)}
+                {permit.description && (<div className="space-y-1"><h3 className="font-black text-lg">توضیحات</h3><div className="border-2 border-black rounded-xl p-3 bg-white text-sm min-h-[40px]">{permit.description}</div></div>)}
             </div>
 
-            <div className="mt-auto pt-8 border-t-4 border-black grid grid-cols-4 gap-4 text-center">
-                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full"><Stamp title="مدیر فروش (درخواست)" name={permit.requester} /></div><div className="w-full border-t-2 border-gray-400 pt-1 text-xs font-bold text-gray-600">امضا واحد فروش</div></div>
-                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full">{permit.approverCeo ? <Stamp title="تایید مدیریت" name={permit.approverCeo} /> : <span className="text-gray-300 text-xs">امضا نشده</span>}</div><div className="w-full border-t-2 border-gray-400 pt-1 text-xs font-bold text-gray-600">امضا مدیرعامل</div></div>
-                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full">{permit.approverFactory ? <Stamp title="تایید کارخانه" name={permit.approverFactory} /> : <span className="text-gray-300 text-xs">امضا نشده</span>}</div><div className="w-full border-t-2 border-gray-400 pt-1 text-xs font-bold text-gray-600">امضا مدیر کارخانه</div></div>
-                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full">{permit.approverWarehouse ? <Stamp title="تحویل انبار" name={permit.approverWarehouse} /> : <span className="text-gray-300 text-xs">امضا نشده</span>}</div><div className="w-full border-t-2 border-gray-400 pt-1 text-xs font-bold text-gray-600">امضا سرپرست انبار</div></div>
+            <div className="mt-auto pt-4 border-t-4 border-black grid grid-cols-5 gap-2 text-center items-end">
+                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full"><Stamp title="مدیر فروش" name={permit.requester} /></div><div className="w-full border-t-2 border-gray-400 pt-1 text-[10px] font-bold text-gray-600">درخواست کننده</div></div>
+                
+                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full">{permit.approverCeo ? <Stamp title="مدیریت" name={permit.approverCeo} /> : <span className="text-gray-300 text-xs">---</span>}</div><div className="w-full border-t-2 border-gray-400 pt-1 text-[10px] font-bold text-gray-600">مدیرعامل</div></div>
+                
+                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full">{permit.approverFactory ? <Stamp title="مدیر کارخانه" name={permit.approverFactory} /> : <span className="text-gray-300 text-xs">---</span>}</div><div className="w-full border-t-2 border-gray-400 pt-1 text-[10px] font-bold text-gray-600">مدیر کارخانه</div></div>
+                
+                <div className="flex flex-col items-center justify-between min-h-[80px]"><div className="mb-2 flex items-center justify-center h-full">{permit.approverWarehouse ? <Stamp title="تحویل انبار" name={permit.approverWarehouse} /> : <span className="text-gray-300 text-xs">---</span>}</div><div className="w-full border-t-2 border-gray-400 pt-1 text-[10px] font-bold text-gray-600">سرپرست انبار</div></div>
+                
+                {/* SECURITY / EXIT TIME - CRITICAL FIX */}
+                <div className="flex flex-col items-center justify-between min-h-[80px]">
+                    <div className="mb-2 flex items-center justify-center h-full">
+                        {permit.status === ExitPermitStatus.EXITED ? 
+                            <Stamp 
+                                title="انتظامات / خروج" 
+                                name={permit.approverSecurity || 'نگهبان'} 
+                                time={permit.exitTime} 
+                                isSecurity={true}
+                            /> 
+                            : <span className="text-gray-300 text-xs">---</span>
+                        }
+                    </div>
+                    <div className="w-full border-t-2 border-black pt-1 text-[10px] font-black text-black">تایید خروج (انتظامات)</div>
+                </div>
             </div>
             
-            <div className="mt-4 pt-2 border-t border-gray-300 flex justify-between items-center text-[10px] text-gray-500">
-                <div>زمان ثبت: {new Date(permit.createdAt || Date.now()).toLocaleString('fa-IR')}</div>
-                <div>{permit.status === ExitPermitStatus.EXITED ? <span className="font-bold text-green-700 flex items-center gap-1"><CheckCircle size={12}/> خروج نهایی توسط انتظامات تایید شد ({permit.approverSecurity})</span> : 'این برگه بدون مهر و امضا فاقد اعتبار است.'}</div>
-                <div>نسخه چاپی سیستم</div>
+            <div className="mt-2 border-t border-gray-300 text-[9px] text-gray-500 text-center">
+                نسخه چاپی سیستم
             </div>
       </div>
   );

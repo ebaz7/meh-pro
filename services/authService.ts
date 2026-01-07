@@ -70,11 +70,15 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         
         canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         
-        // --- APPROVAL WORKFLOW DEFAULTS ---
-        canApproveExitCeo: isStandardRole && (userRole === UserRole.CEO || userRole === UserRole.ADMIN),
-        canApproveExitFactory: isStandardRole && (userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
-        canApproveExitWarehouse: isStandardRole && (userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER),
-        canApproveExitSecurity: isStandardRole && (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
+        // --- APPROVAL WORKFLOW DEFAULTS (FORCED) ---
+        // Ensure standard roles have these permissions by default, regardless of settings
+        canApproveExitCeo: userRole === UserRole.CEO || userRole === UserRole.ADMIN,
+        
+        canApproveExitFactory: userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO,
+        
+        canApproveExitWarehouse: userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER,
+        
+        canApproveExitSecurity: userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN || userRole === UserRole.CEO,
         
         canViewExitArchive: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.WAREHOUSE_KEEPER),
         canEditExitArchive: isStandardRole && (userRole === UserRole.ADMIN),
@@ -92,7 +96,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         perms = { ...perms, ...settings.rolePermissions[userRole] };
     }
 
-    // 3. FORCE CRITICAL PERMISSIONS (Overrides Settings)
+    // 3. FORCE CRITICAL PERMISSIONS (Overrides Settings - Safety Net)
     // This ensures that even if settings are messed up, the workflow still works.
     if (userRole === UserRole.ADMIN) {
         Object.keys(perms).forEach(k => { (perms as any)[k] = true; });
