@@ -71,7 +71,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         
         canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         
-        // EXPLICIT APPROVAL PERMISSIONS
+        // EXPLICIT APPROVAL PERMISSIONS (Corrected logic for Factory Manager)
         canApproveExitCeo: isStandardRole && (userRole === UserRole.CEO || userRole === UserRole.ADMIN),
         canApproveExitFactory: isStandardRole && (userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         canApproveExitWarehouse: isStandardRole && (userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER),

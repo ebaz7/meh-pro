@@ -5,7 +5,7 @@ import { formatDate, formatCurrency } from '../constants';
 import { X, Printer, Clock, MapPin, Package, Truck, CheckCircle, Share2, Edit, Loader2, Users, Search, FileDown } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { getUsers } from '../services/authService';
-import { generatePdf } from '../utils/pdfGenerator'; // Import Utility
+import { generatePdf } from '../utils/pdfGenerator'; 
 
 interface Props {
   permit: ExitPermit;
@@ -15,7 +15,7 @@ interface Props {
   onEdit?: () => void;
   settings?: SystemSettings;
   embed?: boolean; 
-  watermark?: 'DELETED' | 'EDITED' | null; // NEW PROP
+  watermark?: 'DELETED' | 'EDITED' | null; 
 }
 
 const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject, onEdit, settings, embed, watermark }) => {
@@ -42,7 +42,7 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
         const wrapper = containerWrapperRef.current;
         if (wrapper) {
             const wrapperWidth = wrapper.clientWidth;
-            const targetWidth = 794; // A4 Width in px (approx)
+            const targetWidth = 794; 
             
             if (wrapperWidth < targetWidth + 40) {
                 const newScale = (wrapperWidth - 32) / targetWidth;
@@ -82,8 +82,8 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
   const handleSendToWhatsApp = async (targetNumber: string) => {
       if (!targetNumber) return;
       setSharing(true);
-      const element = document.getElementById(containerId);
       
+      const element = document.getElementById(containerId);
       if (!element) { 
           alert("خطا: المان چاپ پیدا نشد."); 
           setSharing(false); 
@@ -91,6 +91,8 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
       }
       
       try {
+          // Force wait for images or fonts if needed, though usually not issue here
+          // Use large windowWidth to prevent mobile responsiveness from squashing the image
           // @ts-ignore
           const canvas = await window.html2canvas(element, { 
               scale: 2, 
@@ -98,22 +100,29 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
               useCORS: true,
               windowWidth: 1200 
           });
+          
           const base64 = canvas.toDataURL('image/png').split(',')[1];
           let caption = `🚛 *مجوز خروج کالا*\n🔢 شماره: ${permit.permitNumber}\n📅 تاریخ: ${formatDate(permit.date)}\n👤 گیرنده: ${permit.recipientName}\n📦 اقلام: ${permit.goodsName}`;
           if(permit.exitTime) caption += `\n🕒 ساعت خروج: ${permit.exitTime}`;
+          
           await apiCall('/send-whatsapp', 'POST', {
               number: targetNumber,
               message: caption,
               mediaData: { data: base64, mimeType: 'image/png', filename: `Permit_${permit.permitNumber}.png` }
           });
+          
           if (!embed) alert('ارسال شد.');
           setShowContactSelect(false);
+          
       } catch(e: any) { 
           console.error("WhatsApp Send Error:", e);
           alert('خطا در ارسال: ' + (e.message || 'Unknown error')); 
-      } finally { setSharing(false); }
+      } finally { 
+          setSharing(false); 
+      }
   };
 
+  // Combine Settings Contacts AND Groups
   const filteredContacts = settings?.savedContacts?.filter(c => 
     c.name.toLowerCase().includes(contactSearch.toLowerCase()) || 
     c.number.includes(contactSearch)
@@ -241,6 +250,7 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
             <button onClick={() => window.print()} className="bg-blue-600 text-white p-2.5 rounded-lg text-sm font-bold hover:bg-blue-700 flex items-center justify-center gap-2 transition-transform active:scale-95"><Printer size={18}/> چاپ (A4)</button>
             <button onClick={handleDownloadPDF} disabled={processing} className="bg-gray-100 text-gray-700 p-2.5 rounded-lg text-sm font-bold hover:bg-gray-200 flex items-center justify-center gap-2">{processing ? <Loader2 size={18} className="animate-spin"/> : <FileDown size={18}/>} دانلود PDF</button>
             <button onClick={() => setShowContactSelect(!showContactSelect)} disabled={sharing} className={`bg-green-600 text-white p-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all ${showContactSelect ? 'ring-2 ring-green-300' : ''}`}>{sharing ? <Loader2 size={18} className="animate-spin"/> : <Share2 size={18}/>} ارسال واتساپ</button>
+            
             {showContactSelect && (
                 <div className="absolute top-full right-0 md:-right-32 mt-2 w-full min-w-[280px] md:w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-[300] animate-scale-in flex flex-col overflow-hidden">
                     <div className="p-3 bg-gray-50 border-b flex flex-col gap-2">
