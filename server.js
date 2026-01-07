@@ -15,14 +15,33 @@ import webpush from 'web-push';
 import https from 'https';
 import http from 'http';
 
-process.on('uncaughtException', (err) => { console.error('>>> CRITICAL ERROR:', err.message); });
-process.on('unhandledRejection', (reason) => { console.error('>>> CRITICAL REJECTION:', reason); });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// --- FILE LOGGER FOR SERVICE DEBUGGING ---
+const logToFile = (message) => {
+    const logPath = path.join(__dirname, 'service-error.log');
+    const timestamp = new Date().toISOString();
+    try {
+        fs.appendFileSync(logPath, `[${timestamp}] ${message}\n`);
+    } catch(e) {
+        // Fallback if permission denied
+        console.error("Log Write Error:", e);
+    }
+};
+
+process.on('uncaughtException', (err) => { 
+    console.error('>>> CRITICAL ERROR:', err.message); 
+    logToFile(`CRITICAL ERROR: ${err.message}\n${err.stack}`);
+});
+
+process.on('unhandledRejection', (reason) => { 
+    console.error('>>> CRITICAL REJECTION:', reason); 
+    logToFile(`CRITICAL REJECTION: ${reason}`);
+});
 
 import { initTelegram, sendDocument as sendTelegramDoc, sendMessage as sendTelegramMsg, notifyNewBijak } from './backend/telegram.js';
 import { initWhatsApp, sendMessage as sendWhatsAppMessage, getStatus as getWhatsAppStatus, logout as logoutWhatsApp, getGroups as getWhatsAppGroups } from './backend/whatsapp.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -39,6 +58,7 @@ const BACKUPS_DIR = path.join(__dirname, 'backups');
 const WAUTH_DIR = path.join(__dirname, 'wauth');
 const SSL_DIR = path.join(__dirname, 'ssl'); 
 
+// Ensure directories exist
 [UPLOADS_DIR, AI_UPLOADS_DIR, BACKUPS_DIR, WAUTH_DIR, SSL_DIR].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); });
 
 app.set('trust proxy', 1); 
@@ -103,7 +123,17 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
 
 const db = getDb();
 if (db.settings?.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { console.error("Telegram Error:", e.message); }
-setTimeout(() => { try { initWhatsApp(WAUTH_DIR); } catch(e) { console.error("WA Error:", e); } }, 3000);
+
+// Initialize WhatsApp with delay and error logging
+setTimeout(() => { 
+    try { 
+        // Pass the absolute path to WAUTH_DIR explicitly
+        initWhatsApp(WAUTH_DIR); 
+    } catch(e) { 
+        console.error("WA Init Error:", e); 
+        logToFile(`WA Init Error: ${e.message}`);
+    } 
+}, 5000);
 
 const sendNativeFCM = async (token, title, body, url = '/') => {
     if (!FCM_SERVER_KEY) return;
@@ -190,6 +220,7 @@ app.post('/api/send-whatsapp', async (req, res) => {
         res.json({ success: true });
     } catch (e) {
         console.error("WA Send Error:", e);
+        logToFile(`WA Send API Error: ${e.message}`);
         res.status(500).json({ error: e.message });
     }
 });
@@ -284,13 +315,16 @@ app.get('*', (req, res) => { const p = path.join(__dirname, 'dist', 'index.html'
 // --- START SERVER ---
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n>>> Server running on port ${PORT}`);
+    logToFile(`Server started on port ${PORT}`);
 });
 
 server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
         console.error(`\n!!! ERROR: Port ${PORT} is busy! !!!`);
         console.error("Please change the port in .env file or free up the port.");
+        logToFile(`Error: Port ${PORT} is busy`);
     } else {
         console.error(err);
+        logToFile(`Server error: ${err.message}`);
     }
 });

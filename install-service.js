@@ -36,7 +36,9 @@ rl.question('Please enter the port number (Press Enter for 80): ', (inputPort) =
   }
 
   // 4. Configure Service
-  const puppeteerCache = path.join(__dirname, '.cache', 'puppeteer');
+  // CRITICAL FIX: Use a local directory for Puppeteer Chrome inside the project
+  // This ensures the 'Local System' account can find the browser.
+  const puppeteerCache = path.join(__dirname, '.puppeteer');
 
   const svc = new Service({
     name: 'PaymentSystem',
@@ -84,5 +86,6 @@ rl.question('Please enter the port number (Press Enter for 80): ', (inputPort) =
 
   // 6. Install
   console.log('> Installing Windows Service...');
+  console.log(`> Puppeteer Cache Path set to: ${puppeteerCache}`);
   svc.install();
 });
