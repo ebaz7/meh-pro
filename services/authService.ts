@@ -106,12 +106,15 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     if (userRole === UserRole.CEO) {
         perms.canApproveExitCeo = true;
         perms.canViewExitPermits = true;
+        perms.canViewExitArchive = true;
     }
 
-    // Factory Manager
+    // Factory Manager - FIX: Ensure they have approval AND view access
     if (userRole === UserRole.FACTORY_MANAGER) {
         perms.canApproveExitFactory = true;
         perms.canViewExitPermits = true;
+        perms.canViewExitArchive = true; // Necessary to see past approvals
+        perms.canViewWarehouseReports = true; // Often needed for Factory Manager
     }
 
     // Warehouse Keeper
@@ -119,6 +122,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         perms.canApproveExitWarehouse = true;
         perms.canViewExitPermits = true;
         perms.canManageWarehouse = true;
+        perms.canViewExitArchive = true;
     }
 
     // Security
@@ -126,6 +130,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         perms.canApproveExitSecurity = true;
         perms.canViewExitPermits = true;
         perms.canViewSecurity = true;
+        perms.canViewExitArchive = true;
     }
 
     // Sales Manager
