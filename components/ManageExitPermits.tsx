@@ -41,13 +41,9 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- ROBUST APPROVAL LOGIC (Strict Separation) ---
+  // --- APPROVAL LOGIC BASED ON PERMISSIONS ---
   const canApprove = (p: ExitPermit) => {
-      const role = currentUser.role;
       const status = p.status || '';
-
-      // 0. Admin always can do everything
-      if (role === UserRole.ADMIN) return true;
 
       // Helper to check status loosely
       const isCeoStep = status === ExitPermitStatus.PENDING_CEO || status.includes('مدیرعامل');
@@ -55,27 +51,13 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       const isWarehouseStep = status === ExitPermitStatus.PENDING_WAREHOUSE || status.includes('انبار');
       const isSecurityStep = status === ExitPermitStatus.PENDING_SECURITY || status.includes('انتظامات');
 
-      // 1. CEO Step (Only CEO or explicit permission)
-      if (isCeoStep) {
-          return role === UserRole.CEO || !!permissions.canApproveExitCeo;
-      }
+      // Check permissions directly. 
+      // The getRolePermissions function in authService.ts handles the defaults + settings merge.
       
-      // 2. Factory Manager Step (Only Factory Manager or explicit permission)
-      if (isFactoryStep) {
-          // REMOVED CEO here to enforce strict flow, unless CEO has canApproveExitFactory permission set in settings
-          return role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitFactory;
-      }
-      
-      // 3. Warehouse Step (Only Warehouse Keeper or explicit permission)
-      if (isWarehouseStep) {
-          return role === UserRole.WAREHOUSE_KEEPER || !!permissions.canApproveExitWarehouse;
-      }
-      
-      // 4. Security Step (Only Security or explicit permission)
-      // CRITICAL FIX: Removed FACTORY_MANAGER from here
-      if (isSecurityStep) {
-          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || !!permissions.canApproveExitSecurity;
-      }
+      if (isCeoStep) return !!permissions.canApproveExitCeo;
+      if (isFactoryStep) return !!permissions.canApproveExitFactory;
+      if (isWarehouseStep) return !!permissions.canApproveExitWarehouse;
+      if (isSecurityStep) return !!permissions.canApproveExitSecurity;
       
       return false;
   };
@@ -186,7 +168,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       let nextStatus = currentStatus;
       let extra: any = {};
 
-      // --- WORKFLOW TRANSITIONS (Strict) ---
+      // --- WORKFLOW TRANSITIONS ---
       if (isCeoStage) nextStatus = ExitPermitStatus.PENDING_FACTORY;
       else if (isFactoryStage) nextStatus = ExitPermitStatus.PENDING_WAREHOUSE; 
       else if (isWarehouseStage) nextStatus = ExitPermitStatus.PENDING_SECURITY; 
