@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { WarehouseTransaction, SystemSettings, Contact } from '../types';
 import { formatCurrency, formatDate } from '../constants';
 import { X, Printer, Loader2, Share2, Search, Users, Smartphone, FileDown, CheckCircle, XCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { getUsers } from '../services/authService';
-import { generatePdf } from '../utils/pdfGenerator'; // Import utility
+import { generatePdf } from '../utils/pdfGenerator'; 
 
 interface PrintBijakProps {
   tx: WarehouseTransaction;
@@ -24,7 +25,10 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
   const [contactSearch, setContactSearch] = useState('');
   const [contactsLoading, setContactsLoading] = useState(false);
 
-  // Set A5 Portrait for Bijak (For Direct Print)
+  // Scaling State
+  const [scale, setScale] = useState(1);
+  const containerWrapperRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
       const style = document.getElementById('page-size-style');
       if (style && !embed) { 
@@ -32,7 +36,28 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
       }
   }, [embed]);
 
-  // Use consistent ID. If embed is true (hidden mode), use unique ID.
+  // Auto-Scale Logic
+  useEffect(() => {
+    const handleResize = () => {
+        if (embed) return;
+        const wrapper = containerWrapperRef.current;
+        if (wrapper) {
+            const wrapperWidth = wrapper.clientWidth;
+            const targetWidth = 560; // A5 Width in px (approx)
+            
+            if (wrapperWidth < targetWidth + 40) {
+                const newScale = (wrapperWidth - 32) / targetWidth;
+                setScale(newScale);
+            } else {
+                setScale(1);
+            }
+        }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [embed]);
+
   const containerId = embed 
     ? `print-bijak-${tx.id}${forceHidePrices ? '-noprice' : '-price'}` 
     : "print-area";
@@ -42,7 +67,6 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
   }, [forceHidePrices]);
 
   useEffect(() => {
-      // ... (loadContacts logic) ...
       const loadContacts = async () => {
           setContactsLoading(true);
           const saved = settings?.savedContacts || [];
@@ -76,7 +100,6 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
       }, 1000);
   };
 
-  // Replaced with generatePdf
   const handleDownloadPDF = async () => {
       setProcessing(true);
       await generatePdf({
@@ -123,7 +146,6 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
 
   const filteredContacts = allContacts.filter(c => c.name.toLowerCase().includes(contactSearch.toLowerCase()) || c.number.includes(contactSearch));
 
-  // Helper Stamp Component
   const Stamp = ({ title, name, color = 'blue' }: { title: string, name: string, color?: 'blue' | 'green' | 'gray' }) => {
       const colorClass = color === 'blue' ? 'border-blue-800 text-blue-800' : color === 'green' ? 'border-green-800 text-green-800' : 'border-gray-500 text-gray-500';
       return (
@@ -134,29 +156,20 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
       );
   };
 
-  // The Invoice Content - Use flexible width but stick to A5 dimensions
   const content = (
       <div id={containerId} className={`printable-content bg-white w-full mx-auto p-6 shadow-2xl rounded-sm relative text-gray-900 flex flex-col print:shadow-none`} 
         style={{ 
             direction: 'rtl',
-            // A5 Portrait Size
             width: '148mm',
             height: '209mm',
             margin: '0 auto',
-            // Inner padding to avoid clipping
             padding: '8mm', 
             boxSizing: 'border-box',
-            // Prevent 2nd page
             maxHeight: '209mm',
             overflow: 'hidden'
         }}>
-            {/* ... Content ... */}
-            {tx.status === 'REJECTED' && (
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-600/30 text-red-600/30 font-black text-6xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">REJECTED</div>
-            )}
-            {(tx.status as any) === 'DELETED' && (
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-600/30 text-red-600/30 font-black text-6xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">حذف شده / باطل</div>
-            )}
+            {tx.status === 'REJECTED' && (<div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-600/30 text-red-600/30 font-black text-6xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">REJECTED</div>)}
+            {(tx.status as any) === 'DELETED' && (<div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-600/30 text-red-600/30 font-black text-6xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">حذف شده / باطل</div>)}
 
             <div className="border-b-2 border-black pb-4 mb-4 flex justify-between items-start relative z-10">
                 <div className="flex flex-col">
@@ -169,24 +182,9 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
             <div className="flex-1 relative z-10"><table className="w-full text-sm border-collapse border border-black"><thead className="bg-gray-200 print:bg-gray-100"><tr><th className="border border-black p-2 w-10 text-center">#</th><th className="border border-black p-2">شرح کالا</th><th className="border border-black p-2 w-20 text-center">تعداد</th><th className="border border-black p-2 w-24 text-center">وزن (KG)</th>{!hidePrices && <th className="border border-black p-2 w-28 text-center">فی (ریال)</th>}</tr></thead><tbody>{tx.items.map((item, idx) => (<tr key={idx}><td className="border border-black p-2 text-center">{idx + 1}</td><td className="border border-black p-2 font-bold">{item.itemName}</td><td className="border border-black p-2 text-center">{item.quantity}</td><td className="border border-black p-2 text-center">{item.weight}</td>{!hidePrices && <td className="border border-black p-2 text-center font-mono">{item.unitPrice ? formatCurrency(item.unitPrice).replace('ریال', '') : '-'}</td>}</tr>))}<tr className="bg-gray-100 font-bold print:bg-white"><td colSpan={2} className="border border-black p-2 text-left pl-4">جمع کل:</td><td className="border border-black p-2 text-center">{tx.items.reduce((a,b)=>a+b.quantity,0)}</td><td className="border border-black p-2 text-center">{tx.items.reduce((a,b)=>a+b.weight,0)}</td>{!hidePrices && <td className="border border-black p-2 bg-gray-200"></td>}</tr></tbody></table>{tx.description && <div className="mt-4 border p-2 rounded text-sm"><span className="font-bold block mb-1">توضیحات:</span>{tx.description}</div>}</div>
             
             <div className="mt-8 pt-4 border-t-2 border-black grid grid-cols-3 gap-4 text-center relative z-10 h-24">
-                <div className="flex flex-col items-center justify-between">
-                    <div className="mb-1 flex items-center justify-center h-full">
-                        <Stamp title="انباردار (ثبت)" name={tx.createdBy || 'کاربر انبار'} color="blue" />
-                    </div>
-                    <div className="w-full border-t border-gray-400 pt-1 text-[9px] font-bold text-gray-600">امضا انباردار</div>
-                </div>
-                <div className="flex flex-col items-center justify-between">
-                    <div className="mb-1 flex items-center justify-center h-full">
-                        {tx.approvedBy ? <Stamp title="تایید مدیریت" name={tx.approvedBy} color="green" /> : <span className="text-gray-300 text-[10px]">منتظر تایید</span>}
-                    </div>
-                    <div className="w-full border-t border-gray-400 pt-1 text-[9px] font-bold text-gray-600">امضا مدیریت</div>
-                </div>
-                <div className="flex flex-col items-center justify-between">
-                    <div className="mb-1 flex items-center justify-center h-full">
-                        <div className="h-10 w-24"></div>
-                    </div>
-                    <div className="w-full border-t border-gray-400 pt-1 text-[9px] font-bold text-gray-600">امضا تحویل گیرنده</div>
-                </div>
+                <div className="flex flex-col items-center justify-between"><div className="mb-1 flex items-center justify-center h-full"><Stamp title="انباردار (ثبت)" name={tx.createdBy || 'کاربر انبار'} color="blue" /></div><div className="w-full border-t border-gray-400 pt-1 text-[9px] font-bold text-gray-600">امضا انباردار</div></div>
+                <div className="flex flex-col items-center justify-between"><div className="mb-1 flex items-center justify-center h-full">{tx.approvedBy ? <Stamp title="تایید مدیریت" name={tx.approvedBy} color="green" /> : <span className="text-gray-300 text-[10px]">منتظر تایید</span>}</div><div className="w-full border-t border-gray-400 pt-1 text-[9px] font-bold text-gray-600">امضا مدیریت</div></div>
+                <div className="flex flex-col items-center justify-between"><div className="mb-1 flex items-center justify-center h-full"><div className="h-10 w-24"></div></div><div className="w-full border-t border-gray-400 pt-1 text-[9px] font-bold text-gray-600">امضا تحویل گیرنده</div></div>
             </div>
       </div>
   );
@@ -197,86 +195,31 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex flex-col items-center justify-start md:justify-center p-4 overflow-y-auto animate-fade-in no-print safe-pb">
         <div className="bg-white p-3 rounded-xl shadow-lg z-50 flex flex-col gap-2 w-full max-w-[148mm] md:w-64 md:fixed md:top-4 md:left-4 mb-4 md:mb-0 relative order-1">
             <div className="flex justify-between items-center border-b pb-2"><span className="font-bold text-sm">پنل عملیات</span><button onClick={onClose}><X size={20} className="text-gray-400 hover:text-red-500"/></button></div>
-            
-            {/* Rejection/Deletion Alert */}
-            {((tx.status as any) === 'DELETED' || tx.status === 'REJECTED') && (
-                <div className="bg-red-50 p-2 rounded-lg border border-red-200 flex items-start gap-2 text-xs text-red-800">
-                    <AlertTriangle size={16} className="shrink-0 mt-0.5"/>
-                    <div>
-                        <span className="font-bold block">این بیجک {(tx.status as any) === 'DELETED' ? 'حذف' : 'رد'} شده است.</span>
-                        {tx.rejectionReason}
-                    </div>
-                </div>
-            )}
-
-            {/* Approval Buttons */}
-            {(onApprove || onReject) && (
-                <div className="flex gap-2 mb-1">
-                    {onApprove && (
-                        <button onClick={onApprove} className="flex-1 bg-green-600 text-white py-2 rounded-lg flex items-center justify-center gap-1 text-xs font-bold hover:bg-green-700 transition-colors shadow-sm">
-                            <CheckCircle size={14}/> تایید
-                        </button>
-                    )}
-                    {onReject && (
-                        <button onClick={onReject} className="flex-1 bg-red-600 text-white py-2 rounded-lg flex items-center justify-center gap-1 text-xs font-bold hover:bg-red-700 transition-colors shadow-sm">
-                            <XCircle size={14}/> رد
-                        </button>
-                    )}
-                </div>
-            )}
-
+            {((tx.status as any) === 'DELETED' || tx.status === 'REJECTED') && (<div className="bg-red-50 p-2 rounded-lg border border-red-200 flex items-start gap-2 text-xs text-red-800"><AlertTriangle size={16} className="shrink-0 mt-0.5"/><div><span className="font-bold block">این بیجک {(tx.status as any) === 'DELETED' ? 'حذف' : 'رد'} شده است.</span>{tx.rejectionReason}</div></div>)}
+            {(onApprove || onReject) && (<div className="flex gap-2 mb-1">{onApprove && (<button onClick={onApprove} className="flex-1 bg-green-600 text-white py-2 rounded-lg flex items-center justify-center gap-1 text-xs font-bold hover:bg-green-700 transition-colors shadow-sm"><CheckCircle size={14}/> تایید</button>)}{onReject && (<button onClick={onReject} className="flex-1 bg-red-600 text-white py-2 rounded-lg flex items-center justify-center gap-1 text-xs font-bold hover:bg-red-700 transition-colors shadow-sm"><XCircle size={14}/> رد</button>)}</div>)}
             <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 p-2 rounded"><input type="checkbox" checked={hidePrices} onChange={e => setHidePrices(e.target.checked)} id="hidePrice"/><label htmlFor="hidePrice" className="cursor-pointer">مخفی کردن قیمت‌ها</label></div>
             <button onClick={handleDownloadPDF} disabled={processing} className="bg-gray-100 text-gray-700 p-2 rounded text-sm hover:bg-gray-200 flex items-center justify-center gap-2">{processing ? <Loader2 size={16} className="animate-spin"/> : <FileDown size={16}/>} دانلود PDF</button>
             <button onClick={handlePrint} disabled={processing} className="bg-blue-600 text-white p-2 rounded text-sm hover:bg-blue-700 flex items-center justify-center gap-2">{processing ? <Loader2 size={16} className="animate-spin"/> : <Printer size={16}/>} چاپ</button>
-            
             <div className="border-t pt-2 mt-1 space-y-2">
                 <button onClick={() => { if(warehouseTarget) generateAndSend(warehouseTarget, true, "📦 *حواله خروج (نسخه انبار)*"); else alert(`شماره گروه انبار برای شرکت ${tx.company} تنظیم نشده است.`); }} disabled={processing} className="w-full bg-orange-100 text-orange-700 p-2 rounded text-xs hover:bg-orange-200 flex items-center justify-center gap-2 border border-orange-200">{processing ? <Loader2 size={14} className="animate-spin"/> : 'ارسال به انبار (بدون فی)'}</button>
                 <button onClick={() => { if(managerTarget) generateAndSend(managerTarget, false, "📑 *حواله خروج (نسخه مدیریت)*"); else alert(`شماره مدیر فروش برای شرکت ${tx.company} تنظیم نشده است.`); }} disabled={processing} className="w-full bg-green-100 text-green-700 p-2 rounded text-xs hover:bg-green-200 flex items-center justify-center gap-2 border border-green-200">{processing ? <Loader2 size={14} className="animate-spin"/> : 'ارسال به مدیر (با فی)'}</button>
-                
                 <button onClick={() => setShowContactSelect(true)} className="w-full bg-white border text-gray-700 p-2 rounded text-xs hover:bg-gray-50 flex items-center justify-center gap-2"><Share2 size={14}/> انتخاب مخاطب</button>
             </div>
         </div>
-        {/* ... (Contact Select) ... */}
-        {showContactSelect && (
-            <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col h-[70vh] animate-fade-in">
-                    <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
-                        <span className="font-bold text-gray-800">انتخاب مخاطب برای ارسال</span>
-                        <button onClick={() => setShowContactSelect(false)} className="bg-red-100 text-red-600 rounded-lg p-1.5 hover:bg-red-200"><X size={18}/></button>
-                    </div>
-                    <div className="p-3 border-b">
-                        <div className="bg-gray-100 rounded-lg flex items-center px-3 py-2">
-                            <Search size={18} className="text-gray-400 ml-2"/>
-                            <input className="bg-transparent w-full outline-none text-sm" placeholder="جستجو نام یا شماره..." autoFocus value={contactSearch} onChange={e => setContactSearch(e.target.value)}/>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                        {contactsLoading ? (
-                            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2"><Loader2 size={32} className="animate-spin"/> <span>در حال دریافت لیست...</span></div>
-                        ) : filteredContacts.length === 0 ? (
-                            <div className="text-center text-gray-400 mt-10">مخاطبی یافت نشد</div>
-                        ) : (
-                            filteredContacts.map(c => (
-                                <button key={c.id} onClick={() => generateAndSend(c.number, hidePrices, "📄 *بیجک ارسالی*")} className="w-full text-right p-3 hover:bg-blue-50 rounded-xl border border-transparent hover:border-blue-100 flex items-center gap-3 transition-colors group">
-                                    <div className={`p-2 rounded-full ${c.isGroup ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                                        {c.isGroup ? <Users size={18}/> : <Smartphone size={18}/>}
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="font-bold text-gray-800 text-sm group-hover:text-blue-700">{c.name}</div>
-                                        <div className="text-xs text-gray-500 font-mono mt-0.5">{c.number}</div>
-                                    </div>
-                                    <div className="bg-gray-100 px-3 py-1 rounded-lg text-xs font-bold text-gray-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">ارسال</div>
-                                </button>
-                            ))
-                        )}
-                    </div>
-                    <div className="p-3 border-t bg-gray-50">
-                        <button onClick={() => { const num = prompt("شماره را وارد کنید (مثال: 98912...):"); if(num) generateAndSend(num, hidePrices, "📄 *بیجک ارسالی*"); }} className="w-full bg-white border border-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors">ورود شماره دستی</button>
-                    </div>
-                </div>
+        {showContactSelect && (<div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4"><div className="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col h-[70vh] animate-fade-in"><div className="p-3 border-b bg-gray-50 flex items-center justify-between"><span className="font-bold text-gray-800">انتخاب مخاطب برای ارسال</span><button onClick={() => setShowContactSelect(false)} className="bg-red-100 text-red-600 rounded-lg p-1.5 hover:bg-red-200"><X size={18}/></button></div><div className="p-3 border-b"><div className="bg-gray-100 rounded-lg flex items-center px-3 py-2"><Search size={18} className="text-gray-400 ml-2"/><input className="bg-transparent w-full outline-none text-sm" placeholder="جستجو نام یا شماره..." autoFocus value={contactSearch} onChange={e => setContactSearch(e.target.value)}/></div></div><div className="flex-1 overflow-y-auto p-2 space-y-1">{contactsLoading ? (<div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2"><Loader2 size={32} className="animate-spin"/> <span>در حال دریافت لیست...</span></div>) : filteredContacts.length === 0 ? (<div className="text-center text-gray-400 mt-10">مخاطبی یافت نشد</div>) : (filteredContacts.map(c => (<button key={c.id} onClick={() => generateAndSend(c.number, hidePrices, "📄 *بیجک ارسالی*")} className="w-full text-right p-3 hover:bg-blue-50 rounded-xl border border-transparent hover:border-blue-100 flex items-center gap-3 transition-colors group"><div className={`p-2 rounded-full ${c.isGroup ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>{c.isGroup ? <Users size={18}/> : <Smartphone size={18}/>}</div><div className="flex-1"><div className="font-bold text-gray-800 text-sm group-hover:text-blue-700">{c.name}</div><div className="text-xs text-gray-500 font-mono mt-0.5">{c.number}</div></div><div className="bg-gray-100 px-3 py-1 rounded-lg text-xs font-bold text-gray-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">ارسال</div></button>)))}</div><div className="p-3 border-t bg-gray-50"><button onClick={() => { const num = prompt("شماره را وارد کنید (مثال: 98912...):"); if(num) generateAndSend(num, hidePrices, "📄 *بیجک ارسالی*"); }} className="w-full bg-white border border-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors">ورود شماره دستی</button></div></div></div>)}
+        <div className="order-2 w-full flex justify-center pb-10" ref={containerWrapperRef}>
+            <div style={{ 
+              width: '148mm', 
+              height: '209mm',
+              backgroundColor: 'white', 
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              transform: `scale(${scale})`,
+              transformOrigin: 'top center',
+              marginBottom: `${(1 - scale) * -100}px` 
+            }}>
+                {content}
             </div>
-        )}
-        <div className="order-2 w-full">{content}</div>
+        </div>
     </div>
   );
 };

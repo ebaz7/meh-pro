@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TradeRecord } from '../../types';
 import { formatNumberString, deformatNumberString, getCurrentShamsiDate } from '../../constants';
-import { FileSpreadsheet, Printer, FileDown, RefreshCw, Loader2, Settings } from 'lucide-react';
-import { generatePdf } from '../../utils/pdfGenerator'; // Import Utility
+import { FileSpreadsheet, Printer, FileDown, RefreshCw, Loader2 } from 'lucide-react';
+import { generatePdf } from '../../utils/pdfGenerator'; 
 
 interface Props {
     records: TradeRecord[];
@@ -31,6 +31,10 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
     const [showRates, setShowRates] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
+    // Scaling State
+    const [scale, setScale] = useState(1);
+    const containerWrapperRef = useRef<HTMLDivElement>(null);
+
     const years = Array.from({ length: 5 }, (_, i) => getCurrentShamsiDate().year - 2 + i);
 
     useEffect(() => {
@@ -41,6 +45,27 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY_RATES, JSON.stringify(rates));
     }, [rates]);
+
+    // Auto-Scale Logic
+    useEffect(() => {
+        const handleResize = () => {
+            const wrapper = containerWrapperRef.current;
+            if (wrapper) {
+                const wrapperWidth = wrapper.clientWidth;
+                const targetWidth = 794; // A4 Portrait
+                
+                if (wrapperWidth < targetWidth + 40) {
+                    const newScale = (wrapperWidth - 32) / targetWidth;
+                    setScale(newScale);
+                } else {
+                    setScale(1);
+                }
+            }
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const getWeeksPassed = (year: number) => {
         const currentShamsi = getCurrentShamsiDate();
@@ -59,16 +84,13 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
 
     const weeksPassed = getWeeksPassed(selectedYear);
 
-    // -- Logic (Copied exactly from previous report, keeping archives included) --
     const summaryByCompany = React.useMemo(() => {
         const summary: Record<string, number> = {};
         let totalAll = 0;
 
         records.forEach(r => {
-            // Note: We deliberately do NOT filter by 'status' or 'archive' here to include EVERYTHING for the year.
             const tranches = r.currencyPurchaseData?.tranches || [];
             
-            // Legacy handling
             if (tranches.length === 0 && (r.currencyPurchaseData?.purchasedAmount || 0) > 0) {
                 const pDate = r.currencyPurchaseData?.purchaseDate;
                 if (!pDate) return;
@@ -89,7 +111,6 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
                 summary[comp] = (summary[comp] || 0) + usdAmount;
                 totalAll += usdAmount;
             } else {
-                // Tranche handling
                 tranches.forEach(t => {
                     const pDate = t.date;
                     if (!pDate) return;
@@ -121,10 +142,10 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
     }, [records, rates, selectedYear, weeksPassed]);
 
     const formatUSD = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const formatCurrency = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
     const elementId = 'performance-report-print-area';
 
-    // -- Export Handlers --
     const handlePrint = () => {
         setIsGeneratingPdf(true);
         setTimeout(() => {
@@ -148,15 +169,10 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
     const handleExportExcel = () => {
         const headers = ["نام شرکت", "جمع کل خرید (دلار)", "میانگین هفتگی (دلار)"];
         const rows = [headers.join(",")];
-        
         summaryByCompany.details.forEach(item => {
-            // Remove commas for Excel numbers
             rows.push(`"${item.name}",${Math.round(item.total)},${Math.round(item.weeklyAvg)}`);
         });
-
-        // Add Total Row
         rows.push(`"جمع کل",${Math.round(summaryByCompany.totalAll)},${Math.round(weeksPassed > 0 ? summaryByCompany.totalAll / weeksPassed : 0)}`);
-
         const bom = "\uFEFF"; 
         const blob = new Blob([bom + rows.join("\n")], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
@@ -166,6 +182,59 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
         link.click();
         document.body.removeChild(link);
     };
+
+    const content = (
+        <div id={elementId} className="printable-content bg-white p-8 shadow-2xl relative text-black" 
+            style={{ 
+                width: '210mm', 
+                minHeight: '297mm', 
+                direction: 'rtl',
+                padding: '10mm', 
+                boxSizing: 'border-box'
+            }}>
+            
+            <div className="border border-black mb-4">
+                <div className="bg-blue-100 font-black py-3 border-b border-black text-center text-lg">
+                    خلاصه عملکرد شرکت‌ها در سال {selectedYear}
+                </div>
+                <div className="flex justify-between px-4 py-2 bg-gray-50 text-xs font-bold border-b border-black">
+                    <span>تاریخ گزارش: {new Date().toLocaleDateString('fa-IR')}</span>
+                    <span>تعداد هفته‌های سپری شده: {Math.round(weeksPassed)}</span>
+                </div>
+                <div className="bg-yellow-50 text-center py-1 text-[10px] text-gray-600">
+                    * این گزارش شامل تمامی خریدها (جاری و بایگانی شده) در سال {selectedYear} می‌باشد.
+                </div>
+            </div>
+
+            <table className="w-full border-collapse text-center border border-black">
+                <thead>
+                    <tr className="bg-blue-50 text-xs">
+                        <th className="border-b border-l border-black p-3 font-black">نام شرکت</th>
+                        <th className="border-b border-l border-black p-3 font-black">جمع کل خرید (دلار)</th>
+                        <th className="border-b border-black p-3 font-black">میانگین هفتگی (دلار)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {summaryByCompany.details.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-blue-50/50">
+                            <td className="border-b border-l border-black p-3 font-bold text-sm">{item.name}</td>
+                            <td className="border-b border-l border-black p-3 dir-ltr font-black font-mono text-sm bg-gray-50">{formatUSD(item.total)}</td>
+                            <td className="border-b border-black p-3 dir-ltr font-black font-mono text-sm text-blue-800">{formatUSD(item.weeklyAvg)}</td>
+                        </tr>
+                    ))}
+                    <tr className="bg-gray-800 text-white font-black text-base">
+                        <td className="border-l border-white p-3">جمع کل</td>
+                        <td className="border-l border-white p-3 dir-ltr">{formatUSD(summaryByCompany.totalAll)}</td>
+                        <td className="p-3 dir-ltr">{formatUSD(weeksPassed > 0 ? summaryByCompany.totalAll / weeksPassed : 0)}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div className="mt-8 text-center text-xs text-gray-400">
+                سیستم مدیریت مالی و بازرگانی - گزارش سیستمی
+            </div>
+        </div>
+    );
 
     return (
         <div className="bg-white p-4 rounded-lg shadow-sm border h-full flex flex-col">
@@ -202,58 +271,18 @@ const CompanyPerformanceReport: React.FC<Props> = ({ records }) => {
                 )}
             </div>
 
-            {/* Printable Report Area */}
-            <div className="flex-1 overflow-auto flex justify-center bg-gray-50 p-4">
-                <div id={elementId} className="printable-content bg-white p-8 shadow-2xl relative text-black" 
-                    style={{ 
-                        // A4 Portrait
-                        width: '210mm', 
-                        minHeight: '297mm', 
-                        direction: 'rtl',
-                        padding: '10mm', 
-                        boxSizing: 'border-box'
-                    }}>
-                    
-                    <div className="border border-black mb-4">
-                        <div className="bg-blue-100 font-black py-3 border-b border-black text-center text-lg">
-                            خلاصه عملکرد شرکت‌ها در سال {selectedYear}
-                        </div>
-                        <div className="flex justify-between px-4 py-2 bg-gray-50 text-xs font-bold border-b border-black">
-                            <span>تاریخ گزارش: {new Date().toLocaleDateString('fa-IR')}</span>
-                            <span>تعداد هفته‌های سپری شده: {Math.round(weeksPassed)}</span>
-                        </div>
-                        <div className="bg-yellow-50 text-center py-1 text-[10px] text-gray-600">
-                            * این گزارش شامل تمامی خریدها (جاری و بایگانی شده) در سال {selectedYear} می‌باشد.
-                        </div>
-                    </div>
-
-                    <table className="w-full border-collapse text-center border border-black">
-                        <thead>
-                            <tr className="bg-blue-50 text-xs">
-                                <th className="border-b border-l border-black p-3 font-black">نام شرکت</th>
-                                <th className="border-b border-l border-black p-3 font-black">جمع کل خرید (دلار)</th>
-                                <th className="border-b border-black p-3 font-black">میانگین هفتگی (دلار)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {summaryByCompany.details.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-blue-50/50">
-                                    <td className="border-b border-l border-black p-3 font-bold text-sm">{item.name}</td>
-                                    <td className="border-b border-l border-black p-3 dir-ltr font-black font-mono text-sm bg-gray-50">{formatUSD(item.total)}</td>
-                                    <td className="border-b border-black p-3 dir-ltr font-black font-mono text-sm text-blue-800">{formatUSD(item.weeklyAvg)}</td>
-                                </tr>
-                            ))}
-                            <tr className="bg-gray-800 text-white font-black text-base">
-                                <td className="border-l border-white p-3">جمع کل</td>
-                                <td className="border-l border-white p-3 dir-ltr">{formatUSD(summaryByCompany.totalAll)}</td>
-                                <td className="p-3 dir-ltr">{formatUSD(weeksPassed > 0 ? summaryByCompany.totalAll / weeksPassed : 0)}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <div className="mt-8 text-center text-xs text-gray-400">
-                        سیستم مدیریت مالی و بازرگانی - گزارش سیستمی
-                    </div>
+            {/* Responsive Container for Scaling */}
+            <div className="flex-1 overflow-auto flex justify-center bg-gray-50 p-4" ref={containerWrapperRef}>
+                <div style={{ 
+                    width: '210mm', 
+                    minHeight: '297mm',
+                    backgroundColor: 'white',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'top center',
+                    marginBottom: `${(1 - scale) * -100}px` 
+                }}>
+                    {content}
                 </div>
             </div>
         </div>

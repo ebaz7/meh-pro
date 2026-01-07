@@ -1,9 +1,9 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { WarehouseItem, WarehouseTransaction } from '../../types';
 import { formatDate, formatCurrency, formatNumberString, parsePersianDate, jalaliToGregorian } from '../../constants';
 import { Filter, Printer, FileDown, Search, ArrowDownCircle, ArrowUpCircle, X, Loader2 } from 'lucide-react';
-import { generatePdf } from '../../utils/pdfGenerator'; // Import Utility
+import { generatePdf } from '../../utils/pdfGenerator'; 
 
 interface Props {
     items: WarehouseItem[];
@@ -19,27 +19,49 @@ const WarehouseKardexReport: React.FC<Props> = ({ items, transactions, companies
     const [txType, setTxType] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
     const [isGenerating, setIsGenerating] = useState(false);
 
+    // Scaling State
+    const [scale, setScale] = useState(1);
+    const containerWrapperRef = useRef<HTMLDivElement>(null);
+
     // Initial Filter Setup
     useEffect(() => {
         if (companies.length > 0 && !selectedCompany) setSelectedCompany(companies[0]);
         if (items.length > 0 && !selectedItem) setSelectedItem(items[0].id);
     }, [companies, items]);
 
-    // Calculation Logic
+    // Auto-Scale Logic
+    useEffect(() => {
+        const handleResize = () => {
+            const wrapper = containerWrapperRef.current;
+            if (wrapper) {
+                const wrapperWidth = wrapper.clientWidth;
+                const targetWidth = 794; // A4 Portrait
+                
+                if (wrapperWidth < targetWidth + 40) {
+                    const newScale = (wrapperWidth - 32) / targetWidth;
+                    setScale(newScale);
+                } else {
+                    setScale(1);
+                }
+            }
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Calculation Logic (Same as before)
     const kardexRows = useMemo(() => {
         if (!selectedCompany || !selectedItem) return [];
 
-        // 1. Filter Transactions
         let filteredTxs = transactions.filter(tx => {
             if (tx.company !== selectedCompany) return false;
-            if (tx.status === 'REJECTED') return false; // Exclude rejected
+            if (tx.status === 'REJECTED') return false; 
             if (txType !== 'ALL' && tx.type !== txType) return false;
             
-            // Check if transaction contains the selected item
             const hasItem = tx.items.some(i => i.itemId === selectedItem);
             if (!hasItem) return false;
 
-            // Date Filter
             if (dateRange.from) {
                 const txDate = new Date(tx.date);
                 const fromDate = parsePersianDate(dateRange.from);
@@ -53,14 +75,11 @@ const WarehouseKardexReport: React.FC<Props> = ({ items, transactions, companies
                     if (txDate > toDate) return false;
                 }
             }
-
             return true;
         });
 
-        // 2. Sort Ascending (Oldest First) for running balance
         filteredTxs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // 3. Process Rows & Balance
         let runningBalance = 0;
         const rows = filteredTxs.map(tx => {
             const txItem = tx.items.find(i => i.itemId === selectedItem);
@@ -93,7 +112,6 @@ const WarehouseKardexReport: React.FC<Props> = ({ items, transactions, companies
     const activeItemName = items.find(i => i.id === selectedItem)?.name || '-';
     const elementId = 'kardex-print-area';
 
-    // Print & PDF
     const handlePrint = () => {
         setIsGenerating(true);
         setTimeout(() => {
@@ -114,9 +132,79 @@ const WarehouseKardexReport: React.FC<Props> = ({ items, transactions, companies
         });
     };
 
+    const content = (
+        <div id={elementId} className="printable-content bg-white p-8 shadow-lg text-black" 
+            style={{
+                width: '210mm', 
+                minHeight: '297mm', 
+                direction: 'rtl',
+                padding: '10mm',
+                boxSizing: 'border-box'
+            }}>
+            
+            <div className="header text-center mb-5 border-b-2 border-black pb-2">
+                <h2 className="text-xl font-black mb-1">کاردکس تعدادی کالا</h2>
+                <p className="text-sm text-gray-600">گزارش گردش انبار</p>
+            </div>
+
+            <div className="meta bg-gray-100 p-2 rounded border border-gray-300 flex justify-between mb-2 text-xs font-bold">
+                <div>شرکت: {selectedCompany}</div>
+                <div>کالا: {activeItemName}</div>
+                <div>تاریخ گزارش: {new Date().toLocaleDateString('fa-IR')}</div>
+            </div>
+
+            <table className="w-full border-collapse text-center text-[10px]">
+                <thead>
+                    <tr className="bg-gray-800 text-white">
+                        <th className="p-2 border border-gray-600">ردیف</th>
+                        <th className="p-2 border border-gray-600">تاریخ</th>
+                        <th className="p-2 border border-gray-600">نوع</th>
+                        <th className="p-2 border border-gray-600">شماره سند</th>
+                        <th className="p-2 border border-gray-600 w-1/3">شرح / طرف حساب</th>
+                        <th className="p-2 border border-gray-600 bg-green-700">وارده</th>
+                        <th className="p-2 border border-gray-600 bg-red-700">صادره</th>
+                        <th className="p-2 border border-gray-600 bg-blue-800">مانده</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {kardexRows.length === 0 ? (
+                        <tr><td colSpan={8} className="p-4 text-gray-400 border border-gray-300">گردشی برای این کالا یافت نشد.</td></tr>
+                    ) : (
+                        kardexRows.map((row, idx) => (
+                            <tr key={row.id} className={row.type === 'IN' ? 'bg-green-50' : 'bg-red-50'}>
+                                <td className="border border-gray-300 p-1">{idx + 1}</td>
+                                <td className="border border-gray-300 p-1 font-mono">{formatDate(row.date)}</td>
+                                <td className="border border-gray-300 p-1">{row.type === 'IN' ? <span className="text-green-700 font-bold flex items-center justify-center gap-1"><ArrowDownCircle size={10}/> ورود</span> : <span className="text-red-700 font-bold flex items-center justify-center gap-1"><ArrowUpCircle size={10}/> خروج</span>}</td>
+                                <td className="border border-gray-300 p-1 font-mono font-bold">{row.number}</td>
+                                <td className="border border-gray-300 p-1 text-right pr-2">{row.description}</td>
+                                <td className="border border-gray-300 p-1 font-mono font-bold text-green-700 text-lg">{row.in > 0 ? row.in : '-'}</td>
+                                <td className="border border-gray-300 p-1 font-mono font-bold text-red-700 text-lg">{row.out > 0 ? row.out : '-'}</td>
+                                <td className="border border-gray-300 p-1 balance bg-gray-100 text-blue-800 text-lg font-bold">{row.balance}</td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+                <tfoot>
+                    <tr className="bg-gray-800 text-white font-bold">
+                        <td colSpan={5} className="p-2 text-left pl-4 border border-gray-600">جمع کل</td>
+                        <td className="p-2 dir-ltr font-mono border border-gray-600">{kardexRows.reduce((a,b)=>a+b.in,0)}</td>
+                        <td className="p-2 dir-ltr font-mono border border-gray-600">{kardexRows.reduce((a,b)=>a+b.out,0)}</td>
+                        <td className="p-2 dir-ltr font-mono bg-blue-900 border border-gray-600">{kardexRows.length > 0 ? kardexRows[kardexRows.length-1].balance : 0}</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div className="mt-8 pt-4 border-t border-black flex justify-between text-[10px] text-gray-500">
+                <div>امضاء انباردار</div>
+                <div>امضاء مدیر انبار</div>
+                <div>سیستم مدیریت هوشمند انبار</div>
+            </div>
+        </div>
+    );
+
     return (
         <div className="space-y-4 h-full flex flex-col">
-            {/* Filter Bar */}
+            {/* Filter Bar (Same as before) */}
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4 items-end no-print">
                 <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
@@ -160,78 +248,19 @@ const WarehouseKardexReport: React.FC<Props> = ({ items, transactions, companies
                 </div>
             </div>
 
-            {/* Report Display Area */}
+            {/* Responsive Container for Scaling */}
             <div className="flex-1 bg-gray-50 border rounded-xl overflow-hidden relative">
-                <div className="absolute inset-0 overflow-auto flex justify-center p-4">
-                    <div id={elementId} className="printable-content bg-white p-8 shadow-lg text-black" 
-                        style={{
-                            width: '210mm', // A4 Portrait Width
-                            minHeight: '297mm', // A4 Portrait Height
-                            direction: 'rtl',
-                            padding: '10mm',
-                            boxSizing: 'border-box'
-                        }}>
-                        
-                        {/* Header */}
-                        <div className="header text-center mb-5 border-b-2 border-black pb-2">
-                            <h2 className="text-xl font-black mb-1">کاردکس تعدادی کالا</h2>
-                            <p className="text-sm text-gray-600">گزارش گردش انبار</p>
-                        </div>
-
-                        {/* Meta */}
-                        <div className="meta bg-gray-100 p-2 rounded border border-gray-300 flex justify-between mb-2 text-xs font-bold">
-                            <div>شرکت: {selectedCompany}</div>
-                            <div>کالا: {activeItemName}</div>
-                            <div>تاریخ گزارش: {new Date().toLocaleDateString('fa-IR')}</div>
-                        </div>
-
-                        {/* Table */}
-                        <table className="w-full border-collapse text-center text-[10px]">
-                            <thead>
-                                <tr className="bg-gray-800 text-white">
-                                    <th className="p-2 border border-gray-600">ردیف</th>
-                                    <th className="p-2 border border-gray-600">تاریخ</th>
-                                    <th className="p-2 border border-gray-600">نوع</th>
-                                    <th className="p-2 border border-gray-600">شماره سند</th>
-                                    <th className="p-2 border border-gray-600 w-1/3">شرح / طرف حساب</th>
-                                    <th className="p-2 border border-gray-600 bg-green-700">وارده</th>
-                                    <th className="p-2 border border-gray-600 bg-red-700">صادره</th>
-                                    <th className="p-2 border border-gray-600 bg-blue-800">مانده</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {kardexRows.length === 0 ? (
-                                    <tr><td colSpan={8} className="p-4 text-gray-400 border border-gray-300">گردشی برای این کالا یافت نشد.</td></tr>
-                                ) : (
-                                    kardexRows.map((row, idx) => (
-                                        <tr key={row.id} className={row.type === 'IN' ? 'bg-green-50' : 'bg-red-50'}>
-                                            <td className="border border-gray-300 p-1">{idx + 1}</td>
-                                            <td className="border border-gray-300 p-1 font-mono">{formatDate(row.date)}</td>
-                                            <td className="border border-gray-300 p-1">{row.type === 'IN' ? <span className="text-green-700 font-bold flex items-center justify-center gap-1"><ArrowDownCircle size={10}/> ورود</span> : <span className="text-red-700 font-bold flex items-center justify-center gap-1"><ArrowUpCircle size={10}/> خروج</span>}</td>
-                                            <td className="border border-gray-300 p-1 font-mono font-bold">{row.number}</td>
-                                            <td className="border border-gray-300 p-1 text-right pr-2">{row.description}</td>
-                                            <td className="border border-gray-300 p-1 font-mono font-bold text-green-700 text-lg">{row.in > 0 ? row.in : '-'}</td>
-                                            <td className="border border-gray-300 p-1 font-mono font-bold text-red-700 text-lg">{row.out > 0 ? row.out : '-'}</td>
-                                            <td className="border border-gray-300 p-1 balance bg-gray-100 text-blue-800 text-lg font-bold">{row.balance}</td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                            <tfoot>
-                                <tr className="bg-gray-800 text-white font-bold">
-                                    <td colSpan={5} className="p-2 text-left pl-4 border border-gray-600">جمع کل</td>
-                                    <td className="p-2 dir-ltr font-mono border border-gray-600">{kardexRows.reduce((a,b)=>a+b.in,0)}</td>
-                                    <td className="p-2 dir-ltr font-mono border border-gray-600">{kardexRows.reduce((a,b)=>a+b.out,0)}</td>
-                                    <td className="p-2 dir-ltr font-mono bg-blue-900 border border-gray-600">{kardexRows.length > 0 ? kardexRows[kardexRows.length-1].balance : 0}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-
-                        <div className="mt-8 pt-4 border-t border-black flex justify-between text-[10px] text-gray-500">
-                            <div>امضاء انباردار</div>
-                            <div>امضاء مدیر انبار</div>
-                            <div>سیستم مدیریت هوشمند انبار</div>
-                        </div>
+                <div className="absolute inset-0 overflow-auto flex justify-center p-4" ref={containerWrapperRef}>
+                     <div style={{ 
+                        width: '210mm', 
+                        minHeight: '297mm',
+                        backgroundColor: 'white',
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                        transform: `scale(${scale})`,
+                        transformOrigin: 'top center',
+                        marginBottom: `${(1 - scale) * -100}px` 
+                    }}>
+                        {content}
                     </div>
                 </div>
             </div>
