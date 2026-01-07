@@ -4,7 +4,7 @@ import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings, ExitPermi
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit } from '../services/storageService';
 import { getRolePermissions, getUsers } from '../services/authService'; 
 import { formatDate } from '../constants';
-import { Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, RefreshCw, Share2, CheckCheck, AlertTriangle } from 'lucide-react';
+import { Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, RefreshCw, Share2, CheckCheck, AlertTriangle, Clock } from 'lucide-react';
 import PrintExitPermit from './PrintExitPermit';
 import EditExitPermitModal from './EditExitPermitModal';
 import WarehouseFinalizeModal from './WarehouseFinalizeModal'; 
@@ -28,7 +28,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const [exitTimeValue, setExitTimeValue] = useState('');
   const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
 
-  // State to hold the permit that needs to be rendered invisibly for screenshot
   const [permitForAutoSend, setPermitForAutoSend] = useState<ExitPermit | null>(null);
   const [autoSendWatermark, setAutoSendWatermark] = useState<'DELETED' | 'EDITED' | null>(null);
   
@@ -41,36 +40,33 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- FIXED APPROVAL LOGIC ---
+  // --- STRICT APPROVAL WORKFLOW LOGIC ---
   const canApprove = (p: ExitPermit) => {
-      // Archive Check
       if (activeTab === 'archive' && !permissions?.canEditExitArchive) return false;
-      
       const role = currentUser.role;
       const status = p.status;
 
-      // Admin Override
+      // Admin has override power
       if (role === UserRole.ADMIN) return true;
 
-      // 1. Pending CEO
+      // 1. CEO STEP (Only CEO approves Initial Request)
       if (status === ExitPermitStatus.PENDING_CEO) {
-          return role === UserRole.CEO || !!permissions?.canApproveExitCeo;
+          return role === UserRole.CEO;
       }
       
-      // 2. Pending Factory (DIRECT CHECK FOR FACTORY MANAGER)
+      // 2. FACTORY MANAGER STEP (After CEO)
       if (status === ExitPermitStatus.PENDING_FACTORY) {
-          if (role === UserRole.FACTORY_MANAGER) return true; // Explicit Check
-          return role === UserRole.CEO || !!permissions?.canApproveExitFactory;
+          return role === UserRole.FACTORY_MANAGER || role === UserRole.CEO; // CEO as backup
       }
       
-      // 3. Pending Warehouse
+      // 3. WAREHOUSE STEP (After Factory Manager)
       if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          return role === UserRole.WAREHOUSE_KEEPER || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER || !!permissions?.canApproveExitWarehouse;
+          return role === UserRole.WAREHOUSE_KEEPER || role === UserRole.FACTORY_MANAGER; // Factory Mgr as backup
       }
       
-      // 4. Pending Security
+      // 4. SECURITY STEP (After Warehouse - Final Exit)
       if (status === ExitPermitStatus.PENDING_SECURITY) {
-          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || role === UserRole.CEO || !!permissions?.canApproveExitSecurity;
+          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD;
       }
       
       return false;
@@ -81,17 +77,12 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       if (p.status === ExitPermitStatus.EXITED) return !!permissions.canEditExitArchive;
       if (permissions.canEditAll) return true;
       if (permissions.canEditOwn && p.requester === currentUser.fullName) return true;
+      // Sales Manager creates it, so they should be able to edit if rejected/pending
       if (currentUser.role === UserRole.SALES_MANAGER) return true;
       return false;
   };
 
-  const canShare = (p: ExitPermit) => {
-      return currentUser.role === UserRole.ADMIN || 
-             currentUser.role === UserRole.CEO || 
-             currentUser.role === UserRole.SALES_MANAGER ||
-             currentUser.role === UserRole.FACTORY_MANAGER || 
-             currentUser.role === UserRole.WAREHOUSE_KEEPER;
-  };
+  const canShare = (p: ExitPermit) => true; 
 
   const canShowSecurityBox = (p: ExitPermit) => {
       return p.status === ExitPermitStatus.PENDING_SECURITY && canApprove(p);
@@ -108,7 +99,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       c += `👤 گیرنده: ${permit.recipientName}\n`;
       if (permit.driverName) c += `🚛 راننده: ${permit.driverName}\n`;
       if (permit.plateNumber) c += `🔢 پلاک: ${permit.plateNumber}\n`;
-      if (!emphasizeTime && permit.exitTime) c += `🕒 ساعت خروج: ${permit.exitTime}\n`;
       return c;
   };
 
@@ -146,6 +136,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   };
 
   const handleApproveAction = async (id: string, currentStatus: ExitPermitStatus, dataOverride?: any) => {
+      // Warehouse Check
       if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE && !dataOverride) {
           const p = permits.find(x => x.id === id);
           if (p) setWarehouseFinalizePermit(p);
@@ -155,50 +146,58 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       let nextStatus = currentStatus;
       let extra: any = {};
 
+      // --- WORKFLOW TRANSITIONS ---
       if (currentStatus === ExitPermitStatus.PENDING_CEO) nextStatus = ExitPermitStatus.PENDING_FACTORY;
       else if (currentStatus === ExitPermitStatus.PENDING_FACTORY) nextStatus = ExitPermitStatus.PENDING_WAREHOUSE; 
       else if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE) nextStatus = ExitPermitStatus.PENDING_SECURITY; 
+      
+      // --- SECURITY EXIT LOGIC (AUTO OR MANUAL) ---
       else if (currentStatus === ExitPermitStatus.PENDING_SECURITY) {
-          if (!exitTimeValue) { alert("لطفا ابتدا ساعت خروج را وارد کنید."); return; }
           nextStatus = ExitPermitStatus.EXITED;
-          extra.exitTime = exitTimeValue;
+          // Use manual input if provided, otherwise default to current system time
+          const autoTime = new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
+          extra.exitTime = exitTimeValue || autoTime;
       }
       
       const permitToApprove = permits.find(p => p.id === id);
       if (!permitToApprove) return;
 
-      if(dataOverride || window.confirm('آیا تایید می‌کنید؟')) {
+      if(dataOverride || window.confirm(currentStatus === ExitPermitStatus.PENDING_SECURITY ? `ثبت خروج نهایی؟ ساعت: ${extra.exitTime || 'اکنون'}` : 'آیا تایید می‌کنید؟')) {
           setIsProcessingId(id); 
           setAutoSendWatermark(null); 
           try {
               // 1. Update Status
               await updateExitPermitStatus(id, nextStatus, currentUser, extra);
               
-              // 2. Prepare Mock Data for Image Generation (Before re-fetch)
+              // 2. Mock Data for Image
               const updatedPermitMock = { ...permitToApprove, ...dataOverride, status: nextStatus, ...extra };
               
-              // Fill Approvers specifically for the snapshot
-              if (nextStatus === ExitPermitStatus.PENDING_FACTORY) updatedPermitMock.approverCeo = currentUser.fullName;
-              if (nextStatus === ExitPermitStatus.PENDING_WAREHOUSE) { 
-                  updatedPermitMock.approverCeo = permitToApprove.approverCeo || 'تایید شده'; 
-                  updatedPermitMock.approverFactory = currentUser.fullName; 
+              // Apply Signatures
+              if (currentStatus === ExitPermitStatus.PENDING_CEO) updatedPermitMock.approverCeo = currentUser.fullName;
+              
+              if (currentStatus === ExitPermitStatus.PENDING_FACTORY) {
+                  updatedPermitMock.approverCeo = permitToApprove.approverCeo || 'تایید شده';
+                  updatedPermitMock.approverFactory = currentUser.fullName;
               }
-              if (nextStatus === ExitPermitStatus.PENDING_SECURITY) { 
-                  updatedPermitMock.approverCeo = permitToApprove.approverCeo || 'تایید شده'; 
-                  updatedPermitMock.approverFactory = permitToApprove.approverFactory || 'تایید شده'; 
-                  updatedPermitMock.approverWarehouse = currentUser.fullName; 
+              
+              if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
+                   updatedPermitMock.approverCeo = permitToApprove.approverCeo || 'تایید شده';
+                   updatedPermitMock.approverFactory = permitToApprove.approverFactory || 'تایید شده';
+                   updatedPermitMock.approverWarehouse = currentUser.fullName;
               }
-              if (nextStatus === ExitPermitStatus.EXITED) { 
-                  updatedPermitMock.approverCeo = permitToApprove.approverCeo || 'تایید شده'; 
-                  updatedPermitMock.approverFactory = permitToApprove.approverFactory || 'تایید شده'; 
-                  updatedPermitMock.approverWarehouse = permitToApprove.approverWarehouse || 'تایید شده'; 
-                  updatedPermitMock.approverSecurity = currentUser.fullName; 
+              
+              if (currentStatus === ExitPermitStatus.PENDING_SECURITY) {
+                   updatedPermitMock.approverCeo = permitToApprove.approverCeo || 'تایید شده';
+                   updatedPermitMock.approverFactory = permitToApprove.approverFactory || 'تایید شده';
+                   updatedPermitMock.approverWarehouse = permitToApprove.approverWarehouse || 'تایید شده';
+                   updatedPermitMock.approverSecurity = currentUser.fullName;
+                   updatedPermitMock.exitTime = extra.exitTime;
               }
 
-              // Trigger Hidden Render
+              // Mount hidden component
               setPermitForAutoSend(updatedPermitMock);
               
-              // 3. CRITICAL: Wait longer for DOM Render to ensure no white image
+              // 3. Wait for Render
               await new Promise(resolve => setTimeout(resolve, 3500));
 
               // 4. Capture & Send
@@ -213,27 +212,41 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                       const group1 = settings?.exitPermitNotificationGroup;
                       const group2 = settings?.exitPermitSecondGroupConfig?.groupId;
 
-                      // --- LOGIC PER STEP ---
+                      // --- NOTIFICATIONS PER STEP ---
 
+                      // A. CEO Approved -> Send to Factory Manager
                       if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
-                          const title = "📢 *اطلاعیه: مجوز خروج صادر شد*";
+                          const title = "📢 *مجوز تایید شد (توسط مدیرعامل)*";
                           const caption = generateFullCaption(updatedPermitMock, title);
-                          const target = users.find(u => u.role === UserRole.FACTORY_MANAGER && u.phoneNumber);
-                          if (target) { try { await apiCall('/send-whatsapp', 'POST', { number: target.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {} }
-                          if (group1) { await sendWithRetry({ number: group1, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 3); }
+                          
+                          const factoryUsers = users.filter(u => u.role === UserRole.FACTORY_MANAGER && u.phoneNumber);
+                          for (const fm of factoryUsers) {
+                              try { await apiCall('/send-whatsapp', 'POST', { number: fm.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {}
+                          }
+                          if (group1) { await sendWithRetry({ number: group1, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2); }
                       } 
+                      
+                      // B. Factory Manager Approved -> Send to Warehouse
                       else if (nextStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
                           const caption = generateFullCaption(updatedPermitMock, "🏭 *تایید مدیر کارخانه انجام شد* (مجوز ورود به انبار)");
                           const warehouseUsers = users.filter(u => u.role === UserRole.WAREHOUSE_KEEPER && u.phoneNumber);
-                          for (const whUser of warehouseUsers) { try { await apiCall('/send-whatsapp', 'POST', { number: whUser.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {} }
+                          for (const whUser of warehouseUsers) { 
+                              try { await apiCall('/send-whatsapp', 'POST', { number: whUser.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {} 
+                          }
                           if (group2) { await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2); }
                       }
+                      
+                      // C. Warehouse Approved -> Send to Security
                       else if (nextStatus === ExitPermitStatus.PENDING_SECURITY) {
-                          const caption = generateFullCaption(updatedPermitMock, "📦 *تایید انبار و توزین نهایی انجام شد* (ارسال به انتظامات)");
+                          const caption = generateFullCaption(updatedPermitMock, "📦 *تایید انبار و توزین انجام شد* (مجوز خروج انتظامات)");
                           const securityUsers = users.filter(u => (u.role === UserRole.SECURITY_GUARD || u.role === UserRole.SECURITY_HEAD) && u.phoneNumber);
-                          for (const sec of securityUsers) { try { await apiCall('/send-whatsapp', 'POST', { number: sec.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {} }
+                          for (const sec of securityUsers) { 
+                              try { await apiCall('/send-whatsapp', 'POST', { number: sec.phoneNumber!, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }); } catch (err) {} 
+                          }
                           if (group2) { await sendWithRetry({ number: group2, message: caption, mediaData: { data: base64, mimeType: 'image/png' } }, 2); }
                       }
+                      
+                      // D. Security Approved -> Final Exit
                       else if (nextStatus === ExitPermitStatus.EXITED) {
                           const caption = generateFullCaption(updatedPermitMock, "✅ *خروج نهایی بار از کارخانه ثبت شد*", true);
                           if (group1) {
@@ -260,19 +273,13 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       }
   };
 
-  // --- FIXED: Manual Share Handler (Resolves White Image) ---
   const handleResendToGroup = async (permit: ExitPermit) => {
       if(!confirm('آیا مطمئن هستید که می‌خواهید مجوز را مجدداً به گروه ارسال کنید؟')) return;
       
       setIsProcessingId(permit.id);
       setAutoSendWatermark(null);
-      
-      // 1. Mount Component
       setPermitForAutoSend({ ...permit }); 
       
-      // 2. WAIT FOR RENDER (Crucial for white image fix)
-      // "display: none" prevents rendering in some browsers/versions of html2canvas. 
-      // We used opacity: 0 in style below.
       await new Promise(resolve => setTimeout(resolve, 3500)); 
 
       const element = document.getElementById(`print-permit-${permit.id}`);
@@ -280,17 +287,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       if (element && settings?.exitPermitNotificationGroup) {
           try {
               // @ts-ignore
-              const canvas = await window.html2canvas(element, { 
-                  scale: 2, 
-                  backgroundColor: '#ffffff', 
-                  useCORS: true,
-                  windowWidth: 1200,
-                  onclone: (doc) => {
-                      // Ensure visible in clone
-                      const el = doc.getElementById(`print-permit-${permit.id}`);
-                      if(el) { el.style.visibility = 'visible'; el.style.opacity = '1'; }
-                  }
-              });
+              const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true, windowWidth: 1200 });
               const base64 = canvas.toDataURL('image/png').split(',')[1];
               
               let caption = "";
@@ -298,13 +295,12 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               else caption = generateFullCaption(permit, "📢 *اطلاعیه: مجوز خروج صادر شد (ارسال مجدد)*");
               
               await apiCall('/send-whatsapp', 'POST', { number: settings.exitPermitNotificationGroup, message: caption, mediaData: { data: base64, mimeType: 'image/png' } });
-              
               alert('با موفقیت به گروه ارسال شد.');
           } catch (e: any) { 
-              alert('خطا در ارسال به واتساپ: ' + (e.message || 'Unknown')); 
+              alert('خطا در ارسال به واتساپ'); 
           }
       } else { 
-          alert('تنظیمات گروه واتساپ یافت نشد یا خطا در تولید تصویر.'); 
+          alert('تنظیمات گروه واتساپ یافت نشد.'); 
       }
       
       setPermitForAutoSend(null);
@@ -323,17 +319,15 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       await new Promise(resolve => setTimeout(resolve, 3500));
       
       const element = document.getElementById(`print-permit-${permitToDelete.id}`);
-      if (element) {
+      if (element && settings?.exitPermitNotificationGroup) {
           try {
               // @ts-ignore
               const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true, windowWidth: 1200 });
               const base64 = canvas.toDataURL('image/png').split(',')[1];
               const caption = `❌❌ *مجوز خروج حذف شد* ❌❌\n` + `🔢 شماره مجوز: ${permitToDelete.permitNumber}\n` + `🗑️ حذف کننده: ${currentUser.fullName}`;
               
-              if (settings?.exitPermitNotificationGroup) {
-                  await apiCall('/send-whatsapp', 'POST', { number: settings.exitPermitNotificationGroup, message: caption, mediaData: { data: base64, mimeType: 'image/png', filename: `DELETED_PERMIT.png` } });
-              }
-          } catch (e) { console.error("Error sending delete notification", e); }
+              await apiCall('/send-whatsapp', 'POST', { number: settings.exitPermitNotificationGroup, message: caption, mediaData: { data: base64, mimeType: 'image/png', filename: `DELETED_PERMIT.png` } });
+          } catch (e) { }
       }
       try { await deleteExitPermit(id); loadData(); setViewPermit(null); } catch(e) { alert("خطا در حذف"); } finally { setIsProcessingId(null); setPermitForAutoSend(null); setAutoSendWatermark(null); }
   };
@@ -358,7 +352,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in relative">
         {isProcessingId && (<div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm cursor-wait"><div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-6 animate-scale-in max-w-sm text-center border-4 border-orange-100"><div className="relative w-24 h-24"><div className="absolute inset-0 border-4 border-gray-100 rounded-full"></div><div className="absolute inset-0 border-4 border-t-orange-600 border-r-orange-600 rounded-full animate-spin"></div><div className="absolute inset-0 flex items-center justify-center"><Truck size={40} className="text-orange-600 animate-pulse" /></div></div><div><h3 className="text-xl font-black text-gray-800 mb-2">درحال پردازش و ارسال...</h3><div className="space-y-1 text-sm text-gray-500 font-medium"><p>سیستم در حال تولید تصویر مجوز و ارسال به واتساپ است.</p><p className="text-orange-600 font-bold animate-pulse">لطفا صبر کنید تا عملیات کاملاً تمام شود.</p></div></div></div></div>)}
         
-        {/* HIDDEN PRINT CONTAINER FOR AUTO-SEND - Fixed Styles using Opacity not Display None */}
+        {/* HIDDEN PRINT CONTAINER FOR AUTO-SEND - FIX FOR WHITE IMAGE: Use Opacity 0 and Fixed Position, NOT Display None */}
         {permitForAutoSend && (
             <div className="hidden-print-export" style={{ position: 'fixed', top: 0, left: 0, zIndex: -1000, opacity: 0, width: '210mm', height: '297mm', overflow: 'hidden' }}>
                 <div id={`print-permit-${permitForAutoSend.id}`}>
@@ -408,11 +402,20 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                                 <button onClick={() => handleResendToGroup(p)} className={`p-2 rounded-lg border flex items-center gap-1 ${p.status === ExitPermitStatus.EXITED ? 'bg-orange-100 text-orange-600 border-orange-200 hover:bg-orange-200' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`} title="ارسال مجدد"><Share2 size={16}/></button>
                                             )}
 
-                                            {/* SECURITY ACTION */}
+                                            {/* SECURITY ACTION (Auto/Manual Time) */}
                                             {canShowSecurityBox(p) && (
                                                 <div className="flex items-center gap-2 bg-amber-50 p-1 rounded-lg border border-amber-200">
-                                                    <input className="w-16 border rounded p-1 text-[10px] text-center font-mono" placeholder="ساعت" value={showExitTimeInput === p.id ? exitTimeValue : ''} onFocus={() => { setShowExitTimeInput(p.id); setExitTimeValue(new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})); }} onChange={e => setExitTimeValue(e.target.value)} />
-                                                    <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-amber-600 text-white p-1 rounded hover:bg-amber-700" title="ثبت خروج"><CheckCircle size={14}/></button>
+                                                    <input 
+                                                        className="w-16 border rounded p-1 text-[10px] text-center font-mono" 
+                                                        placeholder="ساعت..." 
+                                                        value={showExitTimeInput === p.id ? exitTimeValue : ''} 
+                                                        onFocus={() => setShowExitTimeInput(p.id)} 
+                                                        onChange={e => setExitTimeValue(e.target.value)} 
+                                                    />
+                                                    {/* If user clicks this, script checks if input is empty. If yes, auto fills current time */}
+                                                    <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-amber-600 text-white p-1 rounded hover:bg-amber-700" title={exitTimeValue ? "ثبت با ساعت وارد شده" : "ثبت با ساعت فعلی (اتومات)"}>
+                                                        {exitTimeValue ? <CheckCircle size={14}/> : <Clock size={14}/>}
+                                                    </button>
                                                 </div>
                                             )}
                                             
