@@ -21,7 +21,6 @@ export const deleteUser = async (id: string): Promise<User[]> => {
 };
 
 export const login = async (username: string, password: string): Promise<User | null> => {
-    // Note: Do not catch errors here, let the UI handle network errors or server messages
     const user = await apiCall<User>('/login', 'POST', { username, password });
     localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
     return user;
@@ -43,13 +42,12 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 };
 
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
-    // Check if it's a standard/default role
     const isStandardRole = Object.values(UserRole).includes(userRole as UserRole);
 
     const defaults: RolePermissions = {
         canViewAll: isStandardRole && (userRole !== UserRole.USER && userRole !== UserRole.SALES_MANAGER && userRole !== UserRole.WAREHOUSE_KEEPER && userRole !== UserRole.SECURITY_GUARD && userRole !== UserRole.SECURITY_HEAD),
         
-        // Creation Permission: False for custom roles by default
+        // Creation Permission
         canCreatePaymentOrder: isStandardRole && (userRole !== UserRole.FACTORY_MANAGER && userRole !== UserRole.WAREHOUSE_KEEPER && userRole !== UserRole.SALES_MANAGER && userRole !== UserRole.SECURITY_GUARD && userRole !== UserRole.SECURITY_HEAD), 
         
         // Default View Permissions for Payments
@@ -72,25 +70,12 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canManageSettings: isStandardRole && (userRole === UserRole.ADMIN),
         
         canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
+        
+        // EXPLICIT APPROVAL PERMISSIONS
         canApproveExitCeo: isStandardRole && (userRole === UserRole.CEO || userRole === UserRole.ADMIN),
-        
-        // FIX: Broaden Factory approval to include CEO
         canApproveExitFactory: isStandardRole && (userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
-        
-        // FIX: Broaden Warehouse approval default to include CEO and Factory Manager as overrides
-        canApproveExitWarehouse: isStandardRole && (
-            userRole === UserRole.WAREHOUSE_KEEPER || 
-            userRole === UserRole.ADMIN || 
-            userRole === UserRole.CEO || 
-            userRole === UserRole.FACTORY_MANAGER
-        ),
-        
-        canApproveExitSecurity: isStandardRole && (
-            userRole === UserRole.SECURITY_GUARD ||
-            userRole === UserRole.SECURITY_HEAD ||
-            userRole === UserRole.ADMIN ||
-            userRole === UserRole.CEO
-        ),
+        canApproveExitWarehouse: isStandardRole && (userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER),
+        canApproveExitSecurity: isStandardRole && (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         
         canViewExitArchive: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.WAREHOUSE_KEEPER),
         canEditExitArchive: isStandardRole && (userRole === UserRole.ADMIN),
