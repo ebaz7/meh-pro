@@ -70,15 +70,15 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         
         canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         
-        // --- APPROVAL WORKFLOW DEFAULTS (FORCED) ---
-        // Ensure standard roles have these permissions by default, regardless of settings
+        // --- APPROVAL WORKFLOW DEFAULTS (STRICT MODE) ---
+        // Ensure strictly defined roles for the workflow
         canApproveExitCeo: userRole === UserRole.CEO || userRole === UserRole.ADMIN,
         
-        canApproveExitFactory: userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO,
+        canApproveExitFactory: userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN, // Only Factory Manager & Admin
         
-        canApproveExitWarehouse: userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER,
+        canApproveExitWarehouse: userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN, // Only Warehouse & Admin
         
-        canApproveExitSecurity: userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN || userRole === UserRole.CEO,
+        canApproveExitSecurity: userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN, // Only Security & Admin
         
         canViewExitArchive: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.WAREHOUSE_KEEPER),
         canEditExitArchive: isStandardRole && (userRole === UserRole.ADMIN),
@@ -107,14 +107,15 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         perms.canApproveExitCeo = true;
         perms.canViewExitPermits = true;
         perms.canViewExitArchive = true;
+        // CEO shouldn't see lower level approval buttons by default unless granted via settings
     }
 
-    // Factory Manager - FIX: Ensure they have approval AND view access
+    // Factory Manager - STRICT: Only Factory Approval
     if (userRole === UserRole.FACTORY_MANAGER) {
         perms.canApproveExitFactory = true;
         perms.canViewExitPermits = true;
-        perms.canViewExitArchive = true; // Necessary to see past approvals
-        perms.canViewWarehouseReports = true; // Often needed for Factory Manager
+        perms.canViewExitArchive = true; 
+        perms.canViewWarehouseReports = true;
     }
 
     // Warehouse Keeper

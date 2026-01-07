@@ -41,38 +41,40 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- ROBUST APPROVAL LOGIC (Fuzzy Matching + Permissions) ---
+  // --- ROBUST APPROVAL LOGIC (Strict Separation) ---
   const canApprove = (p: ExitPermit) => {
       const role = currentUser.role;
       const status = p.status || '';
 
-      // 0. Admin always can
+      // 0. Admin always can do everything
       if (role === UserRole.ADMIN) return true;
 
-      // Helper to check status loosely (handles encoding issues or legacy strings)
+      // Helper to check status loosely
       const isCeoStep = status === ExitPermitStatus.PENDING_CEO || status.includes('مدیرعامل');
       const isFactoryStep = status === ExitPermitStatus.PENDING_FACTORY || status.includes('کارخانه');
       const isWarehouseStep = status === ExitPermitStatus.PENDING_WAREHOUSE || status.includes('انبار');
       const isSecurityStep = status === ExitPermitStatus.PENDING_SECURITY || status.includes('انتظامات');
 
-      // 1. CEO Step
+      // 1. CEO Step (Only CEO or explicit permission)
       if (isCeoStep) {
           return role === UserRole.CEO || !!permissions.canApproveExitCeo;
       }
       
-      // 2. Factory Manager Step
+      // 2. Factory Manager Step (Only Factory Manager or explicit permission)
       if (isFactoryStep) {
-          return role === UserRole.FACTORY_MANAGER || role === UserRole.CEO || !!permissions.canApproveExitFactory;
+          // REMOVED CEO here to enforce strict flow, unless CEO has canApproveExitFactory permission set in settings
+          return role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitFactory;
       }
       
-      // 3. Warehouse Step
+      // 3. Warehouse Step (Only Warehouse Keeper or explicit permission)
       if (isWarehouseStep) {
-          return role === UserRole.WAREHOUSE_KEEPER || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitWarehouse;
+          return role === UserRole.WAREHOUSE_KEEPER || !!permissions.canApproveExitWarehouse;
       }
       
-      // 4. Security Step (Final Exit)
+      // 4. Security Step (Only Security or explicit permission)
+      // CRITICAL FIX: Removed FACTORY_MANAGER from here
       if (isSecurityStep) {
-          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || role === UserRole.CEO || role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitSecurity;
+          return role === UserRole.SECURITY_GUARD || role === UserRole.SECURITY_HEAD || !!permissions.canApproveExitSecurity;
       }
       
       return false;
@@ -102,7 +104,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setShowExitTimeInput(permitId);
   };
 
-  // ... (Rest of component functions) ...
+  // ... (Rest of component functions remain identical) ...
   const generateFullCaption = (permit: ExitPermit, header: string, emphasizeTime: boolean = false) => {
       let c = `${header}\n`;
       if (emphasizeTime && permit.exitTime) c += `\n🕒 *ساعت خروج: ${permit.exitTime}* 🕒\n\n`;
@@ -184,7 +186,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       let nextStatus = currentStatus;
       let extra: any = {};
 
-      // --- WORKFLOW TRANSITIONS (Robust) ---
+      // --- WORKFLOW TRANSITIONS (Strict) ---
       if (isCeoStage) nextStatus = ExitPermitStatus.PENDING_FACTORY;
       else if (isFactoryStage) nextStatus = ExitPermitStatus.PENDING_WAREHOUSE; 
       else if (isWarehouseStage) nextStatus = ExitPermitStatus.PENDING_SECURITY; 
