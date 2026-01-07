@@ -42,6 +42,15 @@
         padding-top: env(safe-area-inset-top) !important;
       }
 
+      /* Hide Scrollbar for Horizontal Menus */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+      }
+
       /* PDF Generation & Print Optimization */
       .printable-content {
         box-sizing: border-box !important;

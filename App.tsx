@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -10,7 +11,7 @@ import ChatRoom from './components/ChatRoom';
 import TradeModule from './components/TradeModule';
 import CreateExitPermit from './components/CreateExitPermit'; 
 import ManageExitPermits from './components/ManageExitPermits'; 
-import WarehouseModule from './components/WarehouseModule';
+import { WarehouseModule } from './components/WarehouseModule';
 import SecurityModule from './components/SecurityModule'; 
 import PrintVoucher from './components/PrintVoucher'; 
 import NotificationController from './components/NotificationController'; 
