@@ -40,29 +40,29 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- STRICT & SIMPLE APPROVAL LOGIC ---
+  // --- STRICT & SIMPLE APPROVAL LOGIC (UPDATED WITH PERMISSIONS) ---
   const canApprove = (p: ExitPermit) => {
       // 0. Admin always can
       if (currentUser.role === UserRole.ADMIN) return true;
 
       // 1. CEO Step (Start)
       if (p.status === ExitPermitStatus.PENDING_CEO) {
-          return currentUser.role === UserRole.CEO;
+          return currentUser.role === UserRole.CEO || !!permissions.canApproveExitCeo;
       }
       
       // 2. Factory Manager Step (After CEO)
       if (p.status === ExitPermitStatus.PENDING_FACTORY) {
-          return currentUser.role === UserRole.FACTORY_MANAGER;
+          return currentUser.role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitFactory;
       }
       
       // 3. Warehouse Step (After Factory)
       if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          return currentUser.role === UserRole.WAREHOUSE_KEEPER;
+          return currentUser.role === UserRole.WAREHOUSE_KEEPER || !!permissions.canApproveExitWarehouse;
       }
       
       // 4. Security Step (Final Exit)
       if (p.status === ExitPermitStatus.PENDING_SECURITY) {
-          return currentUser.role === UserRole.SECURITY_GUARD || currentUser.role === UserRole.SECURITY_HEAD;
+          return currentUser.role === UserRole.SECURITY_GUARD || currentUser.role === UserRole.SECURITY_HEAD || !!permissions.canApproveExitSecurity;
       }
       
       return false;
