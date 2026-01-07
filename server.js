@@ -27,8 +27,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 // --- PORT CONFIGURATION ---
-// STRICTLY use the environment variable provided by the user/service.
-// Default to 3000 only if nothing is set in .env
 const PORT = process.env.PORT || 3000;
 
 const SERVER_BUILD_ID = Date.now().toString();
@@ -84,6 +82,8 @@ const getDb = () => {
     }
     const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     if (!data.pushSubscriptions) data.pushSubscriptions = []; 
+    // Ensure tradeRecords exists to prevent undefined errors
+    if (!data.tradeRecords) data.tradeRecords = [];
     return data;
 };
 const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
@@ -186,6 +186,46 @@ app.get('/api/orders', (req, res) => { const db = getDb(); res.json(db.orders); 
 app.post('/api/orders', (req, res) => { const db = getDb(); const order = req.body; order.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; order.fiscalYearId = activeYearId; order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany); db.orders.unshift(order); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`, '#manage'); res.json(db.orders); });
 app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.orders[idx].status; db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`, '#manage'); } res.json(db.orders); } else res.sendStatus(404); });
 app.delete('/api/orders/:id', (req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); });
+
+// --- TRADE ROUTES (FIXED) ---
+app.get('/api/trade', (req, res) => { 
+    const db = getDb(); 
+    if (!Array.isArray(db.tradeRecords)) db.tradeRecords = [];
+    res.json(db.tradeRecords); 
+});
+
+app.post('/api/trade', (req, res) => { 
+    const db = getDb(); 
+    if (!Array.isArray(db.tradeRecords)) db.tradeRecords = [];
+    const record = req.body;
+    if (!record.id) record.id = Date.now().toString();
+    db.tradeRecords.push(record); 
+    saveDb(db); 
+    res.json(db.tradeRecords); 
+});
+
+app.put('/api/trade/:id', (req, res) => { 
+    const db = getDb(); 
+    if (!Array.isArray(db.tradeRecords)) db.tradeRecords = [];
+    const idx = db.tradeRecords.findIndex(r => r.id === req.params.id); 
+    if (idx !== -1) { 
+        db.tradeRecords[idx] = { ...db.tradeRecords[idx], ...req.body }; 
+        saveDb(db); 
+        res.json(db.tradeRecords); 
+    } else {
+        res.status(404).json({ error: "Not found" });
+    }
+});
+
+app.delete('/api/trade/:id', (req, res) => { 
+    const db = getDb(); 
+    if (!Array.isArray(db.tradeRecords)) db.tradeRecords = [];
+    db.tradeRecords = db.tradeRecords.filter(r => r.id !== req.params.id); 
+    saveDb(db); 
+    res.json(db.tradeRecords); 
+});
+// -----------------------------
+
 app.get('/api/exit-permits', (req, res) => { const db = getDb(); res.json(db.exitPermits); });
 app.post('/api/exit-permits', (req, res) => { const db = getDb(); const permit = req.body; permit.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; permit.fiscalYearId = activeYearId; permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, permit.companyName); db.exitPermits.push(permit); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber} - گیرنده: ${permit.recipientName}`, '#manage-exit'); res.json(db.exitPermits); });
 app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.exitPermits[idx].status; db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendWebPush('تغییر وضعیت مجوز خروج', `شماره ${db.exitPermits[idx].permitNumber}: ${req.body.status}`, '#manage-exit'); } res.json(db.exitPermits); } else res.sendStatus(404); });
@@ -231,7 +271,6 @@ app.get('*', (req, res) => { const p = path.join(__dirname, 'dist', 'index.html'
 // --- START SERVER ---
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n>>> Server running on port ${PORT}`);
-    console.log(`>>> You chose this port manually.`);
 });
 
 server.on('error', (err) => {
