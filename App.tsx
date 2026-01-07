@@ -11,7 +11,7 @@ import ChatRoom from './components/ChatRoom';
 import TradeModule from './components/TradeModule';
 import CreateExitPermit from './components/CreateExitPermit'; 
 import ManageExitPermits from './components/ManageExitPermits'; 
-import { WarehouseModule } from './components/WarehouseModule';
+import WarehouseModule from './components/WarehouseModule';
 import SecurityModule from './components/SecurityModule'; 
 import PrintVoucher from './components/PrintVoucher'; 
 import NotificationController from './components/NotificationController'; 
@@ -26,6 +26,12 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app'; 
 import { PushNotifications } from '@capacitor/push-notifications'; 
 import { sendNotification } from './services/notificationService';
+
+// MOBILE IMPORTS
+import useIsMobile from './hooks/useIsMobile';
+import MobileLayout from './components/mobile/MobileLayout';
+import MobileDashboard from './components/mobile/MobileDashboard';
+import MobileOrderList from './components/mobile/MobileOrderList';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -54,6 +60,9 @@ function App() {
   const lastChatMsgIdRef = useRef<string | null>(null);
 
   const isNative = Capacitor.isNativePlatform();
+  
+  // DETECT MOBILE
+  const isMobile = useIsMobile();
 
   const safePushState = (state: any, title: string, url?: string) => { 
       if (isNative) return; 
@@ -172,7 +181,6 @@ function App() {
     if (!silent && isFirstLoad.current) {
         const cachedOrders = getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, []);
         const cachedSettings = getLocalData<SystemSettings>(LS_KEYS.SETTINGS, { currentTrackingNumber: 1000 } as any);
-        // Load cached messages to prevent empty chat on start
         const cachedMessages = getLocalData<ChatMessage[]>(LS_KEYS.CHAT, []); 
         
         if (cachedOrders.length > 0) setOrders(cachedOrders);
@@ -190,17 +198,14 @@ function App() {
         
         setSettings(settingsData);
         setOrders(ordersData);
-        setChatMessages(messagesData || []); // Update global chat state
+        setChatMessages(messagesData || []); 
         
         const lastCheck = parseInt(localStorage.getItem(NOTIFICATION_CHECK_KEY) || '0');
         checkForNotifications(ordersData, currentUser, lastCheck);
         
-        // --- CHAT NOTIFICATION LOGIC ---
         if (messagesData && messagesData.length > 0) {
             const lastMsg = messagesData[messagesData.length - 1];
-            // If new message ID exists AND it's not sent by me
             if (lastChatMsgIdRef.current && lastMsg.id !== lastChatMsgIdRef.current && lastMsg.senderUsername !== currentUser.username) {
-                // If user is NOT in chat tab, notify
                 if (activeTab !== 'chat') {
                     let body = lastMsg.message || 'فایل ضمیمه';
                     if (body.startsWith('CALL_INVITE|')) body = '📞 تماس ورودی...';
@@ -209,7 +214,6 @@ function App() {
             }
             lastChatMsgIdRef.current = lastMsg.id;
         }
-        // -------------------------------
 
         if (isFirstLoad.current) { checkChequeAlerts(ordersData); }
         
@@ -260,7 +264,6 @@ function App() {
   useEffect(() => {
       const handleAppStateChange = async (state: any) => {
           if (state.isActive && currentUser) {
-              console.log("App resumed. Reloading...");
               await loadData(true);
           }
       };
@@ -271,11 +274,10 @@ function App() {
       return () => { if (listener) listener.remove(); };
   }, [currentUser]);
 
-  // Reduced polling interval for better reactivity
   useEffect(() => { 
       if (currentUser) { 
           loadData(false); 
-          const intervalId = setInterval(() => loadData(true), 5000); // 5s poll
+          const intervalId = setInterval(() => loadData(true), 5000); 
           return () => clearInterval(intervalId); 
       } 
   }, [currentUser]);
@@ -300,6 +302,30 @@ function App() {
   const handleGoToWarehouseApprovals = () => { setWarehouseInitialTab('approvals'); setActiveTab('warehouse'); };
 
   if (!currentUser) return <Login onLogin={handleLogin} />;
+
+  // --- RENDER LOGIC ---
+  
+  if (isMobile) {
+      return (
+        <ErrorBoundary>
+            <MobileLayout 
+                activeTab={activeTab} 
+                setActiveTab={setActiveTab} 
+                currentUser={currentUser} 
+                onLogout={handleLogout}
+                unreadCount={notifications.filter(n => !n.read).length}
+            >
+                {activeTab === 'dashboard' && <MobileDashboard orders={orders} currentUser={currentUser} onNavigate={setActiveTab} />}
+                {activeTab === 'create' && <CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} />}
+                {activeTab === 'manage' && <MobileOrderList orders={orders} currentUser={currentUser} refreshData={() => loadData(true)} />}
+                
+                {/* Fallback to desktop views for complex modules if not fully converted yet, wrapped for mobile scrolling */}
+                {activeTab === 'settings' && <div className="pb-20"><Settings /></div>}
+                {activeTab === 'chat' && <ChatRoom currentUser={currentUser} preloadedMessages={chatMessages} onRefresh={() => loadData(true)} />}
+            </MobileLayout>
+        </ErrorBoundary>
+      );
+  }
 
   return (
     <ErrorBoundary>
@@ -335,7 +361,6 @@ function App() {
             </div>
         )}
 
-        {/* Improved Loader: Show skeleton/loading only if no data available */}
         {loading && orders.length === 0 ? ( 
             <div className="flex h-[50vh] items-center justify-center text-blue-600 flex-col gap-3">
                 <Loader2 size={48} className="animate-spin" />
@@ -353,7 +378,6 @@ function App() {
                 {activeTab === 'users' && <ManageUsers />}
                 {activeTab === 'settings' && <Settings />}
                 {activeTab === 'security' && <SecurityModule currentUser={currentUser} />}
-                {/* CHAT TAB: Pass pre-loaded messages to avoid load time */}
                 {activeTab === 'chat' && (
                     <ChatRoom 
                         currentUser={currentUser} 
