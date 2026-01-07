@@ -264,6 +264,7 @@ export interface SystemSettings {
     insuranceCompanies?: string[]; 
     warehouseSequences?: Record<string, number>; 
     exitPermitNotificationGroup?: string; 
+    exitPermitNotificationGroup2?: string; // NEW: Second group for notifications
     companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
     defaultWarehouseGroup?: string; 
     defaultSalesManager?: string; 
