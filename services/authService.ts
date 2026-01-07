@@ -97,6 +97,11 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         const merged = { ...defaults, ...settings.rolePermissions[userRole] };
         
+        // Force Factory Manager Permission even if settings are weird
+        if (userRole === UserRole.FACTORY_MANAGER) {
+            merged.canApproveExitFactory = true;
+        }
+
         if (userObject && userObject.canManageTrade) merged.canManageTrade = true;
         return merged;
     }
