@@ -22,7 +22,7 @@ export const updateOrderStatus = async (id: string, status: OrderStatus, approve
 };
 export const deleteOrder = async (id: string): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>(`/orders/${id}`, 'DELETE'); };
 
-// --- UPDATED: Exit Permits Workflow (Fixed for Factory Manager) ---
+// --- UPDATED: Exit Permits Workflow ---
 export const getExitPermits = async (): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>('/exit-permits'); };
 export const saveExitPermit = async (permit: ExitPermit): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>('/exit-permits', 'POST', permit); };
 export const editExitPermit = async (updatedPermit: ExitPermit): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>(`/exit-permits/${updatedPermit.id}`, 'PUT', updatedPermit); };
@@ -33,23 +33,18 @@ export const updateExitPermitStatus = async (id: string, status: ExitPermitStatu
     if(permit) {
         const updates: any = { status };
         
-        // CEO APPROVES -> Goes to PENDING_FACTORY
+        // Logic for setting approver names based on NEXT status
         if (status === ExitPermitStatus.PENDING_FACTORY) {
+            // Moved from CEO to Factory
             updates.approverCeo = approverUser.fullName;
-        }
-        
-        // FACTORY MANAGER APPROVES -> Goes to PENDING_WAREHOUSE
-        if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
+        } else if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
+            // Moved from Factory to Warehouse
             updates.approverFactory = approverUser.fullName;
-        }
-
-        // WAREHOUSE APPROVES -> Goes to PENDING_SECURITY
-        if (status === ExitPermitStatus.PENDING_SECURITY) {
+        } else if (status === ExitPermitStatus.PENDING_SECURITY) {
+            // Moved from Warehouse to Security
             updates.approverWarehouse = approverUser.fullName;
-        }
-
-        // SECURITY APPROVES -> Goes to EXITED
-        if (status === ExitPermitStatus.EXITED) {
+        } else if (status === ExitPermitStatus.EXITED) {
+            // Finalized by Security
             updates.approverSecurity = approverUser.fullName;
             if (extra?.exitTime) updates.exitTime = extra.exitTime;
         }

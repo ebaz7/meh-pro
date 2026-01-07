@@ -65,11 +65,12 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
       </div>
   );
 
+  const containerId = embed ? `print-permit-${permit.id}` : "print-area-exit";
+
   const handleDownloadPDF = async () => {
       setProcessing(true);
-      const elementId = embed ? `print-permit-${permit.id}` : "print-area-exit";
       await generatePdf({
-          elementId: elementId,
+          elementId: containerId,
           filename: `Permit_${permit.permitNumber}.pdf`,
           format: 'A4',
           orientation: 'portrait',
@@ -81,8 +82,14 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
   const handleSendToWhatsApp = async (targetNumber: string) => {
       if (!targetNumber) return;
       setSharing(true);
-      const element = document.getElementById(embed ? `print-permit-${permit.id}` : "print-area-exit");
-      if (!element) { setSharing(false); return; }
+      const element = document.getElementById(containerId);
+      
+      if (!element) { 
+          alert("خطا: المان چاپ پیدا نشد."); 
+          setSharing(false); 
+          return; 
+      }
+      
       try {
           // @ts-ignore
           const canvas = await window.html2canvas(element, { 
@@ -101,7 +108,10 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
           });
           if (!embed) alert('ارسال شد.');
           setShowContactSelect(false);
-      } catch(e) { alert('خطا در ارسال'); } finally { setSharing(false); }
+      } catch(e: any) { 
+          console.error("WhatsApp Send Error:", e);
+          alert('خطا در ارسال: ' + (e.message || 'Unknown error')); 
+      } finally { setSharing(false); }
   };
 
   const filteredContacts = settings?.savedContacts?.filter(c => 
@@ -119,7 +129,7 @@ const PrintExitPermit: React.FC<Props> = ({ permit, onClose, onApprove, onReject
   const showDeliveryColumns = displayItems.some(i => i.deliveredCartonCount !== undefined);
 
   const content = (
-      <div id={embed ? `print-permit-${permit.id}` : "print-area-exit"} 
+      <div id={containerId} 
         className="printable-content bg-white mx-auto shadow-2xl relative text-gray-900 flex flex-col" 
         style={{ 
             direction: 'rtl', 
