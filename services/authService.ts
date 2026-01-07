@@ -73,7 +73,10 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         
         canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         canApproveExitCeo: isStandardRole && (userRole === UserRole.CEO || userRole === UserRole.ADMIN),
-        canApproveExitFactory: isStandardRole && (userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN),
+        
+        // FIX: Broaden Factory approval to include CEO
+        canApproveExitFactory: isStandardRole && (userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
+        
         // FIX: Broaden Warehouse approval default to include CEO and Factory Manager as overrides
         canApproveExitWarehouse: isStandardRole && (
             userRole === UserRole.WAREHOUSE_KEEPER || 

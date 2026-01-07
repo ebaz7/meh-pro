@@ -49,12 +49,13 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           return currentUser.role === UserRole.CEO || currentUser.role === UserRole.ADMIN || permissions.canApproveExitCeo;
       }
       
-      // 2. Pending Factory (For Factory Manager/Admin)
+      // 2. Pending Factory (For Factory Manager/Admin/CEO)
+      // FIX: Added CEO to allow override
       if (p.status === ExitPermitStatus.PENDING_FACTORY) {
-          return currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.ADMIN || permissions.canApproveExitFactory;
+          return currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || permissions.canApproveExitFactory;
       }
       
-      // 3. Pending Warehouse (For Warehouse/Admin/Others)
+      // 3. Pending Warehouse (For Warehouse/Admin/CEO/Factory Manager)
       if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
           if (currentUser.role === UserRole.WAREHOUSE_KEEPER) return true;
           if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER) return true;
@@ -62,9 +63,9 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           return false;
       }
       
-      // 4. Pending Security (For Security/Admin)
+      // 4. Pending Security (For Security/Admin/CEO)
       if (p.status === ExitPermitStatus.PENDING_SECURITY) {
-          return currentUser.role === UserRole.SECURITY_GUARD || currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.ADMIN || permissions.canApproveExitSecurity;
+          return currentUser.role === UserRole.SECURITY_GUARD || currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || permissions.canApproveExitSecurity;
       }
       
       return false;
