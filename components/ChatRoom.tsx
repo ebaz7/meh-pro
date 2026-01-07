@@ -91,7 +91,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const loadMeta = async () => {
         try {
             const usrList = await getUsers(); setUsers(usrList.filter(u => u.username !== currentUser.username));
-            const grpList = await getGroups(); const isManager = [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role); setGroups(grpList.filter(g => isManager || g.members.includes(currentUser.username) || g.createdBy === currentUser.username));
+            const grpList = await getGroups(); const isManager = [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role as UserRole); setGroups(grpList.filter(g => isManager || g.members.includes(currentUser.username) || g.createdBy === currentUser.username));
             const tskList = await getTasks(); setTasks(tskList);
         } catch (e) {
             console.error("Chat meta load error", e);
@@ -164,7 +164,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const handleDeleteTask = async (id: string) => { if (window.confirm("آیا از حذف این تسک مطمئن هستید؟")) { await deleteTask(id); loadMeta(); } };
     const displayedMessages = messages.filter(msg => { if (activeChannel.type === 'public') return !msg.recipient && !msg.groupId; else if (activeChannel.type === 'private') { const otherUser = activeChannel.id; const isMeSender = msg.senderUsername === currentUser.username; const isMeRecipient = msg.recipient === currentUser.username; const isOtherSender = msg.senderUsername === otherUser; const isOtherRecipient = msg.recipient === otherUser; return (isMeSender && isOtherRecipient) || (isOtherSender && isMeRecipient); } else if (activeChannel.type === 'group') return msg.groupId === activeChannel.id; return false; });
     const activeGroupTasks = tasks.filter(t => activeChannel.type === 'group' && t.groupId === activeChannel.id);
-    const isAdminOrManager = [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role);
+    const isAdminOrManager = [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role as UserRole);
     
     // Group Info Handlers
     const activeGroup = groups.find(g => g.id === activeChannel.id);

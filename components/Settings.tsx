@@ -1,5 +1,4 @@
 
-// ... existing imports ...
 import React, { useState, useEffect, useRef } from 'react';
 import { getSettings, saveSettings, restoreSystemData, uploadFile } from '../services/storageService';
 import { SystemSettings, UserRole, RolePermissions, Company, Contact, CompanyBank, User, CustomRole, PrintTemplate } from '../types';
@@ -413,7 +412,17 @@ const Settings: React.FC = () => {
       });
   };
 
-  const handlePermissionChange = (role: string, field: keyof RolePermissions, value: boolean) => { setSettings({ ...settings, rolePermissions: { ...settings.rolePermissions, [role]: { ...settings.rolePermissions[role], [field]: value } } }); };
+  const handlePermissionChange = (role: string, field: keyof RolePermissions, value: boolean) => {
+      const currentRolePerms = settings.rolePermissions[role] || ({} as RolePermissions);
+      const newRolePerms = { ...currentRolePerms, [field]: value };
+      setSettings({ 
+          ...settings, 
+          rolePermissions: { 
+              ...settings.rolePermissions, 
+              [role]: newRolePerms as RolePermissions
+          } 
+      }); 
+  };
   const handleIconChange = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingIcon(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const res = await uploadFile(file.name, ev.target?.result as string); setSettings({ ...settings, pwaIcon: res.url }); } catch (error) { alert('خطا'); } finally { setUploadingIcon(false); } }; reader.readAsDataURL(file); };
   
   const handleToggleNotifications = async () => { 
@@ -569,13 +578,13 @@ const Settings: React.FC = () => {
   ];
 
   const togglePermissionGroup = (roleId: string, groupItems: {id: string}[], isChecked: boolean) => {
-      const newPermissions = { ...settings.rolePermissions?.[roleId] || {} };
+      const newPermissions: any = { ...settings.rolePermissions?.[roleId] || {} };
       groupItems.forEach(item => {
-          newPermissions[item.id as keyof RolePermissions] = isChecked;
+          newPermissions[item.id] = isChecked;
       });
       setSettings({
           ...settings,
-          rolePermissions: { ...settings.rolePermissions, [roleId]: newPermissions }
+          rolePermissions: { ...settings.rolePermissions, [roleId]: newPermissions as RolePermissions }
       });
   };
 
@@ -662,7 +671,7 @@ const Settings: React.FC = () => {
                     )}
 
                     {/* ... Rest of tabs (warehouse, commerce, data, permissions, integrations, whatsapp, templates) preserved ... */}
-                    {activeCategory !== 'system' && activeCategory !== 'fiscal' && (
+                    {activeCategory !== 'system' && (
                          // Re-use logic from previous file for other tabs. 
                          <>
                          {activeCategory === 'warehouse' && (

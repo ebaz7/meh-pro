@@ -103,7 +103,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         payments: [], purchasedAmount: 0, purchasedCurrencyType: '', purchaseDate: '', brokerName: '', exchangeName: '', deliveredAmount: 0, deliveredCurrencyType: '', deliveryDate: '', recipientName: '', remittedAmount: 0, isDelivered: false, tranches: [], guaranteeCheque: undefined
     });
     
-    const [newCurrencyTranche, setNewCurrencyTranche] = useState<Partial<CurrencyTranche> & { returnAmount?: string, returnDate?: string, amountStr?: string, rialAmountStr?: string, receivedAmountStr?: string, currencyFeeStr?: string }>({ 
+    // Using Omit to avoid type conflict with returnAmount (number vs string for input)
+    const [newCurrencyTranche, setNewCurrencyTranche] = useState<Omit<Partial<CurrencyTranche>, 'returnAmount'> & { returnAmount?: string, returnDate?: string, amountStr?: string, rialAmountStr?: string, receivedAmountStr?: string, currencyFeeStr?: string }>({ 
         amount: 0, 
         currencyType: 'EUR', 
         date: '', 
@@ -167,7 +168,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
     useEffect(() => {
         if (selectedRecord) {
-            const insData = selectedRecord.insuranceData || {};
+            const insData = selectedRecord.insuranceData || { policyNumber: '', company: '', cost: 0, bank: '', endorsements: [], isPaid: false, paymentDate: '' };
             setInsuranceForm({
                 policyNumber: insData.policyNumber || '',
                 company: insData.company || '',
@@ -178,7 +179,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 paymentDate: insData.paymentDate || ''
             });
 
-            const inspData = selectedRecord.inspectionData || {};
+            const inspData = selectedRecord.inspectionData || { certificates: [], payments: [] };
             const certificates = inspData.certificates || [];
             if (certificates.length === 0 && inspData.certificateNumber) {
                  certificates.push({ id: generateUUID(), part: 'Original', certificateNumber: inspData.certificateNumber, company: inspData.inspectionCompany || '', amount: inspData.totalInvoiceAmount || 0 });
@@ -188,13 +189,13 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 payments: inspData.payments || []
             });
 
-            const clrData = selectedRecord.clearanceData || {};
+            const clrData = selectedRecord.clearanceData || { receipts: [], payments: [] };
             setClearanceForm({
                 receipts: clrData.receipts || [],
                 payments: clrData.payments || []
             });
 
-            const glData = selectedRecord.greenLeafData || {};
+            const glData = selectedRecord.greenLeafData || { duties: [], guarantees: [], taxes: [], roadTolls: [] };
             setGreenLeafForm({
                 duties: glData.duties || [],
                 guarantees: glData.guarantees || [],
@@ -202,12 +203,12 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 roadTolls: glData.roadTolls || []
             });
 
-            const isData = selectedRecord.internalShippingData || {};
+            const isData = selectedRecord.internalShippingData || { payments: [] };
             setInternalShippingForm({
                 payments: isData.payments || []
             });
 
-            const agData = selectedRecord.agentData || {};
+            const agData = selectedRecord.agentData || { payments: [] };
             setAgentForm({
                 payments: agData.payments || []
             });
@@ -265,14 +266,26 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         }
     }, [selectedRecord]);
 
-    const loadRecords = async () => { setRecords(await getTradeRecords()); };
+    const loadRecords = async () => { 
+        try {
+            const data = await getTradeRecords(); 
+            // Safety Check: Ensure records is always an array
+            setRecords(Array.isArray(data) ? data : []); 
+        } catch (e) {
+            console.error("Error loading trade records", e);
+            setRecords([]);
+        }
+    };
 
     const goRoot = () => { setNavLevel('ROOT'); setSelectedCompany(null); setSelectedGroup(null); setSearchTerm(''); };
     const goCompany = (company: string) => { setSelectedCompany(company); setNavLevel('COMPANY'); setSelectedGroup(null); setSearchTerm(''); };
     const goGroup = (group: string) => { setSelectedGroup(group); setNavLevel('GROUP'); setSearchTerm(''); };
 
+    // SAFE RECORDS ACCESS
+    const safeRecords = Array.isArray(records) ? records : [];
+
     const groupedData = useMemo(() => {
-        const currentRecords = records.filter(r => showArchived ? r.isArchived : !r.isArchived);
+        const currentRecords = safeRecords.filter(r => showArchived ? r.isArchived : !r.isArchived);
         if (navLevel === 'ROOT') {
             const companies: Record<string, number> = {};
             currentRecords.forEach(r => { const c = r.company || 'بدون شرکت'; companies[c] = (companies[c] || 0) + 1; });
@@ -283,24 +296,18 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             return Object.entries(groups).map(([name, count]) => ({ name, count, type: 'group' }));
         }
         return [];
-    }, [records, showArchived, navLevel, selectedCompany]);
+    }, [safeRecords, showArchived, navLevel, selectedCompany]);
 
     const getStageData = (record: TradeRecord | null, stage: TradeStage): TradeStageData => {
         if (!record || !record.stages) return { stage, isCompleted: false, description: '', costRial: 0, costCurrency: 0, currencyType: 'EUR', attachments: [], updatedAt: 0, updatedBy: '' };
         return record.stages[stage] || { stage, isCompleted: false, description: '', costRial: 0, costCurrency: 0, currencyType: 'EUR', attachments: [], updatedAt: 0, updatedBy: '' };
     };
 
-    // Re-paste logic handles omitted for brevity - logic remains identical to original file for actions
+    // --- HANDLERS ---
     const handleCreateRecord = async () => { if (!newFileNumber || !newGoodsName) return; const newRecord: TradeRecord = { id: generateUUID(), company: newRecordCompany, fileNumber: newFileNumber, orderNumber: newFileNumber, goodsName: newGoodsName, registrationNumber: '', sellerName: newSellerName, commodityGroup: newCommodityGroup, mainCurrency: newMainCurrency, items: [], freightCost: 0, startDate: new Date().toISOString(), status: 'Active', stages: {}, createdAt: Date.now(), createdBy: currentUser.fullName, licenseData: { transactions: [] }, shippingDocuments: [] }; STAGES.forEach(stage => { newRecord.stages[stage] = { stage, isCompleted: false, description: '', costRial: 0, costCurrency: 0, currencyType: newMainCurrency, attachments: [], updatedAt: Date.now(), updatedBy: '' }; }); await saveTradeRecord(newRecord); await loadRecords(); setShowNewModal(false); setNewFileNumber(''); setNewGoodsName(''); setSelectedRecord(newRecord); setActiveTab('proforma'); setViewMode('details'); };
     const handleDeleteRecord = async (id: string, e: React.MouseEvent) => { e.stopPropagation(); if (confirm("آیا از حذف این پرونده بازرگانی اطمینان دارید؟")) { await deleteTradeRecord(id); if (selectedRecord?.id === id) setSelectedRecord(null); loadRecords(); } };
     const handleUpdateProforma = async (field: keyof TradeRecord, value: string | number) => { if (!selectedRecord) return; const updatedRecord = { ...selectedRecord, [field]: value }; setSelectedRecord(updatedRecord); await updateTradeRecord(updatedRecord); setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r)); };
-    // ... [Other handlers truncated for brevity, exact copy of previous logic] ...
-    // Note: In the actual implementation, ALL handlers from the previous file must be preserved.
-    // For this response, I assume the user knows I'm preserving them unless changed.
-    // Since I need to output the FULL file content, I will paste a minimized version of handlers
-    // but focus on the UI changes requested.
     
-    // START OF HANDLERS (Minimally represented to save output space but FULL functionality implied)
     const handleAddItem = async () => { if (!selectedRecord || !newItem.name) return; const weightVal = newItem.weightStr ? deformatNumberString(newItem.weightStr) : 0; const unitPriceVal = newItem.unitPriceStr ? deformatNumberString(newItem.unitPriceStr) : 0; const item: TradeItem = { id: editingItemId || generateUUID(), name: newItem.name, weight: weightVal, unitPrice: unitPriceVal, totalPrice: newItem.totalPrice || (weightVal * unitPriceVal), hsCode: newItem.hsCode }; let updatedItems = []; if (editingItemId) { updatedItems = selectedRecord.items.map(i => i.id === editingItemId ? item : i); } else { updatedItems = [...selectedRecord.items, item]; } const updatedRecord = { ...selectedRecord, items: updatedItems }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r)); setNewItem({ name: '', weight: 0, unitPrice: 0, totalPrice: 0, hsCode: '', weightStr: '', unitPriceStr: '' }); setEditingItemId(null); };
     const handleEditItem = (item: TradeItem) => { setNewItem({ name: item.name, weight: item.weight, weightStr: formatNumberString(item.weight), unitPrice: item.unitPrice, unitPriceStr: formatNumberString(item.unitPrice), totalPrice: item.totalPrice, hsCode: item.hsCode || '' }); setEditingItemId(item.id); };
     const handleRemoveItem = async (id: string) => { if (!selectedRecord) return; const updatedItems = selectedRecord.items.filter(i => i.id !== id); const updatedRecord = { ...selectedRecord, items: updatedItems }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
@@ -395,6 +402,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const renderReportContent = useMemo(() => {
         const safeSettings = settings || { currentTrackingNumber: 1000, currentExitPermitNumber: 1000, companyNames: [], companies: [], defaultCompany: '', bankNames: [], operatingBankNames: [], commodityGroups: [], rolePermissions: {}, savedContacts: [], warehouseSequences: {}, companyNotifications: {}, insuranceCompanies: [] };
 
+        const currentList = Array.isArray(records) ? records : [];
+
         switch (activeReport) {
             case 'general':
                 return (
@@ -411,7 +420,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {records
+                                {currentList
                                     .filter(r => (!reportFilterCompany || r.company === reportFilterCompany) && (
                                         r.fileNumber.includes(reportSearchTerm) || 
                                         r.goodsName.includes(reportSearchTerm)
@@ -431,15 +440,15 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     </div>
                 );
             case 'allocation_queue':
-                return <AllocationReport records={records.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} onUpdateRecord={async (r, u) => { const updated = {...r, ...u}; await updateTradeRecord(updated); setRecords(prev => prev.map(rec => rec.id === updated.id ? updated : rec)); }} settings={safeSettings} />;
+                return <AllocationReport records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} onUpdateRecord={async (r, u) => { const updated = {...r, ...u}; await updateTradeRecord(updated); setRecords(prev => prev.map(rec => rec.id === updated.id ? updated : rec)); }} settings={safeSettings} />;
             case 'currency':
-                return <CurrencyReport records={records.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} />;
+                return <CurrencyReport records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} />;
             case 'company_performance':
-                return <CompanyPerformanceReport records={records} />;
+                return <CompanyPerformanceReport records={currentList} />;
             case 'insurance_ledger':
-                return <InsuranceLedgerReport records={records.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} settings={safeSettings} />; 
+                return <InsuranceLedgerReport records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} settings={safeSettings} />; 
             case 'guarantee':
-                return <GuaranteeReport records={records.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} />;
+                return <GuaranteeReport records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} />;
             default:
                 return <div className="p-8 text-center text-gray-500">گزارش در حال تکمیل است...</div>;
         }
@@ -509,7 +518,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     }
 
     if (selectedRecord && viewMode === 'details') {
-        // ... (Details logic remains unchanged - preserved in full)
         const totalItemsCurrency = selectedRecord.items.reduce((a, b) => a + b.totalPrice, 0);
         const totalFreightCurrency = selectedRecord.freightCost || 0;
         const totalProformaCurrency = totalItemsCurrency + totalFreightCurrency;
@@ -559,10 +567,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     />
                 )}
 
-                {/* EDIT METADATA MODAL (unchanged) */}
+                {/* EDIT METADATA MODAL */}
                 {showEditMetadataModal && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-                        {/* ... Edit Metadata Modal Content ... */}
                         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="font-bold text-xl text-gray-800">ویرایش مشخصات پرونده</h3>
@@ -583,7 +590,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     </div>
                 )}
 
-                {/* Stage Edit Modal (unchanged) */}
+                {/* Stage Edit Modal */}
                 {editingStage && (
                     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
                         <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
@@ -601,7 +608,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     </div>
                 )}
 
-                {/* Header (unchanged) */}
+                {/* Header */}
                 <div className="bg-white border-b p-4 flex justify-between items-center shadow-sm z-10">
                     <div className="flex items-center gap-4">
                         <button onClick={() => setViewMode('dashboard')} className="p-2 hover:bg-gray-100 rounded-full"><ArrowRight /></button>
@@ -632,7 +639,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 {/* Content Area */}
                 <div className="flex-1 overflow-y-auto bg-gray-50">
                     
-                    {/* ... (Timeline, Proforma same) ... */}
                     {activeTab === 'timeline' && (
                         <div className="p-6 max-w-4xl mx-auto">
                             <div className="relative border-r-2 border-gray-200 mr-4 space-y-8 pr-8">
@@ -662,9 +668,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     )}
 
                     {activeTab === 'proforma' && (
-                        /* ... Proforma content ... */
                         <div className="p-6 max-w-5xl mx-auto space-y-6">
-                            {/* ... Content of Proforma ... */}
+                            {/* Proforma Content */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border">
                                 <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">اطلاعات کلی پروفرما</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -675,7 +680,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     <div className="space-y-1"><label className="text-xs font-bold text-gray-700">تاریخ ثبت سفارش</label><input className="w-full border rounded p-2 text-sm dir-ltr" placeholder="1403/01/01" value={selectedRecord.registrationDate || ''} onChange={e => handleUpdateProforma('registrationDate', e.target.value)}/></div>
                                     <div className="space-y-1"><label className="text-xs font-bold text-gray-700">تاریخ انقضا</label><input className="w-full border rounded p-2 text-sm dir-ltr" placeholder="1403/06/01" value={selectedRecord.registrationExpiry || ''} onChange={e => handleUpdateProforma('registrationExpiry', e.target.value)}/></div>
                                     
-                                    {/* Currency Origin & Type */}
                                     <div className="space-y-1">
                                         <label className="text-xs font-bold text-gray-700">منشا ارز</label>
                                         <select 
@@ -931,7 +935,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                 </div>
                             </div>
 
-                            {/* Guarantee Cheque Section - REPLACED WITH NEW COMPONENT */}
+                            {/* Guarantee Cheque Section */}
                             <CurrencyGuaranteeSection 
                                 currencyGuarantee={currencyGuarantee} 
                                 setCurrencyGuarantee={setCurrencyGuarantee} 
@@ -942,7 +946,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         </div>
                     )}
 
-                    {/* ... (Other tabs kept same - Shipping Docs, Inspection) ... */}
+                    {/* ... (Other tabs kept same - Shipping Docs, Inspection, etc.) ... */}
                     {activeTab === 'shipping_docs' && (
                         /* ... Shipping Docs Logic ... */
                         <div className="p-6 max-w-5xl mx-auto flex gap-6">
@@ -1094,7 +1098,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         </div>
                     )}
 
-                    {/* ... (Green Leaf, Internal Shipping, Agent Fees, Final Calc kept the same) ... */}
                     {activeTab === 'green_leaf' && (
                         /* ... Green Leaf Logic ... */
                         <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -1144,7 +1147,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         </div>
                     )}
 
-                    {/* ... (Internal Shipping, Agent Fees, Final Calc kept same) ... */}
                     {activeTab === 'internal_shipping' && (
                         <div className="p-6 max-w-5xl mx-auto space-y-6">
                             <div className="bg-white p-6 rounded-xl shadow-sm border space-y-4">
@@ -1456,7 +1458,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         </div>
                     ))
                 ) : (
-                    records
+                    safeRecords
                         .filter(r => (showArchived ? r.isArchived : !r.isArchived) && (r.company === selectedCompany) && (r.commodityGroup === selectedGroup) && (r.goodsName.includes(searchTerm) || r.fileNumber.includes(searchTerm)))
                         .map(record => (
                             <div key={record.id} onClick={() => { setSelectedRecord(record); setViewMode('details'); setActiveTab('timeline'); }} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group border-l-4 border-l-transparent hover:border-l-blue-500 relative">
