@@ -54,6 +54,9 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
 
       setIsSubmitting(true);
       try {
+          const totalCartons = items.reduce((acc, i) => acc + (Number(i.cartonCount) || 0), 0);
+          const totalWeight = items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+
           const permit: ExitPermit = {
               id: generateUUID(),
               permitNumber: Number(permitNumber),
@@ -63,6 +66,8 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
               destinations: destinations,
               goodsName: items.map(i => i.goodsName).join('، '),
               recipientName: destinations.map(d => d.recipientName).join('، '),
+              cartonCount: totalCartons,
+              weight: totalWeight,
               plateNumber: driverInfo.plateNumber,
               driverName: driverInfo.driverName,
               description: driverInfo.description,
