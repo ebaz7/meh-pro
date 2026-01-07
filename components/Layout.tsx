@@ -400,19 +400,19 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
       </aside>
       
       {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t p-2 flex justify-between z-50 no-print shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] overflow-x-auto safe-pb" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom))', height: 'calc(70px + env(safe-area-inset-bottom))' }}>
-        <div className="flex w-full justify-between items-center px-1 gap-2">
-            {navItems.map((item) => { const Icon = item.icon; return (<button key={item.id} onClick={() => setActiveTab(item.id)} className={`p-2 rounded-xl flex flex-col items-center justify-center text-xs min-w-[64px] flex-shrink-0 transition-all ${activeTab === item.id ? 'text-blue-600 bg-blue-50 font-bold' : 'text-gray-500'}`}><Icon size={22} strokeWidth={activeTab === item.id ? 2.5 : 2}/><span className="mt-1 whitespace-nowrap text-[10px] truncate w-full text-center">{item.label}</span></button>); })}
-            <button onClick={handleLogout} className="p-2 rounded-xl flex flex-col items-center justify-center text-xs text-red-500 min-w-[50px] flex-shrink-0 bg-red-50"><LogOut size={22} /><span className="mt-1 text-[10px]">خروج</span></button>
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t p-2 flex justify-between z-50 no-print shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] overflow-x-auto safe-pb" style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom))', height: 'calc(60px + env(safe-area-inset-bottom))' }}>
+        <div className="flex w-full justify-between items-center px-2">
+            {navItems.map((item) => { const Icon = item.icon; return (<button key={item.id} onClick={() => setActiveTab(item.id)} className={`p-1 rounded-lg flex flex-col items-center justify-center text-xs min-w-[60px] flex-shrink-0 ${activeTab === item.id ? 'text-blue-600 font-bold' : 'text-gray-500'}`}><Icon size={24} strokeWidth={activeTab === item.id ? 2.5 : 2}/><span className="mt-1 whitespace-nowrap text-[9px] truncate w-full text-center">{item.label}</span></button>); })}
+            <button onClick={handleLogout} className="p-1 rounded-lg flex flex-col items-center justify-center text-xs text-red-500 min-w-[50px] flex-shrink-0"><LogOut size={24} /><span className="mt-1 text-[9px]">خروج</span></button>
         </div>
       </div>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-[100dvh] overflow-hidden relative min-w-0">
-        <header className="bg-white shadow-sm p-4 md:hidden no-print flex items-center justify-between shrink-0 relative z-40 safe-pt" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+        <header className="bg-white shadow-sm p-4 md:hidden no-print flex items-center justify-between shrink-0 relative z-40 safe-pt">
             <div className="flex items-center gap-3">
                 {activeTab !== 'dashboard' && (<button onClick={() => setActiveTab('dashboard')} className="p-1.5 -mr-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight size={24} /></button>)}
-                <div className="flex items-center gap-2" onClick={() => setShowProfileModal(true)}><div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden border border-gray-300">{currentUser.avatar ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover"/> : <UserIcon size={18} className="text-gray-500 m-2" />}</div><div><h1 className="font-bold text-gray-800 text-sm leading-tight">{activeTab === 'dashboard' ? 'سیستم مالی' : navItems.find(i => i.id === activeTab)?.label}</h1><div className="text-[10px] text-gray-500">{currentUser.fullName}</div></div></div>
+                <div className="flex items-center gap-2" onClick={() => setShowProfileModal(true)}><div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-gray-300">{currentUser.avatar ? <img src={currentUser.avatar} alt="" className="w-full h-full object-cover"/> : <UserIcon size={16} className="text-gray-500 m-2" />}</div><div><h1 className="font-bold text-gray-800 text-sm">{activeTab === 'dashboard' ? 'سیستم مالی' : navItems.find(i => i.id === activeTab)?.label}</h1><div className="text-[10px] text-gray-500">{currentUser.fullName}</div></div></div>
             </div>
             <div className="flex items-center gap-2">
                 {(!isStandalone && (deferredPrompt || isIOS)) && (
@@ -423,15 +423,15 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
                 )}
                 <div className="relative notification-trigger" ref={mobileNotifRef}>
                     <button onClick={() => setShowNotifDropdown(!showNotifDropdown)} className="relative p-2 rounded-full hover:bg-gray-100">
-                        <Bell size={22} className="text-gray-600" />
-                        {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border border-white"></span>}
+                        <Bell size={20} className="text-gray-600" />
+                        {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white"></span>}
                     </button>
                     {showNotifDropdown && <NotificationDropdown />}
                 </div>
             </div>
         </header>
         
-        <div className={`flex-1 overflow-y-auto bg-gray-50 pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0 min-w-0 ${isUpdateAvailable ? 'pt-12' : ''}`}>
+        <div className={`flex-1 overflow-y-auto bg-gray-50 pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-0 min-w-0 ${isUpdateAvailable ? 'pt-12' : ''}`}>
             <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-full min-w-0">
                 {children}
             </div>
