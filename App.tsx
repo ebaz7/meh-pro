@@ -26,7 +26,6 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app'; 
 import { PushNotifications } from '@capacitor/push-notifications'; 
 import { sendNotification } from './services/notificationService';
-import useIsMobile from './hooks/useIsMobile';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -53,7 +52,6 @@ function App() {
   
   const lastChatMsgIdRef = useRef<string | null>(null);
   const isNative = Capacitor.isNativePlatform();
-  const isMobile = useIsMobile();
 
   const safePushState = (state: any, title: string, url?: string) => { 
       if (isNative) return; 
