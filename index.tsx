@@ -2,6 +2,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './index.css'; // Import local CSS with Tailwind
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
