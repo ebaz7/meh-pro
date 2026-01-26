@@ -11,7 +11,8 @@ const ManageUsers: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null); // State for settings
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ username: '', password: '', fullName: '', role: UserRole.USER as string, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', phoneNumber: '' });
+  // Add baleChatId to state
+  const [formData, setFormData] = useState({ username: '', password: '', fullName: '', role: UserRole.USER as string, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', baleChatId: '', phoneNumber: '' });
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,9 +24,9 @@ const ManageUsers: React.FC = () => {
 
   useEffect(() => { loadData(); }, []);
   
-  const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (editingId) { const updatedUser: User = { id: editingId, ...formData }; await updateUser(updatedUser); setEditingId(null); } else { const user: User = { id: generateUUID(), ...formData }; await saveUser(user); } await loadData(); setFormData({ username: '', password: '', fullName: '', role: UserRole.USER, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', phoneNumber: '' }); };
-  const handleEditClick = (user: User) => { setEditingId(user.id); setFormData({ username: user.username, password: user.password, fullName: user.fullName, role: user.role, canManageTrade: user.canManageTrade || false, receiveNotifications: user.receiveNotifications !== false, avatar: user.avatar || '', telegramChatId: user.telegramChatId || '', phoneNumber: user.phoneNumber || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const handleCancelEdit = () => { setEditingId(null); setFormData({ username: '', password: '', fullName: '', role: UserRole.USER, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', phoneNumber: '' }); };
+  const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (editingId) { const updatedUser: User = { id: editingId, ...formData }; await updateUser(updatedUser); setEditingId(null); } else { const user: User = { id: generateUUID(), ...formData }; await saveUser(user); } await loadData(); setFormData({ username: '', password: '', fullName: '', role: UserRole.USER, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', baleChatId: '', phoneNumber: '' }); };
+  const handleEditClick = (user: User) => { setEditingId(user.id); setFormData({ username: user.username, password: user.password, fullName: user.fullName, role: user.role, canManageTrade: user.canManageTrade || false, receiveNotifications: user.receiveNotifications !== false, avatar: user.avatar || '', telegramChatId: user.telegramChatId || '', baleChatId: user.baleChatId || '', phoneNumber: user.phoneNumber || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const handleCancelEdit = () => { setEditingId(null); setFormData({ username: '', password: '', fullName: '', role: UserRole.USER, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', baleChatId: '', phoneNumber: '' }); };
   const handleDeleteUser = async (id: string) => { if (window.confirm('آیا از حذف این کاربر اطمینان دارید؟')) { await deleteUser(id); await loadData(); } };
   const handleBackup = async () => { try { const backupData = await apiCall<any>('/backup'); const jsonString = JSON.stringify(backupData, null, 2); const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `backup_payment_system_${new Date().toISOString().split('T')[0]}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { alert('خطا در دریافت فایل پشتیبان'); } };
 
@@ -51,7 +52,7 @@ const ManageUsers: React.FC = () => {
           case UserRole.MANAGER: return 'مدیر داخلی';
           case UserRole.SALES_MANAGER: return 'مدیر فروش';
           case UserRole.FACTORY_MANAGER: return 'مدیر کارخانه';
-          case UserRole.WAREHOUSE_KEEPER: return 'انبار واردات'; // RENAMED from 'انباردار'
+          case UserRole.WAREHOUSE_KEEPER: return 'انبار واردات'; 
           case UserRole.SECURITY_HEAD: return 'سرپرست انتظامات';
           case UserRole.SECURITY_GUARD: return 'نگهبان';
           case UserRole.USER: return 'کاربر عادی';
@@ -91,7 +92,7 @@ const ManageUsers: React.FC = () => {
                     <option value={UserRole.CEO}>مدیر عامل</option>
                     <option value={UserRole.SALES_MANAGER}>مدیر فروش</option>
                     <option value={UserRole.FACTORY_MANAGER}>مدیر کارخانه</option>
-                    <option value={UserRole.WAREHOUSE_KEEPER}>انبار واردات</option> {/* Updated Label */}
+                    <option value={UserRole.WAREHOUSE_KEEPER}>انبار واردات</option> 
                     <option value={UserRole.SECURITY_HEAD}>سرپرست انتظامات</option>
                     <option value={UserRole.SECURITY_GUARD}>نگهبان</option>
                     <option value={UserRole.ADMIN}>مدیر سیستم (دسترسی کامل)</option>
@@ -105,8 +106,10 @@ const ManageUsers: React.FC = () => {
                 )}
             </select>
           </div>
+          
+          <div className="space-y-1 lg:col-span-1"><label className="text-sm text-gray-600 flex items-center gap-1"><Phone size={12}/> موبایل (واتساپ)</label><input type="text" value={formData.phoneNumber} onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm text-left dir-ltr" placeholder="98912..." /></div>
+          <div className="space-y-1 lg:col-span-1"><label className="text-sm text-gray-600 flex items-center gap-1"><Send size={12} className="text-blue-500"/> آیدی بله (Bale ID)</label><input type="text" value={formData.baleChatId} onChange={(e) => setFormData({...formData, baleChatId: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm text-left dir-ltr" placeholder="12345678" /></div>
           <div className="space-y-1 lg:col-span-1"><label className="text-sm text-gray-600 flex items-center gap-1"><Send size={12}/> آیدی تلگرام</label><input type="text" value={formData.telegramChatId} onChange={(e) => setFormData({...formData, telegramChatId: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm text-left dir-ltr" placeholder="Chat ID" /></div>
-          <div className="space-y-1 lg:col-span-1"><label className="text-sm text-gray-600 flex items-center gap-1"><Phone size={12}/> شماره واتساپ/موبایل</label><input type="text" value={formData.phoneNumber} onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm text-left dir-ltr" placeholder="98912..." /></div>
           
           <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2 text-xs text-gray-700 bg-gray-50 px-2 py-1.5 rounded cursor-pointer border border-gray-200">
@@ -115,7 +118,7 @@ const ManageUsers: React.FC = () => {
               </label>
               <label className="flex items-center gap-2 text-xs text-gray-700 bg-green-50 px-2 py-1.5 rounded cursor-pointer border border-green-200">
                   <input type="checkbox" checked={formData.receiveNotifications} onChange={e => setFormData({...formData, receiveNotifications: e.target.checked})} className="w-4 h-4 text-green-600" />
-                  <span>دریافت پیام‌های اطلاع‌رسانی (واتساپ)</span>
+                  <span>دریافت پیام‌های اطلاع‌رسانی</span>
               </label>
               <div className="flex gap-2 mt-1">
                   {editingId && (<button type="button" onClick={handleCancelEdit} className="bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium transition-colors h-[38px] flex items-center justify-center" title="انصراف"><X size={18} /></button>)}

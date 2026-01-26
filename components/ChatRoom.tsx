@@ -142,7 +142,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // UPDATED: Limit set to 1GB
         if (file.size > 1024 * 1024 * 1024) {
             alert('حجم فایل نباید بیشتر از ۱ گیگابایت باشد.');
             return;
@@ -192,17 +191,15 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         e.target.value = '';
     };
 
-    // --- Voice Recording Logic (TOGGLE MODE) ---
+    // --- Voice Recording Logic ---
     const toggleRecording = async () => {
         if (isRecording) {
-            // STOP RECORDING
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
                 mediaRecorderRef.current.stop();
                 setIsRecording(false);
                 clearInterval(recordingTimerRef.current);
             }
         } else {
-            // START RECORDING
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const mediaRecorder = new MediaRecorder(stream);
@@ -217,11 +214,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
                 mediaRecorder.onstop = async () => {
                     const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                    
-                    if (audioBlob.size < 1000) {
-                        setIsUploading(false);
-                        return;
-                    }
+                    if (audioBlob.size < 1000) { setIsUploading(false); return; }
 
                     setIsUploading(true);
                     const reader = new FileReader();
@@ -266,12 +259,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 setIsRecording(false);
             }
         }
-    };
-
-    const formatDuration = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
     const handleEditMessage = (msg: ChatMessage) => {
@@ -382,7 +369,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             </div>
 
             {/* --- CHAT AREA --- */}
-            <div className={`absolute inset-0 md:static flex-1 flex flex-col bg-[#8E98A3] z-30 transition-transform duration-300 ${mobileShowChat ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+            {/* Added min-w-0 to prevent flex item overflow issue on desktop */}
+            <div className={`absolute inset-0 md:static flex-1 min-w-0 flex flex-col bg-[#8E98A3] z-30 transition-transform duration-300 ${mobileShowChat ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
                 
                 {/* Chat Background Pattern */}
                 <div className="absolute inset-0 opacity-10 pointer-events-none" 
@@ -411,12 +399,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
                 {/* Messages */}
                 {activeTab === 'chat' ? (
-                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-0">
+                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-0 overflow-x-hidden">
                         {getDisplayMessages().map((msg) => {
                             const isMe = msg.senderUsername === currentUser.username;
                             return (
                                 <div key={msg.id} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'} mb-1 group`}>
-                                    <div className={`relative max-w-[85%] md:max-w-[65%] rounded-2xl px-3 py-2 shadow-sm text-sm ${isMe ? 'bg-[#EEFFDE] rounded-tr-none' : 'bg-white rounded-tl-none'}`}>
+                                    {/* Added max-w constraints to prevent overflow */}
+                                    <div className={`relative max-w-[85%] md:max-w-[75%] lg:max-w-[65%] rounded-2xl px-3 py-2 shadow-sm text-sm ${isMe ? 'bg-[#EEFFDE] rounded-tr-none' : 'bg-white rounded-tl-none'}`}>
                                         
                                         {/* Reply Context */}
                                         {msg.replyTo && (
@@ -451,9 +440,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                         <img src={msg.attachment.url} alt="attachment" className="max-w-full h-auto rounded-lg max-h-60 object-cover" />
                                                     </a>
                                                 ) : (
-                                                    <div className="flex items-center gap-3 bg-black/5 p-2 rounded-lg">
-                                                        <div className={`p-2 rounded-full text-white ${isMe ? 'bg-green-500' : 'bg-blue-500'}`}><File size={18}/></div>
-                                                        <div className="overflow-hidden">
+                                                    <div className="flex items-center gap-3 bg-black/5 p-2 rounded-lg max-w-full overflow-hidden">
+                                                        <div className={`p-2 rounded-full text-white shrink-0 ${isMe ? 'bg-green-500' : 'bg-blue-500'}`}><File size={18}/></div>
+                                                        <div className="overflow-hidden min-w-0">
                                                             <div className="truncate font-bold text-xs">{msg.attachment.fileName}</div>
                                                             <a href={msg.attachment.url} target="_blank" className="text-[10px] text-blue-600 font-bold flex items-center gap-1 mt-0.5">دانلود <DownloadCloud size={10}/></a>
                                                         </div>
@@ -462,8 +451,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                             </div>
                                         )}
 
-                                        {/* Content: Text */}
-                                        {msg.message && <div className="whitespace-pre-wrap leading-relaxed break-words">{msg.message}</div>}
+                                        {/* Content: Text - Added break-words to fix horizontal scrolling */}
+                                        {msg.message && <div className="whitespace-pre-wrap leading-relaxed break-words break-all">{msg.message}</div>}
 
                                         {/* Meta */}
                                         <div className="flex justify-end items-center gap-1 mt-1 opacity-50 select-none">

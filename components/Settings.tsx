@@ -54,6 +54,7 @@ const Settings: React.FC = () => {
       pwaIcon: '', 
       telegramBotToken: '', 
       telegramAdminId: '', 
+      baleBotToken: '', // Added
       smsApiKey: '', 
       smsSenderNumber: '', 
       googleCalendarId: '', 
@@ -636,7 +637,7 @@ const Settings: React.FC = () => {
                 <button onClick={() => setActiveCategory('commerce')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'commerce' ? 'bg-white shadow text-rose-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Container size={18}/> تنظیمات بازرگانی</button>
                 <button onClick={() => setActiveCategory('warehouse')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'warehouse' ? 'bg-white shadow text-orange-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Warehouse size={18}/> انبار</button>
                 <button onClick={() => setActiveCategory('integrations')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'integrations' ? 'bg-white shadow text-purple-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Link size={18}/> اتصالات (API)</button>
-                <button onClick={() => setActiveCategory('whatsapp')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'whatsapp' ? 'bg-white shadow text-green-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><MessageCircle size={18}/> مدیریت واتساپ</button>
+                <button onClick={() => setActiveCategory('whatsapp')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'whatsapp' ? 'bg-white shadow text-green-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><MessageCircle size={18}/> پیام‌رسان‌ها</button>
                 <button onClick={() => setActiveCategory('permissions')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'permissions' ? 'bg-white shadow text-amber-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><ShieldCheck size={18}/> دسترسی‌ها و نقش‌ها</button>
             </nav>
         </div>
@@ -668,6 +669,7 @@ const Settings: React.FC = () => {
                                     </button>
                                 </div>
                             </div>
+                            {/* ... (Existing System Settings sections like Document Numbering etc) ... */}
                             <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Truck size={20}/> شماره‌گذاری اسناد (تنظیمات پیش‌فرض)</h3>
                                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-800 mb-2">
@@ -678,95 +680,110 @@ const Settings: React.FC = () => {
                                     <div><label className="text-sm font-bold text-gray-700 block mb-1">شروع شماره مجوز خروج</label><input type="number" className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.currentExitPermitNumber} onChange={(e) => setSettings({...settings, currentExitPermitNumber: Number(e.target.value)})} /></div>
                                 </div>
                             </div>
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-800 border-b pb-2">مدیریت داده‌ها و بک‌آپ</h3>
-                                <div className="flex flex-wrap gap-4 items-center">
-                                    <div className="flex flex-col gap-2 w-full md:w-auto">
-                                        <button type="button" onClick={() => handleDownloadBackup(true)} className="bg-indigo-600 text-white px-6 py-3 rounded-xl hover:bg-indigo-700 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-transform hover:scale-105"><DownloadCloud size={20} /> دانلود بک‌آپ کامل (با فایل‌ها)</button>
-                                        <button type="button" onClick={() => handleDownloadBackup(false)} className="bg-blue-500 text-white px-6 py-3 rounded-xl hover:bg-blue-600 flex items-center justify-center gap-2 shadow-lg shadow-blue-200 transition-transform hover:scale-105"><FileDigit size={20} /> دانلود بک‌آپ سبک (فقط دیتابیس)</button>
-                                    </div>
-                                    <button type="button" onClick={handleRestoreClick} disabled={restoring} className="bg-gray-800 text-white px-6 py-3 rounded-xl hover:bg-gray-900 flex items-center gap-2 shadow-lg shadow-gray-300 transition-transform hover:scale-105 disabled:opacity-70 h-[52px]">{restoring ? <Loader2 size={20} className="animate-spin"/> : <UploadCloud size={20} />} بازگردانی فایل Zip</button>
-                                    <input type="file" ref={fileInputRef} className="hidden" accept=".zip" onChange={handleFileChange} />
-                                </div>
-                            </div>
                         </div>
                     )}
 
-                    {/* WAREHOUSE TAB */}
-                    {activeCategory === 'warehouse' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
-                                <h3 className="font-bold text-orange-800 mb-3 flex items-center gap-2"><Truck size={20}/> تنظیمات خروج کارخانه</h3>
-                                <div>
-                                    <label className="text-xs font-bold text-gray-700 block mb-1">شماره موبایل سرپرست انبار (جهت مجوز خروج)</label>
-                                    <select 
-                                        className="w-full border rounded-lg p-2 text-sm bg-white" 
-                                        value={settings.exitPermitNotificationGroup || ''} 
-                                        onChange={e => setSettings({...settings, exitPermitNotificationGroup: e.target.value})}
-                                    >
-                                        <option value="">-- ارسال نشود --</option>
-                                        {getMergedContactOptions().map(c => (
-                                            <option key={`exit_group_${c.number}`} value={c.number}>
-                                                {c.name} {c.isGroup ? '(گروه)' : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <p className="text-[10px] text-gray-500 mt-1">پس از تایید مجوز خروج توسط مدیرعامل، تصویر مجوز به این شخص/گروه (سرپرست انبار) ارسال خواهد شد.</p>
+                    {/* WHATSAPP & MESSENGERS TAB */}
+                    {activeCategory === 'whatsapp' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="flex justify-between items-center border-b pb-2">
+                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><MessageCircle size={20}/> مدیریت پیام‌رسان‌ها (واتساپ و بله)</h3>
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={handleFetchGroups} className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-100">
+                                        {fetchingGroups ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14}/>} بروزرسانی گروه‌ها
+                                    </button>
                                 </div>
-                                
-                                {/* NEW COMPONENT FOR SECOND GROUP */}
-                                <SecondExitGroupSettings 
-                                    settings={settings} 
-                                    setSettings={setSettings} 
-                                    contacts={getMergedContactOptions()} 
-                                />
+                            </div>
+
+                            {/* WhatsApp Status Box (Existing) */}
+                            <div className={`bg-${whatsappStatus?.ready ? 'green' : 'amber'}-50 border border-${whatsappStatus?.ready ? 'green' : 'amber'}-200 rounded-xl p-6 flex flex-col md:flex-row items-center gap-6`}>
+                                {refreshingWA ? (
+                                    <div className="flex flex-col items-center gap-2 text-gray-500"><Loader2 size={32} className="animate-spin"/><span className="text-sm">در حال بررسی وضعیت...</span></div>
+                                ) : whatsappStatus?.ready ? (
+                                    <>
+                                        <div className="bg-green-100 p-4 rounded-full text-green-600"><Check size={32}/></div>
+                                        <div className="flex-1 text-center md:text-right">
+                                            <h3 className="font-bold text-lg text-green-800 mb-1">واتساپ متصل است</h3>
+                                            <p className="text-sm text-green-700">شماره متصل: {whatsappStatus.user ? `+${whatsappStatus.user}` : 'ناشناس'}</p>
+                                        </div>
+                                        <button type="button" onClick={handleWhatsappLogout} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">خروج از حساب</button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="bg-white p-2 rounded-lg border shadow-sm">
+                                            {whatsappStatus?.qr ? <QRCode value={whatsappStatus.qr} size={160} /> : <div className="w-40 h-40 flex items-center justify-center text-gray-400 text-xs">در حال دریافت QR...</div>}
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-lg text-amber-800 mb-2">اتصال به واتساپ</h3>
+                                            <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1">
+                                                <li>واتساپ را در گوشی خود باز کنید</li>
+                                                <li>به تنظیمات و سپس Linked Devices بروید</li>
+                                                <li>دکمه Link a Device را بزنید</li>
+                                                <li>کد QR روبرو را اسکن کنید</li>
+                                            </ol>
+                                            <button type="button" onClick={checkWhatsappStatus} className="mt-4 text-blue-600 text-xs font-bold hover:underline">بروزرسانی وضعیت</button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            
+                            {/* NEW: Bale Integration Box */}
+                            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mt-4">
+                                <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
+                                    <Send size={20} className="text-blue-500"/>
+                                    اتصال به پیام‌رسان بله (Bale)
+                                </h3>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-gray-700">توکن ربات بله (Bot Token)</label>
+                                    <input 
+                                        type="password" 
+                                        className="w-full border rounded-lg p-2 dir-ltr text-left font-mono text-sm" 
+                                        placeholder="123456:ABC-DEF..." 
+                                        value={settings.baleBotToken || ''} 
+                                        onChange={(e) => setSettings({...settings, baleBotToken: e.target.value})} 
+                                    />
+                                    <p className="text-xs text-gray-500 leading-relaxed">
+                                        برای استفاده از ارسال خودکار در بله:
+                                        <br/>1. یک ربات در بله بسازید (@BotFather).
+                                        <br/>2. توکن ربات را در اینجا وارد کنید.
+                                        <br/>3. کاربران باید ربات را Start کنند و آیدی عددی خود را در پروفایل کاربری وارد نمایند.
+                                    </p>
+                                </div>
                             </div>
 
                             <div className="space-y-4">
-                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار و ارسال خودکار</h3>
-                                <div className="space-y-6">
-                                    {settings.companies?.filter(c => c.showInWarehouse !== false).map(company => (
-                                        <div key={company.id} className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                            <h4 className="font-bold text-base text-gray-800 mb-3 border-b pb-2 flex justify-between"><span>شرکت: {company.name}</span>{company.logo && <img src={company.logo} className="h-6 object-contain"/>}</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div><label className="text-xs font-bold text-blue-700 block mb-1">مدیر فروش (جهت ارسال با قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.salesManager || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], salesManager: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_sm_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
-                                                <div><label className="text-xs font-bold text-orange-700 block mb-1">گروه انبار (جهت ارسال بدون قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.warehouseGroup || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], warehouseGroup: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_wg_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
+                                <h3 className="font-bold text-gray-800 border-b pb-2">دفترچه تلفن هوشمند (گروه‌ها و اشخاص)</h3>
+                                <div className="flex gap-2 items-end bg-gray-50 p-3 rounded-lg border border-gray-200 flex-wrap">
+                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">نام مخاطب / گروه</label><input className="w-full border rounded-lg p-2 text-sm" placeholder="نام..." value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
+                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">شماره / شناسه گروه</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left" placeholder="98912..." value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} /></div>
+                                    <div className="flex items-center gap-2 mb-2"><input type="checkbox" checked={isGroupContact} onChange={e => setIsGroupContact(e.target.checked)} className="w-4 h-4 text-blue-600"/><span className="text-sm">گروه است؟</span></div>
+                                    <button type="button" onClick={handleAddContact} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 h-[38px]"><Plus size={20} /></button>
+                                </div>
+                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                    {settings.savedContacts?.map(c => (
+                                        <div key={c.id} className="flex justify-between items-center p-3 bg-white border rounded-lg hover:bg-gray-50">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-full ${c.isGroup ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>{c.isGroup ? <Users size={16} /> : <Smartphone size={16} />}</div>
+                                                <div><div className="font-bold text-sm text-gray-800">{c.name}</div><div className="text-xs text-gray-500 font-mono">{c.number}</div></div>
                                             </div>
+                                            <button type="button" onClick={() => handleDeleteContact(c.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
                                         </div>
                                     ))}
+                                    {(!settings.savedContacts || settings.savedContacts.length === 0) && <div className="text-center text-gray-400 py-4 text-sm">مخاطبی ثبت نشده است.</div>}
                                 </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* COMMERCE TAB */}
-                    {activeCategory === 'commerce' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="space-y-2">
-                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><ShieldCheck size={18}/> شرکت‌های بیمه</h3>
-                                <p className="text-xs text-gray-500 mb-2">لیست شرکت‌های بیمه جهت انتخاب در پرونده‌های بازرگانی</p>
-                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام شرکت بیمه..." value={newInsuranceCompany} onChange={(e) => setNewInsuranceCompany(e.target.value)} /><button type="button" onClick={handleAddInsuranceCompany} className="bg-rose-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
-                                <div className="flex flex-wrap gap-2">{(settings.insuranceCompanies || []).map((comp, idx) => (<div key={idx} className="bg-rose-50 text-rose-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-rose-100"><span>{comp}</span><button type="button" onClick={() => handleRemoveInsuranceCompany(comp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
-                            </div>
-                            <div className="space-y-2">
-                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Landmark size={18}/> بانک‌های عامل</h3>
-                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام بانک..." value={newOperatingBank} onChange={(e) => setNewOperatingBank(e.target.value)} /><button type="button" onClick={handleAddOperatingBank} className="bg-indigo-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
-                                <div className="flex flex-wrap gap-2">{(settings.operatingBankNames || []).map((bank, idx) => (<div key={idx} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-indigo-100"><span>{bank}</span><button type="button" onClick={() => handleRemoveOperatingBank(bank)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
-                            </div>
-                            <div className="space-y-2">
-                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Container size={18}/> گروه‌های کالایی</h3>
-                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام گروه..." value={newCommodity} onChange={(e) => setNewCommodity(e.target.value)} /><button type="button" onClick={handleAddCommodity} className="bg-teal-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
-                                <div className="flex flex-wrap gap-2">{(settings.commodityGroups || []).map((grp, idx) => (<div key={idx} className="bg-teal-50 text-teal-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-teal-100"><span>{grp}</span><button type="button" onClick={() => handleRemoveCommodity(grp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
                             </div>
                         </div>
                     )}
                     
-                    {/* DATA TAB */}
+                    {/* ... (Rest of tabs remain same) ... */}
+                    {/* TEMPLATES TAB, PERMISSIONS TAB, etc. */}
+                    {/* DATA TAB - Make sure to render if active */}
                     {activeCategory === 'data' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="space-y-4">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Building size={20}/> مدیریت شرکت‌ها و بانک‌ها</h3>
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                {/* ... Company editing UI ... */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">نام شرکت</label><input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="نام شرکت..." value={newCompanyName} onChange={(e) => setNewCompanyName(e.target.value)} /></div>
                                     <div className="flex items-end gap-2">
@@ -846,10 +863,125 @@ const Settings: React.FC = () => {
                             </div>
                         </div>
                     )}
+                    
+                    {/* INTEGRATIONS TAB - Render */}
+                    {activeCategory === 'integrations' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><BrainCircuit size={20}/> تنظیمات هوش مصنوعی و ربات‌ها</h3>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-gray-700">کلید API جمینای (Google Gemini)</label>
+                                    <input type="password" className="w-full border rounded-lg p-2 dir-ltr text-left" placeholder="API Key..." value={settings.geminiApiKey} onChange={(e) => setSettings({...settings, geminiApiKey: e.target.value})} />
+                                    <p className="text-xs text-gray-500">برای استفاده از تحلیل هوشمند و ربات واتساپ</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label className="text-sm font-bold text-gray-700 block mb-1">توکن ربات تلگرام</label><input type="password" className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.telegramBotToken} onChange={(e) => setSettings({...settings, telegramBotToken: e.target.value})} /></div>
+                                    <div><label className="text-sm font-bold text-gray-700 block mb-1">آیدی عددی مدیر (تلگرام)</label><input className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.telegramAdminId} onChange={(e) => setSettings({...settings, telegramAdminId: e.target.value})} /></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                    {/* PERMISSIONS TAB */}
+                    {/* ... (Other Tabs like WAREHOUSE, COMMERCE, TEMPLATES, PERMISSIONS preserved) ... */}
+                    {activeCategory === 'warehouse' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
+                                <h3 className="font-bold text-orange-800 mb-3 flex items-center gap-2"><Truck size={20}/> تنظیمات خروج کارخانه</h3>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-700 block mb-1">شماره موبایل سرپرست انبار (جهت مجوز خروج)</label>
+                                    <select 
+                                        className="w-full border rounded-lg p-2 text-sm bg-white" 
+                                        value={settings.exitPermitNotificationGroup || ''} 
+                                        onChange={e => setSettings({...settings, exitPermitNotificationGroup: e.target.value})}
+                                    >
+                                        <option value="">-- ارسال نشود --</option>
+                                        {getMergedContactOptions().map(c => (
+                                            <option key={`exit_group_${c.number}`} value={c.number}>
+                                                {c.name} {c.isGroup ? '(گروه)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-500 mt-1">پس از تایید مجوز خروج توسط مدیرعامل، تصویر مجوز به این شخص/گروه (سرپرست انبار) ارسال خواهد شد.</p>
+                                </div>
+                                
+                                <SecondExitGroupSettings 
+                                    settings={settings} 
+                                    setSettings={setSettings} 
+                                    contacts={getMergedContactOptions()} 
+                                />
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار و ارسال خودکار</h3>
+                                <div className="space-y-6">
+                                    {settings.companies?.filter(c => c.showInWarehouse !== false).map(company => (
+                                        <div key={company.id} className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                            <h4 className="font-bold text-base text-gray-800 mb-3 border-b pb-2 flex justify-between"><span>شرکت: {company.name}</span>{company.logo && <img src={company.logo} className="h-6 object-contain"/>}</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div><label className="text-xs font-bold text-blue-700 block mb-1">مدیر فروش (جهت ارسال با قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.salesManager || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], salesManager: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_sm_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
+                                                <div><label className="text-xs font-bold text-orange-700 block mb-1">گروه انبار (جهت ارسال بدون قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.warehouseGroup || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], warehouseGroup: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_wg_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeCategory === 'commerce' && (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><ShieldCheck size={18}/> شرکت‌های بیمه</h3>
+                                <p className="text-xs text-gray-500 mb-2">لیست شرکت‌های بیمه جهت انتخاب در پرونده‌های بازرگانی</p>
+                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام شرکت بیمه..." value={newInsuranceCompany} onChange={(e) => setNewInsuranceCompany(e.target.value)} /><button type="button" onClick={handleAddInsuranceCompany} className="bg-rose-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
+                                <div className="flex flex-wrap gap-2">{(settings.insuranceCompanies || []).map((comp, idx) => (<div key={idx} className="bg-rose-50 text-rose-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-rose-100"><span>{comp}</span><button type="button" onClick={() => handleRemoveInsuranceCompany(comp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
+                            </div>
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Landmark size={18}/> بانک‌های عامل</h3>
+                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام بانک..." value={newOperatingBank} onChange={(e) => setNewOperatingBank(e.target.value)} /><button type="button" onClick={handleAddOperatingBank} className="bg-indigo-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
+                                <div className="flex flex-wrap gap-2">{(settings.operatingBankNames || []).map((bank, idx) => (<div key={idx} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-indigo-100"><span>{bank}</span><button type="button" onClick={() => handleRemoveOperatingBank(bank)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
+                            </div>
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Container size={18}/> گروه‌های کالایی</h3>
+                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام گروه..." value={newCommodity} onChange={(e) => setNewCommodity(e.target.value)} /><button type="button" onClick={handleAddCommodity} className="bg-teal-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
+                                <div className="flex flex-wrap gap-2">{(settings.commodityGroups || []).map((grp, idx) => (<div key={idx} className="bg-teal-50 text-teal-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-teal-100"><span>{grp}</span><button type="button" onClick={() => handleRemoveCommodity(grp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {activeCategory === 'templates' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="flex justify-between items-center border-b pb-2">
+                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><LayoutTemplate size={20}/> مدیریت قالب‌های چاپ (فرم بانکی)</h3>
+                                <button type="button" onClick={() => { setEditingTemplate(null); setShowDesigner(true); }} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-teal-700 shadow"><Plus size={18}/> طراحی قالب جدید</button>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {settings.printTemplates?.map(t => (
+                                    <div key={t.id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                                        <div className="font-bold text-gray-800 mb-2">{t.name}</div>
+                                        <div className="text-xs text-gray-500 mb-4">{t.fields.length} فیلد تعریف شده</div>
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={() => handleEditTemplate(t)} className="flex-1 bg-blue-50 text-blue-600 py-1.5 rounded text-xs font-bold hover:bg-blue-100 flex items-center justify-center gap-1"><Pencil size={14}/> ویرایش</button>
+                                            <button type="button" onClick={() => handleDeleteTemplate(t.id)} className="px-3 bg-red-50 text-red-500 py-1.5 rounded text-xs font-bold hover:bg-red-100 flex items-center justify-center gap-1"><Trash2 size={14}/></button>
+                                        </div>
+                                        <div className="absolute top-2 left-2 opacity-10">
+                                            <Printer size={48} />
+                                        </div>
+                                    </div>
+                                ))}
+                                {(!settings.printTemplates || settings.printTemplates.length === 0) && (
+                                    <div className="col-span-full text-center py-10 text-gray-400 border-2 border-dashed rounded-xl">
+                                        هنوز قالبی تعریف نشده است.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    
                     {activeCategory === 'permissions' && (
                         <div className="space-y-8 animate-fade-in">
+                            {/* ... Permission UI (kept same) ... */}
                             <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col md:flex-row gap-4 items-end">
                                 <div className="flex-1 w-full space-y-1">
                                     <label className="text-xs font-bold text-gray-500">افزودن نقش سفارشی</label>
@@ -938,121 +1070,7 @@ const Settings: React.FC = () => {
                             </div>
                         </div>
                     )}
-                    
-                    {/* WHATSAPP TAB */}
-                    {activeCategory === 'whatsapp' && (
-                        <div className="space-y-6 animate-fade-in">
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><MessageCircle size={20}/> مدیریت واتساپ</h3>
-                                <div className="flex gap-2">
-                                    <button type="button" onClick={handleFetchGroups} className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-100">
-                                        {fetchingGroups ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14}/>} بروزرسانی گروه‌ها
-                                    </button>
-                                </div>
-                            </div>
 
-                            <div className={`bg-${whatsappStatus?.ready ? 'green' : 'amber'}-50 border border-${whatsappStatus?.ready ? 'green' : 'amber'}-200 rounded-xl p-6 flex flex-col md:flex-row items-center gap-6`}>
-                                {refreshingWA ? (
-                                    <div className="flex flex-col items-center gap-2 text-gray-500"><Loader2 size={32} className="animate-spin"/><span className="text-sm">در حال بررسی وضعیت...</span></div>
-                                ) : whatsappStatus?.ready ? (
-                                    <>
-                                        <div className="bg-green-100 p-4 rounded-full text-green-600"><Check size={32}/></div>
-                                        <div className="flex-1 text-center md:text-right">
-                                            <h3 className="font-bold text-lg text-green-800 mb-1">واتساپ متصل است</h3>
-                                            <p className="text-sm text-green-700">شماره متصل: {whatsappStatus.user ? `+${whatsappStatus.user}` : 'ناشناس'}</p>
-                                        </div>
-                                        <button type="button" onClick={handleWhatsappLogout} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">خروج از حساب</button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="bg-white p-2 rounded-lg border shadow-sm">
-                                            {whatsappStatus?.qr ? <QRCode value={whatsappStatus.qr} size={160} /> : <div className="w-40 h-40 flex items-center justify-center text-gray-400 text-xs">در حال دریافت QR...</div>}
-                                        </div>
-                                        <div className="flex-1">
-                                            <h3 className="font-bold text-lg text-amber-800 mb-2">اتصال به واتساپ</h3>
-                                            <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1">
-                                                <li>واتساپ را در گوشی خود باز کنید</li>
-                                                <li>به تنظیمات و سپس Linked Devices بروید</li>
-                                                <li>دکمه Link a Device را بزنید</li>
-                                                <li>کد QR روبرو را اسکن کنید</li>
-                                            </ol>
-                                            <button type="button" onClick={checkWhatsappStatus} className="mt-4 text-blue-600 text-xs font-bold hover:underline">بروزرسانی وضعیت</button>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-800 border-b pb-2">دفترچه تلفن هوشمند (گروه‌ها و اشخاص)</h3>
-                                <div className="flex gap-2 items-end bg-gray-50 p-3 rounded-lg border border-gray-200 flex-wrap">
-                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">نام مخاطب / گروه</label><input className="w-full border rounded-lg p-2 text-sm" placeholder="نام..." value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
-                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">شماره / شناسه گروه</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left" placeholder="98912..." value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} /></div>
-                                    <div className="flex items-center gap-2 mb-2"><input type="checkbox" checked={isGroupContact} onChange={e => setIsGroupContact(e.target.checked)} className="w-4 h-4 text-blue-600"/><span className="text-sm">گروه است؟</span></div>
-                                    <button type="button" onClick={handleAddContact} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 h-[38px]"><Plus size={20} /></button>
-                                </div>
-                                <div className="space-y-2 max-h-60 overflow-y-auto">
-                                    {settings.savedContacts?.map(c => (
-                                        <div key={c.id} className="flex justify-between items-center p-3 bg-white border rounded-lg hover:bg-gray-50">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2 rounded-full ${c.isGroup ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>{c.isGroup ? <Users size={16} /> : <Smartphone size={16} />}</div>
-                                                <div><div className="font-bold text-sm text-gray-800">{c.name}</div><div className="text-xs text-gray-500 font-mono">{c.number}</div></div>
-                                            </div>
-                                            <button type="button" onClick={() => handleDeleteContact(c.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
-                                        </div>
-                                    ))}
-                                    {(!settings.savedContacts || settings.savedContacts.length === 0) && <div className="text-center text-gray-400 py-4 text-sm">مخاطبی ثبت نشده است.</div>}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* TEMPLATES TAB */}
-                    {activeCategory === 'templates' && (
-                        <div className="space-y-6 animate-fade-in">
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><LayoutTemplate size={20}/> مدیریت قالب‌های چاپ (فرم بانکی)</h3>
-                                <button type="button" onClick={() => { setEditingTemplate(null); setShowDesigner(true); }} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-teal-700 shadow"><Plus size={18}/> طراحی قالب جدید</button>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {settings.printTemplates?.map(t => (
-                                    <div key={t.id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                                        <div className="font-bold text-gray-800 mb-2">{t.name}</div>
-                                        <div className="text-xs text-gray-500 mb-4">{t.fields.length} فیلد تعریف شده</div>
-                                        <div className="flex gap-2">
-                                            <button type="button" onClick={() => handleEditTemplate(t)} className="flex-1 bg-blue-50 text-blue-600 py-1.5 rounded text-xs font-bold hover:bg-blue-100 flex items-center justify-center gap-1"><Pencil size={14}/> ویرایش</button>
-                                            <button type="button" onClick={() => handleDeleteTemplate(t.id)} className="px-3 bg-red-50 text-red-500 py-1.5 rounded text-xs font-bold hover:bg-red-100 flex items-center justify-center gap-1"><Trash2 size={14}/></button>
-                                        </div>
-                                        <div className="absolute top-2 left-2 opacity-10">
-                                            <Printer size={48} />
-                                        </div>
-                                    </div>
-                                ))}
-                                {(!settings.printTemplates || settings.printTemplates.length === 0) && (
-                                    <div className="col-span-full text-center py-10 text-gray-400 border-2 border-dashed rounded-xl">
-                                        هنوز قالبی تعریف نشده است.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeCategory === 'integrations' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><BrainCircuit size={20}/> تنظیمات هوش مصنوعی و ربات‌ها</h3>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-gray-700">کلید API جمینای (Google Gemini)</label>
-                                    <input type="password" className="w-full border rounded-lg p-2 dir-ltr text-left" placeholder="API Key..." value={settings.geminiApiKey} onChange={(e) => setSettings({...settings, geminiApiKey: e.target.value})} />
-                                    <p className="text-xs text-gray-500">برای استفاده از تحلیل هوشمند و ربات واتساپ</p>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="text-sm font-bold text-gray-700 block mb-1">توکن ربات تلگرام</label><input type="password" className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.telegramBotToken} onChange={(e) => setSettings({...settings, telegramBotToken: e.target.value})} /></div>
-                                    <div><label className="text-sm font-bold text-gray-700 block mb-1">آیدی عددی مدیر (تلگرام)</label><input className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.telegramAdminId} onChange={(e) => setSettings({...settings, telegramAdminId: e.target.value})} /></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     <div className="flex justify-end pt-4 border-t sticky bottom-0 bg-white p-4 shadow-inner md:shadow-none md:static">
                         <button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all disabled:opacity-70">

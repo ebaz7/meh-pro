@@ -82,6 +82,7 @@ export interface User {
   canManageTrade?: boolean;
   avatar?: string;
   telegramChatId?: string;
+  baleChatId?: string; // NEW: Added Bale Chat ID
   phoneNumber?: string;
   receiveNotifications?: boolean;
 }
@@ -430,6 +431,7 @@ export interface GreenLeafTax {
   part: string;
   bank: string;
   date: string;
+  alert?: string;
 }
 
 export interface GreenLeafRoadToll {
@@ -786,6 +788,7 @@ export interface SystemSettings {
     pwaIcon?: string; 
     telegramBotToken?: string; 
     telegramAdminId?: string; 
+    baleBotToken?: string; // NEW: Bale Bot Token
     smsApiKey?: string; 
     smsSenderNumber?: string; 
     googleCalendarId?: string; 
@@ -808,4 +811,3 @@ export interface SystemSettings {
     activeFiscalYearId?: string;
     fiscalYears?: FiscalYear[];
 }
-    

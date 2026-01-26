@@ -41,6 +41,7 @@ process.on('unhandledRejection', (reason) => {
 
 import { initTelegram, sendDocument as sendTelegramDoc, sendMessage as sendTelegramMsg, notifyNewBijak } from './backend/telegram.js';
 import { initWhatsApp, sendMessage as sendWhatsAppMessage, getStatus as getWhatsAppStatus, logout as logoutWhatsApp, getGroups as getWhatsAppGroups } from './backend/whatsapp.js';
+import { sendBaleMessage } from './backend/bale.js'; // IMPORT BALE MODULE
 
 const app = express();
 
@@ -75,7 +76,6 @@ app.use(cors());
 app.use(compression()); 
 
 // *** CRITICAL CHANGE: INCREASED LIMIT TO 1024MB (1GB) ***
-// This fixes both large file uploads AND the "Payload Too Large" error when sending large HTML strings for PDF generation.
 app.use(express.json({ limit: '1024mb' })); 
 app.use(express.urlencoded({ limit: '1024mb', extended: true }));
 
@@ -259,20 +259,49 @@ app.post('/api/subscribe', (req, res) => {
     res.status(201).json({ success: true }); 
 });
 
-// --- WHATSAPP SEND ROUTE ---
+// --- WHATSAPP & BALE SEND ROUTE ---
 app.post('/api/send-whatsapp', async (req, res) => {
     try {
         const { number, message, mediaData } = req.body;
-        await sendWhatsAppMessage(number, message, mediaData);
+        const db = getDb();
+        
+        // 1. Send via WhatsApp (Primary)
+        let waError = null;
+        try {
+            await sendWhatsAppMessage(number, message, mediaData);
+        } catch (e) {
+            waError = e.message;
+            console.error("WA Send Error:", e);
+        }
+
+        // 2. Check for Bale integration (Automatic Parallel Send)
+        if (db && db.settings.baleBotToken) {
+            // Find user by phone number to get Bale Chat ID
+            // WhatsApp numbers often have country code, we try to match loosely
+            const targetPhone = number.replace(/\D/g, '').slice(-10); // Last 10 digits
+            const targetUser = db.users.find(u => u.phoneNumber && u.phoneNumber.replace(/\D/g, '').includes(targetPhone));
+            
+            if (targetUser && targetUser.baleChatId) {
+                console.log(`Sending copy to Bale for user ${targetUser.username} (${targetUser.baleChatId})`);
+                try {
+                    await sendBaleMessage(db.settings.baleBotToken, targetUser.baleChatId, message, mediaData);
+                } catch (baleErr) {
+                    console.error("Bale Send Error:", baleErr);
+                    // Don't fail the request if Bale fails, just log it
+                }
+            }
+        }
+
+        if (waError) throw new Error(waError);
         res.json({ success: true });
+
     } catch (e) {
-        console.error("WA Send Error:", e);
         logToFile(`WA Send API Error: ${e.message}`);
         res.status(500).json({ error: e.message });
     }
 });
 
-// --- NEW UPLOAD ROUTE (Fixed for Chat/File Uploads) ---
+// --- NEW UPLOAD ROUTE ---
 app.post('/api/upload', (req, res) => {
     try {
         const { fileName, fileData } = req.body;
@@ -304,7 +333,7 @@ app.post('/api/upload', (req, res) => {
     }
 });
 
-// --- PDF GENERATION ROUTE (ROBUST) ---
+// --- PDF GENERATION ROUTE ---
 app.post('/api/render-pdf', async (req, res) => { 
     let browser = null;
     try { 
