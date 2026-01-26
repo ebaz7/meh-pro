@@ -37,7 +37,6 @@ const QRCode = ({ value, size }: { value: string, size: number }) => {
 };
 
 const Settings: React.FC = () => {
-  // ... (Component logic remains the same, only the QRCode usage inside is affected by the change above) ...
   const [activeCategory, setActiveCategory] = useState<'system' | 'fiscal' | 'data' | 'integrations' | 'whatsapp' | 'permissions' | 'warehouse' | 'commerce' | 'templates'>('system');
   const [settings, setSettings] = useState<SystemSettings>({ 
       currentTrackingNumber: 1000, 
@@ -69,7 +68,7 @@ const Settings: React.FC = () => {
       printTemplates: [],
       fiscalYears: []
   });
-  // ... (rest of state variables) ...
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [restoring, setRestoring] = useState(false);
@@ -78,7 +77,7 @@ const Settings: React.FC = () => {
   const [showDesigner, setShowDesigner] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PrintTemplate | null>(null);
 
-  // ... (All other state variables maintained) ...
+  // Local States for Form Inputs
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyLogo, setNewCompanyLogo] = useState('');
   const [newCompanyShowInWarehouse, setNewCompanyShowInWarehouse] = useState(true);
@@ -97,7 +96,7 @@ const Settings: React.FC = () => {
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [editingBankId, setEditingBankId] = useState<string | null>(null);
   
-  // ... (Local states for adding/editing banks) ...
+  // Local states for adding/editing banks
   const [tempBankName, setTempBankName] = useState('');
   const [tempAccountNum, setTempAccountNum] = useState('');
   const [tempBankSheba, setTempBankSheba] = useState('');
@@ -124,7 +123,7 @@ const Settings: React.FC = () => {
   // Contact States
   const [contactName, setContactName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
-  const [contactBaleId, setContactBaleId] = useState(''); // NEW
+  const [contactBaleId, setContactBaleId] = useState('');
   const [isGroupContact, setIsGroupContact] = useState(false);
   
   const [fetchingGroups, setFetchingGroups] = useState(false);
@@ -142,7 +141,6 @@ const Settings: React.FC = () => {
   // Collapsed state for permission groups
   const [expandedPermGroups, setExpandedPermGroups] = useState<Record<string, boolean>>({});
 
-  // ... (useEffect, loadSettings, handlers maintained exactly as is) ...
   useEffect(() => { 
       loadSettings(); 
       setNotificationsEnabled(isNotificationEnabledInApp()); 
@@ -154,7 +152,7 @@ const Settings: React.FC = () => {
       try { 
           const data = await getSettings(); 
           let safeData = { ...data };
-          // ... (existing load logic) ...
+          // Ensure arrays exist
           safeData.currentExitPermitNumber = safeData.currentExitPermitNumber || 1000;
           safeData.companies = safeData.companies || [];
           safeData.operatingBankNames = safeData.operatingBankNames || [];
@@ -193,7 +191,6 @@ const Settings: React.FC = () => {
       } catch (e) { console.error("Failed to load users"); }
   };
 
-  // ... (All other handlers: checkWhatsappStatus, handleSave, etc. maintained) ...
   const checkWhatsappStatus = async () => {
       setRefreshingWA(true);
       try {
@@ -295,7 +292,7 @@ const Settings: React.FC = () => {
           id: generateUUID(), 
           name: contactName.trim(), 
           number: contactNumber.trim(), 
-          baleId: contactBaleId.trim(), // Save Bale ID
+          baleId: contactBaleId.trim(),
           isGroup: isGroupContact 
       }; 
       setSettings({ ...settings, savedContacts: [...(settings.savedContacts || []), newContact] }); 
@@ -306,7 +303,6 @@ const Settings: React.FC = () => {
   };
   const handleDeleteContact = (id: string) => { setSettings({ ...settings, savedContacts: (settings.savedContacts || []).filter(c => c.id !== id) }); };
   
-  // ... (Rest of existing handlers) ...
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLogo(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLogo(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLogo(false); } }; reader.readAsDataURL(file); };
   const handleLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLetterhead(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLetterhead(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLetterhead(false); } }; reader.readAsDataURL(file); };
 
@@ -632,10 +628,6 @@ const Settings: React.FC = () => {
       });
   };
 
-  const getMergedContactOptions = () => {
-      return [...(settings.savedContacts || []), ...appUsers as Contact[]];
-  };
-
   const toggleGroupExpand = (key: string) => {
       setExpandedPermGroups(prev => ({ ...prev, [key]: !prev[key] }));
   };
@@ -647,7 +639,7 @@ const Settings: React.FC = () => {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col md:flex-row min-h-[600px] mb-20 animate-fade-in">
         
-        {/* ... Sidebar ... */}
+        {/* Sidebar */}
         <div className="w-full md:w-64 bg-gray-50 border-b md:border-b-0 md:border-l border-gray-200 p-4">
             <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2 px-2"><SettingsIcon size={24} className="text-blue-600"/> تنظیمات</h2>
             <nav className="space-y-1">
@@ -669,10 +661,9 @@ const Settings: React.FC = () => {
             ) : (
                 <form onSubmit={handleSave} className="space-y-8 max-w-4xl mx-auto">
                     
-                    {/* ... (System, etc.) ... */}
+                    {/* SYSTEM SETTINGS */}
                     {activeCategory === 'system' && (
                         <div className="space-y-8 animate-fade-in">
-                            {/* ... Content ... */}
                              <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2">تنظیمات ظاهری و اعلان‌ها</h3>
                                 <div className="flex items-center gap-4">
@@ -691,11 +682,21 @@ const Settings: React.FC = () => {
                                         <Send size={18}/> <span>ارسال پیام تست</span>
                                     </button>
                                 </div>
+                                <div className="border-t pt-4 mt-4">
+                                    <h4 className="font-bold text-sm text-gray-700 mb-2">پشتیبان‌گیری و بازگردانی</h4>
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={() => handleDownloadBackup(true)} className="flex-1 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-100 flex items-center justify-center gap-2"><DownloadCloud size={16}/> پشتیبان‌گیری کامل (با فایل)</button>
+                                        <button type="button" onClick={handleRestoreClick} className="flex-1 bg-amber-50 text-amber-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-amber-100 flex items-center justify-center gap-2">
+                                            {restoring ? <Loader2 size={16} className="animate-spin"/> : <UploadCloud size={16}/>} بازگردانی
+                                        </button>
+                                        <input type="file" ref={fileInputRef} className="hidden" accept=".zip" onChange={handleFileChange} />
+                                    </div>
+                                </div>
                             </div>
                             <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Truck size={20}/> شماره‌گذاری اسناد (تنظیمات پیش‌فرض)</h3>
                                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-800 mb-2">
-                                    نکته: این تنظیمات فقط در صورتی اعمال می‌شود که سال مالی فعال نباشد یا تنظیمی برای شرکت در سال مالی وجود نداشته باشد. برای تنظیم دقیق شماره‌ها بر اساس سال و شرکت، از تب «مدیریت سال مالی» استفاده کنید.
+                                    نکته: این تنظیمات فقط در صورتی اعمال می‌شود که سال مالی فعال نباشد یا تنظیمی برای شرکت در سال مالی وجود نداشته باشد.
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div><label className="text-sm font-bold text-gray-700 block mb-1">شروع شماره دستور پرداخت</label><input type="number" className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.currentTrackingNumber} onChange={(e) => setSettings({...settings, currentTrackingNumber: Number(e.target.value)})} /></div>
@@ -717,9 +718,8 @@ const Settings: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* WhatsApp Status Box (Existing) */}
+                            {/* WhatsApp Status Box */}
                             <div className={`bg-${whatsappStatus?.ready ? 'green' : 'amber'}-50 border border-${whatsappStatus?.ready ? 'green' : 'amber'}-200 rounded-xl p-6 flex flex-col md:flex-row items-center gap-6`}>
-                                {/* ... Status Content ... */}
                                 {refreshingWA ? (
                                     <div className="flex flex-col items-center gap-2 text-gray-500"><Loader2 size={32} className="animate-spin"/><span className="text-sm">در حال بررسی وضعیت...</span></div>
                                 ) : whatsappStatus?.ready ? (
@@ -750,7 +750,7 @@ const Settings: React.FC = () => {
                                 )}
                             </div>
                             
-                            {/* NEW: Bale Integration Box */}
+                            {/* Bale Integration Box */}
                             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mt-4">
                                 <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
                                     <Send size={20} className="text-blue-500"/>
@@ -774,6 +774,9 @@ const Settings: React.FC = () => {
                                     </p>
                                 </div>
                             </div>
+                            
+                            {/* Other API Keys (Gemini/Telegram) - Kept here or in Integrations, but original design had them separate. Let's keep existing Telegram inputs if they were here, but usually they are in Integrations. */}
+                            {/* Assuming they are in Integrations tab as per structure */}
 
                             <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2">دفترچه تلفن هوشمند (گروه‌ها و اشخاص)</h3>
@@ -805,23 +808,24 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* ... (Rest of tabs) ... */}
-                    {/* DATA TAB - Make sure to render if active */}
+                    {/* DATA TAB */}
                     {activeCategory === 'data' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="space-y-4">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Building size={20}/> مدیریت شرکت‌ها و بانک‌ها</h3>
-                            {/* ... Company UI ... */}
+                            
+                            {/* Company Form */}
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">نام شرکت</label><input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="نام شرکت..." value={newCompanyName} onChange={(e) => setNewCompanyName(e.target.value)} /></div>
                                     <div className="flex items-end gap-2">
                                         <div className="w-10 h-10 border rounded bg-white flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => companyLogoInputRef.current?.click()} title="لوگو">{newCompanyLogo ? <img src={newCompanyLogo} className="w-full h-full object-cover"/> : <ImageIcon size={16} className="text-gray-300"/>}</div>
+                                        <div className="w-10 h-10 border rounded bg-white flex items-center justify-center overflow-hidden cursor-pointer" onClick={() => companyLetterheadInputRef.current?.click()} title="سربرگ">{newCompanyLetterhead ? <img src={newCompanyLetterhead} className="w-full h-full object-cover"/> : <FileText size={16} className="text-gray-300"/>}</div>
                                         <div className={`flex items-center gap-2 bg-white px-2 py-2 rounded border cursor-pointer flex-1 h-[42px] ${newCompanyShowInWarehouse ? 'border-green-200 bg-green-50 text-green-700' : ''}`} onClick={() => setNewCompanyShowInWarehouse(!newCompanyShowInWarehouse)}><input type="checkbox" checked={newCompanyShowInWarehouse} onChange={e => setNewCompanyShowInWarehouse(e.target.checked)} className="w-4 h-4"/><span className="text-xs font-bold select-none">نمایش در انبار</span></div>
                                         <input type="file" ref={companyLogoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload}/>
+                                        <input type="file" ref={companyLetterheadInputRef} className="hidden" accept="image/*" onChange={handleLetterheadUpload}/>
                                     </div>
                                 </div>
-                                {/* ... Rest of company fields ... */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">شماره ثبت</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyRegNum} onChange={e => setNewCompanyRegNum(e.target.value)} /></div>
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">شناسه ملی</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyNatId} onChange={e => setNewCompanyNatId(e.target.value)} /></div>
@@ -890,12 +894,192 @@ const Settings: React.FC = () => {
                                     ))}
                                 </div>
                             </div>
+                            
+                            <div className="bg-white p-4 rounded-xl border border-gray-200">
+                                <h3 className="font-bold text-gray-800 border-b pb-2 mb-3">بانک‌های عامل (عمومی)</h3>
+                                <div className="flex gap-2">
+                                    <input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام بانک..." value={newOperatingBank} onChange={(e) => setNewOperatingBank(e.target.value)} />
+                                    <button type="button" onClick={handleAddOperatingBank} className="bg-indigo-600 text-white px-4 py-2 rounded-lg"><Plus size={20}/></button>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {settings.operatingBankNames?.map(b => (
+                                        <div key={b} className="bg-gray-100 px-3 py-1 rounded-full text-xs flex items-center gap-2">
+                                            {b} <button onClick={() => handleRemoveOperatingBank(b)} className="text-red-500 hover:text-red-700"><X size={12}/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                             </div>
                         </div>
                     )}
                     
-                    {/* ... (Other Tabs) ... */}
+                    {/* INTEGRATIONS TAB */}
+                    {activeCategory === 'integrations' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Link size={20}/> تنظیمات اتصالات خارجی</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">کلید پنل پیامک (API Key)</label>
+                                    <input type="password" className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.smsApiKey} onChange={e => setSettings({...settings, smsApiKey: e.target.value})} placeholder="KaveNegar / SMS.ir API Key..." />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره فرستنده پیامک</label>
+                                    <input type="text" className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.smsSenderNumber} onChange={e => setSettings({...settings, smsSenderNumber: e.target.value})} placeholder="1000..." />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">Google Calendar ID (اختیاری)</label>
+                                    <input type="text" className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.googleCalendarId} onChange={e => setSettings({...settings, googleCalendarId: e.target.value})} placeholder="calendar-id@group.calendar.google.com" />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">کلید هوش مصنوعی (Gemini API)</label>
+                                    <input type="password" className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.geminiApiKey} onChange={e => setSettings({...settings, geminiApiKey: e.target.value})} placeholder="AI Studio Key..." />
+                                    <p className="text-xs text-gray-500 mt-1">برای استفاده از قابلیت‌های هوشمند (تحلیل متن، استخراج داده از واتساپ و...) نیاز است.</p>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">توکن ربات تلگرام</label>
+                                    <input type="password" className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.telegramBotToken} onChange={e => setSettings({...settings, telegramBotToken: e.target.value})} placeholder="123456:ABC-DEF..." />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شناسه عددی مدیر در تلگرام</label>
+                                    <input type="text" className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.telegramAdminId} onChange={e => setSettings({...settings, telegramAdminId: e.target.value})} placeholder="123456789" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     
+                    {/* TEMPLATES TAB */}
+                    {activeCategory === 'templates' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="flex justify-between items-center border-b pb-2">
+                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><LayoutTemplate size={20}/> مدیریت قالب‌های چاپ (چک)</h3>
+                                <button type="button" onClick={() => setShowDesigner(true)} className="bg-teal-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold hover:bg-teal-700"><Plus size={16}/> طراحی قالب جدید</button>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {settings.printTemplates?.map(t => (
+                                    <div key={t.id} className="bg-white p-4 rounded-xl border hover:shadow-md transition-all group relative">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <h4 className="font-bold text-gray-800">{t.name}</h4>
+                                                <p className="text-xs text-gray-500">{t.pageSize} - {t.orientation === 'landscape' ? 'افقی' : 'عمودی'}</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button type="button" onClick={() => handleEditTemplate(t)} className="text-blue-500 hover:bg-blue-50 p-2 rounded-lg"><Pencil size={18}/></button>
+                                                <button type="button" onClick={() => handleDeleteTemplate(t.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Trash2 size={18}/></button>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t text-xs text-gray-400 flex gap-4">
+                                            <span>{t.fields.length} فیلد تعریف شده</span>
+                                            {t.backgroundImage && <span>دارای تصویر پس‌زمینه</span>}
+                                        </div>
+                                    </div>
+                                ))}
+                                {(!settings.printTemplates || settings.printTemplates.length === 0) && (
+                                    <div className="col-span-full text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                                        هنوز قالبی طراحی نشده است.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* WAREHOUSE TAB */}
+                    {activeCategory === 'warehouse' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره گروه واتساپ انبار (پیش‌فرض)</label>
+                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultWarehouseGroup || ''} onChange={e => setSettings({...settings, defaultWarehouseGroup: e.target.value})} placeholder="12036... @g.us" />
+                                    <p className="text-xs text-gray-500 mt-1">شناسه گروهی که بیجک‌های تایید شده به آن ارسال می‌شوند.</p>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
+                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultSalesManager || ''} onChange={e => setSettings({...settings, defaultSalesManager: e.target.value})} placeholder="98912..." />
+                                </div>
+                            </div>
+
+                            <div className="mt-6">
+                                <h4 className="font-bold text-sm text-gray-700 mb-3 border-b pb-1">تنظیمات اختصاصی شرکت‌ها (اختیاری)</h4>
+                                <div className="space-y-3">
+                                    {settings.companies?.filter(c => c.showInWarehouse).map(c => {
+                                        const conf = settings.companyNotifications?.[c.name] || {};
+                                        return (
+                                            <div key={c.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                                <h5 className="font-bold text-sm text-blue-800 mb-2">{c.name}</h5>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-xs block mb-1">شماره مدیر:</label>
+                                                        <input className="w-full border rounded p-2 text-xs dir-ltr" value={conf.salesManager || ''} onChange={e => {
+                                                            const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, salesManager: e.target.value } };
+                                                            setSettings({ ...settings, companyNotifications: newConf });
+                                                        }} placeholder="پیش‌فرض" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs block mb-1">گروه انبار:</label>
+                                                        <input className="w-full border rounded p-2 text-xs dir-ltr" value={conf.warehouseGroup || ''} onChange={e => {
+                                                            const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, warehouseGroup: e.target.value } };
+                                                            setSettings({ ...settings, companyNotifications: newConf });
+                                                        }} placeholder="پیش‌فرض" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            
+                            {/* Second Group Config for Exit Permits */}
+                            <SecondExitGroupSettings 
+                                settings={settings} 
+                                setSettings={setSettings} 
+                                contacts={[...(settings.savedContacts || []), ...appUsers as Contact[]]} 
+                            />
+                        </div>
+                    )}
+                    
+                    {/* COMMERCE TAB */}
+                    {activeCategory === 'commerce' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Container size={20}/> تنظیمات بازرگانی</h3>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="bg-white p-4 rounded-xl border">
+                                    <h4 className="font-bold text-sm mb-3">گروه‌های کالایی</h4>
+                                    <div className="flex gap-2 mb-2">
+                                        <input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام گروه..." value={newCommodity} onChange={e => setNewCommodity(e.target.value)} />
+                                        <button type="button" onClick={handleAddCommodity} className="bg-blue-600 text-white p-2 rounded-lg"><Plus size={20}/></button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {settings.commodityGroups.map(g => (
+                                            <div key={g} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs flex items-center gap-2 border border-blue-100">
+                                                {g} <button onClick={() => handleRemoveCommodity(g)} className="hover:text-red-500"><X size={12}/></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-white p-4 rounded-xl border">
+                                    <h4 className="font-bold text-sm mb-3">شرکت‌های بیمه (طرف قرارداد)</h4>
+                                    <div className="flex gap-2 mb-2">
+                                        <input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام شرکت بیمه..." value={newInsuranceCompany} onChange={e => setNewInsuranceCompany(e.target.value)} />
+                                        <button type="button" onClick={handleAddInsuranceCompany} className="bg-indigo-600 text-white p-2 rounded-lg"><Plus size={20}/></button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {settings.insuranceCompanies?.map(c => (
+                                            <div key={c} className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs flex items-center gap-2 border border-indigo-100">
+                                                {c} <button onClick={() => handleRemoveInsuranceCompany(c)} className="hover:text-red-500"><X size={12}/></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* PERMISSIONS TAB */}
                     {activeCategory === 'permissions' && (
                         <div className="space-y-8 animate-fade-in">
                             {/* ... Permission UI ... */}
