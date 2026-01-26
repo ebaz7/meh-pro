@@ -4,404 +4,473 @@ import { User, ChatMessage, ChatGroup, GroupTask, UserRole } from '../types';
 import { sendMessage, deleteMessage, getGroups, createGroup, deleteGroup, getTasks, createTask, updateTask, deleteTask, uploadFile, updateGroup, updateMessage } from '../services/storageService';
 import { getUsers } from '../services/authService';
 import { generateUUID } from '../constants';
-import { Send, User as UserIcon, MessageSquare, Lock, Users, Plus, ListTodo, Paperclip, CheckSquare, Square, Download, X, Trash2, Eye, Reply, Info, Camera, Edit2, ArrowRight, Mic, Smile, StopCircle, Check, Phone, Video, PhoneIncoming, FileText, CheckCheck, Play, Pause, Loader2, MoreVertical } from 'lucide-react';
+import { 
+    Send, User as UserIcon, MessageSquare, Users, Plus, ListTodo, Paperclip, 
+    CheckSquare, Square, X, Trash2, Reply, Edit2, ArrowRight, Mic, 
+    Play, Pause, Loader2, Search, MoreVertical, File, Image as ImageIcon,
+    Check, CheckCheck, DownloadCloud
+} from 'lucide-react';
 
 interface ChatRoomProps { 
     currentUser: User; 
     preloadedMessages: ChatMessage[]; 
     onRefresh: () => void; 
 }
+
 const LAST_READ_KEY = 'chat_last_read_map';
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onRefresh }) => {
+    // --- Data State ---
     const [messages, setMessages] = useState<ChatMessage[]>(preloadedMessages || []);
     const [users, setUsers] = useState<User[]>([]);
     const [groups, setGroups] = useState<ChatGroup[]>([]);
     const [tasks, setTasks] = useState<GroupTask[]>([]);
-    const [inputText, setInputText] = useState('');
+    
+    // --- UI State ---
     const [activeChannel, setActiveChannel] = useState<{type: 'public' | 'private' | 'group', id: string | null}>({ type: 'public', id: null });
     const [activeTab, setActiveTab] = useState<'chat' | 'tasks'>('chat'); 
+    const [mobileShowChat, setMobileShowChat] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+    // --- Input & Action State ---
+    const [inputText, setInputText] = useState('');
+    const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
     
-    // Group Modal State
+    // --- Voice Recording State ---
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const recordingTimerRef = useRef<any>(null);
+
+    // --- Refs ---
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const inputAreaRef = useRef<HTMLTextAreaElement>(null);
+
+    // --- Modal State ---
     const [showGroupModal, setShowGroupModal] = useState(false);
     const [newGroupName, setNewGroupName] = useState('');
     const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
-    
-    // Tasks State
     const [newTaskTitle, setNewTaskTitle] = useState('');
-    
-    // Upload & Input State
-    const [isUploading, setIsUploading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [lastReadMap, setLastReadMap] = useState<Record<string, number>>({});
-    
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // Reply & Edit
-    const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-
-    // Voice Recording
-    const [isRecording, setIsRecording] = useState(false);
-    const [recordingTime, setRecordingTime] = useState(0);
-    const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-    const recordingInterval = useRef<any>(null);
-    
-    const [mobileShowChat, setMobileShowChat] = useState(false);
-
-    useEffect(() => { try { const stored = localStorage.getItem(LAST_READ_KEY); if (stored) setLastReadMap(JSON.parse(stored)); } catch (e) { console.error("Failed to load read history"); } }, []);
-    
+    // --- Load Data & Effects ---
     useEffect(() => { if (preloadedMessages) setMessages(preloadedMessages); }, [preloadedMessages]);
 
     useEffect(() => { 
-        const key = getChannelKey(activeChannel.type, activeChannel.id); 
-        updateLastRead(key); 
-        setReplyingTo(null); 
-        setEditingMessageId(null); 
-        setInputText(''); 
-        setMobileShowChat(true); 
-    }, [activeChannel.id, activeChannel.type]);
+        loadMeta();
+        const interval = setInterval(loadMeta, 5000); // Polling for new data
+        return () => clearInterval(interval);
+    }, []);
 
-    const updateLastRead = (key: string) => { 
-        setLastReadMap(prev => { 
-            const next = { ...prev, [key]: Date.now() }; 
-            localStorage.setItem(LAST_READ_KEY, JSON.stringify(next)); 
-            return next; 
-        }); 
-    };
-    
-    const getChannelKey = (type: 'public' | 'private' | 'group', id: string | null) => { if (type === 'public') return 'public'; return `${type}_${id}`; };
+    useEffect(() => {
+        scrollToBottom();
+        // Reset inputs on channel change
+        setReplyingTo(null);
+        setEditingMessageId(null);
+        setInputText('');
+    }, [activeChannel, messages.length, mobileShowChat]);
 
     const loadMeta = async () => {
         try {
-            const usrList = await getUsers(); setUsers(usrList.filter(u => u.username !== currentUser.username));
-            const grpList = await getGroups(); const isManager = [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role as UserRole); setGroups(grpList.filter(g => isManager || g.members.includes(currentUser.username) || g.createdBy === currentUser.username));
-            const tskList = await getTasks(); setTasks(tskList);
-        } catch (e) { console.error("Chat meta load error", e); }
+            const usrList = await getUsers();
+            setUsers(usrList.filter(u => u.username !== currentUser.username));
+            
+            const grpList = await getGroups();
+            // User sees groups they are member of, or created, or if they are admin/manager
+            const isManager = [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role as UserRole);
+            const visibleGroups = grpList.filter(g => isManager || g.members.includes(currentUser.username) || g.createdBy === currentUser.username);
+            setGroups(visibleGroups);
+            
+            const tskList = await getTasks();
+            setTasks(tskList);
+        } catch (e) { console.error("Chat load error", e); }
     };
 
-    useEffect(() => { 
-        loadMeta(); 
-        const interval = setInterval(loadMeta, 10000); 
-        return () => clearInterval(interval); 
-    }, []);
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
 
-    useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, activeChannel, replyingTo, mobileShowChat]);
+    // --- Helper Functions ---
+    const getChannelKey = (type: string, id: string | null) => type === 'public' ? 'public' : `${type}_${id}`;
+    
+    const getDisplayMessages = () => {
+        return messages.filter(msg => { 
+            if (activeChannel.type === 'public') return !msg.recipient && !msg.groupId; 
+            if (activeChannel.type === 'private') return (msg.senderUsername === activeChannel.id && msg.recipient === currentUser.username) || (msg.senderUsername === currentUser.username && msg.recipient === activeChannel.id); 
+            if (activeChannel.type === 'group') return msg.groupId === activeChannel.id; 
+            return false; 
+        });
+    };
 
-    const handleSend = async (e: React.FormEvent | null, attachment?: {fileName: string, url: string}, audioUrl?: string, customText?: string) => {
-        if (e) e.preventDefault();
-        const msgText = customText || inputText;
-        
-        if (!msgText.trim() && !attachment && !audioUrl) return;
+    const getUnreadCount = (type: string, id: string | null) => {
+        // Implementation for unread count logic would go here using LocalStorage
+        // For now returning 0 to keep UI clean, or could be implemented fully
+        return 0; 
+    };
 
-        if (editingMessageId && !customText && !attachment && !audioUrl) { 
+    // --- Action Handlers ---
+
+    const handleSendMessage = async () => {
+        if ((!inputText.trim() && !isRecording) || isUploading) return;
+
+        if (editingMessageId) {
             const msgToUpdate = messages.find(m => m.id === editingMessageId);
             if (msgToUpdate) {
-                const updatedMsg = { ...msgToUpdate, message: msgText, isEdited: true };
-                await updateMessage(updatedMsg);
+                await updateMessage({ ...msgToUpdate, message: inputText, isEdited: true });
                 setEditingMessageId(null);
+                setInputText('');
+                onRefresh();
             }
-        } else {
-            const newMsg: ChatMessage = { 
-                id: generateUUID(), 
-                sender: currentUser.fullName, 
-                senderUsername: currentUser.username, 
-                role: currentUser.role, 
-                message: msgText, 
-                timestamp: Date.now(), 
-                recipient: activeChannel.type === 'private' ? activeChannel.id! : undefined, 
-                groupId: activeChannel.type === 'group' ? activeChannel.id! : undefined, 
-                attachment: attachment,
-                audioUrl: audioUrl,
-                replyTo: replyingTo ? {
-                    id: replyingTo.id,
-                    sender: replyingTo.sender,
-                    message: replyingTo.message || (replyingTo.audioUrl ? 'پیام صوتی' : replyingTo.attachment ? 'فایل ضمیمه' : '...')
-                } : undefined
-            };
-            await sendMessage(newMsg);
+            return;
         }
-        
-        if (!customText) setInputText(''); 
-        setReplyingTo(null); 
-        const key = getChannelKey(activeChannel.type, activeChannel.id); 
-        updateLastRead(key); 
-        onRefresh(); 
-    };
 
-    const handleDeleteMessage = async (id: string) => { if (confirm("حذف پیام؟")) { await deleteMessage(id); onRefresh(); } };
-    const handleEditMessage = (msg: ChatMessage) => { setEditingMessageId(msg.id); setInputText(msg.message); inputRef.current?.focus(); };
-    
-    // Fixed File Upload
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { 
-        const file = e.target.files?.[0]; 
-        if (!file) return; 
-        
-        setIsUploading(true); 
-        const reader = new FileReader(); 
-        
-        reader.onload = async (ev) => { 
-            const base64 = ev.target?.result as string; 
-            try { 
-                const result = await uploadFile(file.name, base64); 
-                await handleSend(null, { fileName: result.fileName, url: result.url }); 
-            } catch (error) { 
-                alert('خطا در ارسال فایل. اتصال اینترنت را بررسی کنید.'); 
-            } finally { 
-                setIsUploading(false); 
-            } 
-        }; 
-        
-        reader.onerror = () => {
-            alert("خطا در خواندن فایل");
-            setIsUploading(false);
+        const newMsg: ChatMessage = {
+            id: generateUUID(),
+            sender: currentUser.fullName,
+            senderUsername: currentUser.username,
+            role: currentUser.role,
+            message: inputText,
+            timestamp: Date.now(),
+            recipient: activeChannel.type === 'private' ? activeChannel.id! : undefined,
+            groupId: activeChannel.type === 'group' ? activeChannel.id! : undefined,
+            replyTo: replyingTo ? {
+                id: replyingTo.id,
+                sender: replyingTo.sender,
+                message: replyingTo.message || (replyingTo.audioUrl ? 'پیام صوتی' : 'فایل')
+            } : undefined
         };
 
-        reader.readAsDataURL(file); 
-        e.target.value = ''; 
+        await sendMessage(newMsg);
+        setInputText('');
+        setReplyingTo(null);
+        onRefresh();
+        scrollToBottom();
     };
 
-    // Fixed Voice Recording with proper stream handling
-    const handleStartRecording = async () => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            try {
+                const base64 = ev.target?.result as string;
+                const result = await uploadFile(file.name, base64);
+                
+                const newMsg: ChatMessage = {
+                    id: generateUUID(),
+                    sender: currentUser.fullName,
+                    senderUsername: currentUser.username,
+                    role: currentUser.role,
+                    message: '',
+                    timestamp: Date.now(),
+                    recipient: activeChannel.type === 'private' ? activeChannel.id! : undefined,
+                    groupId: activeChannel.type === 'group' ? activeChannel.id! : undefined,
+                    attachment: { fileName: result.fileName, url: result.url }
+                };
+                await sendMessage(newMsg);
+                onRefresh();
+            } catch (error) {
+                alert('خطا در ارسال فایل');
+            } finally {
+                setIsUploading(false);
+            }
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    };
+
+    // --- Voice Recording Logic ---
+    const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
-            setMediaRecorder(recorder);
-            const chunks: BlobPart[] = [];
-            
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunks.push(e.data);
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
             };
 
-            recorder.onstop = async () => {
-                stream.getTracks().forEach(track => track.stop());
-                
-                const blob = new Blob(chunks, { type: 'audio/webm' }); 
-                setIsUploading(true);
-                
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 const reader = new FileReader();
-                reader.readAsDataURL(blob);
+                reader.readAsDataURL(audioBlob);
                 reader.onloadend = async () => {
                     const base64 = reader.result as string;
+                    setIsUploading(true);
                     try {
-                        const fileName = `voice_${Date.now()}.webm`;
-                        const result = await uploadFile(fileName, base64);
-                        await handleSend(null, undefined, result.url);
+                        const result = await uploadFile(`voice_${Date.now()}.webm`, base64);
+                        const newMsg: ChatMessage = {
+                            id: generateUUID(),
+                            sender: currentUser.fullName,
+                            senderUsername: currentUser.username,
+                            role: currentUser.role,
+                            message: '',
+                            timestamp: Date.now(),
+                            recipient: activeChannel.type === 'private' ? activeChannel.id! : undefined,
+                            groupId: activeChannel.type === 'group' ? activeChannel.id! : undefined,
+                            audioUrl: result.url
+                        };
+                        await sendMessage(newMsg);
+                        onRefresh();
                     } catch (e) {
-                        alert("خطا در ارسال پیام صوتی");
+                        alert('خطا در ارسال ویس');
                     } finally {
                         setIsUploading(false);
                     }
                 };
+                stream.getTracks().forEach(track => track.stop());
             };
 
-            recorder.start();
+            mediaRecorder.start();
             setIsRecording(true);
             setRecordingTime(0);
-            recordingInterval.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
+            recordingTimerRef.current = setInterval(() => {
+                setRecordingTime(prev => prev + 1);
+            }, 1000);
 
         } catch (err) {
-            console.error("Mic Error:", err);
-            alert("دسترسی به میکروفون امکان‌پذیر نیست. لطفاً مجوزها را بررسی کنید. اگر از HTTP استفاده می‌کنید، میکروفون کار نخواهد کرد.");
+            console.error("Mic error:", err);
+            alert("دسترسی به میکروفون امکان‌پذیر نیست. (نیاز به HTTPS یا Localhost)");
         }
     };
 
-    const handleStopRecording = () => {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
             setIsRecording(false);
-            if (recordingInterval.current) clearInterval(recordingInterval.current);
-            setMediaRecorder(null);
+            clearInterval(recordingTimerRef.current);
         }
     };
 
-    const formatTime = (seconds: number) => {
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop(); // Stop but don't process
+            mediaRecorderRef.current.onstop = null; // Remove handler
+            setIsRecording(false);
+            clearInterval(recordingTimerRef.current);
+            // Stop tracks
+            mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+        }
+    };
+
+    const formatDuration = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
-        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const displayedMessages = messages.filter(msg => { 
-        if (activeChannel.type === 'public') return !msg.recipient && !msg.groupId; 
-        if (activeChannel.type === 'private') return (msg.senderUsername === activeChannel.id && msg.recipient === currentUser.username) || (msg.senderUsername === currentUser.username && msg.recipient === activeChannel.id); 
-        if (activeChannel.type === 'group') return msg.groupId === activeChannel.id; 
-        return false; 
-    });
-
-    const getUnreadCount = (type: 'public' | 'private' | 'group', id: string | null) => { 
-        const key = getChannelKey(type, id); 
-        const lastRead = lastReadMap[key] || 0; 
-        return messages.filter(msg => { 
-            if (msg.timestamp <= lastRead) return false; 
-            if (msg.senderUsername === currentUser.username) return false; 
-            if (type === 'public') return !msg.recipient && !msg.groupId; 
-            if (type === 'group') return msg.groupId === id; 
-            if (type === 'private') return (msg.senderUsername === id && msg.recipient === currentUser.username); 
-            return false; 
-        }).length; 
+    const handleEditMessage = (msg: ChatMessage) => {
+        if (!msg.message) return;
+        setInputText(msg.message);
+        setEditingMessageId(msg.id);
+        setReplyingTo(null);
+        inputAreaRef.current?.focus();
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend(e);
+    const handleDeleteMessage = async (id: string) => {
+        if (confirm("آیا از حذف این پیام اطمینان دارید؟")) {
+            await deleteMessage(id);
+            setMessages(prev => prev.filter(m => m.id !== id));
+            onRefresh();
         }
     };
 
+    // --- Render Logic ---
+    const filteredUsers = users.filter(u => u.fullName.includes(searchTerm));
+    const filteredGroups = groups.filter(g => g.name.includes(searchTerm));
+
     return (
-        <div className="flex h-[calc(100vh-80px)] md:h-[calc(100vh-100px)] bg-gray-100 overflow-hidden relative rounded-xl border border-gray-300 shadow-sm">
+        <div className="flex h-[calc(100vh-80px)] md:h-[calc(100vh-100px)] bg-white overflow-hidden rounded-xl border border-gray-200 shadow-sm relative">
             
-            {/* --- SIDEBAR (Contact List) --- */}
-            <div className={`w-full md:w-80 bg-white border-l border-gray-200 flex flex-col absolute md:relative z-20 h-full transition-transform duration-300 ${mobileShowChat ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
-                {/* Header */}
-                <div className="p-3 border-b flex justify-between items-center bg-gray-50">
-                    <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">{currentUser.fullName.charAt(0)}</div>
-                        <span className="font-bold text-gray-700">پیام‌ها</span>
+            {/* --- SIDEBAR --- */}
+            <div className={`absolute inset-0 md:static md:w-80 bg-white border-l border-gray-200 flex flex-col z-20 transition-transform duration-300 ${mobileShowChat ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
+                {/* Sidebar Header */}
+                <div className="p-3 border-b flex flex-col gap-3 bg-gray-50">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                            <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200">
+                                {currentUser.fullName.charAt(0)}
+                            </div>
+                            <span className="font-bold text-gray-800">پیام‌رسان</span>
+                        </div>
+                        <button onClick={() => setShowGroupModal(true)} className="p-2 text-blue-600 bg-white rounded-full hover:bg-blue-50 shadow-sm transition-colors">
+                            <Edit2 size={18}/>
+                        </button>
                     </div>
-                    <button onClick={() => setShowGroupModal(true)} className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 text-blue-600"><Edit2 size={18}/></button>
+                    {/* Search */}
+                    <div className="relative">
+                        <Search size={16} className="absolute right-3 top-2.5 text-gray-400"/>
+                        <input 
+                            className="w-full bg-white border border-gray-200 rounded-xl py-2 pr-9 pl-3 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all outline-none" 
+                            placeholder="جستجو..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
                 </div>
 
-                {/* List */}
-                <div className="flex-1 overflow-y-auto">
+                {/* Chat List */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {/* Public Channel */}
                     <div 
                         onClick={() => { setActiveChannel({type: 'public', id: null}); setMobileShowChat(true); }}
-                        className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 ${activeChannel.type === 'public' ? 'bg-blue-500 text-white' : ''}`}
+                        className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors ${activeChannel.type === 'public' ? 'bg-blue-50 border-r-4 border-blue-600' : ''}`}
                     >
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${activeChannel.type === 'public' ? 'bg-white text-blue-600' : 'bg-gradient-to-tr from-blue-400 to-blue-600 text-white'}`}><Users size={24}/></div>
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                            <Users size={22}/>
+                        </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-center mb-1">
-                                <span className={`font-bold text-sm ${activeChannel.type === 'public' ? 'text-white' : 'text-gray-800'}`}>کانال عمومی</span>
-                                {getUnreadCount('public', null) > 0 && <span className="bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full">{getUnreadCount('public', null)}</span>}
+                                <span className="font-bold text-gray-800 text-sm">کانال عمومی</span>
+                                <span className="text-[10px] text-gray-400">همیشه</span>
                             </div>
-                            <p className={`text-xs truncate ${activeChannel.type === 'public' ? 'text-blue-100' : 'text-gray-500'}`}>پیام‌های عمومی سیستم...</p>
+                            <p className="text-xs text-gray-500 truncate">پیام‌های عمومی سیستم...</p>
                         </div>
                     </div>
 
                     {/* Groups */}
-                    {groups.map(g => (
+                    {filteredGroups.map(g => (
                         <div key={g.id} 
                             onClick={() => { setActiveChannel({type: 'group', id: g.id}); setMobileShowChat(true); }}
-                            className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 ${activeChannel.type === 'group' && activeChannel.id === g.id ? 'bg-blue-500 text-white' : ''}`}
+                            className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors ${activeChannel.type === 'group' && activeChannel.id === g.id ? 'bg-blue-50 border-r-4 border-blue-600' : ''}`}
                         >
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center overflow-hidden ${activeChannel.type === 'group' && activeChannel.id === g.id ? 'bg-white text-blue-500' : 'bg-indigo-100 text-indigo-500'}`}>
-                                <ListTodo size={24}/>
+                            <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold border border-orange-200">
+                                {g.name.charAt(0)}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-center mb-1">
-                                    <span className={`font-bold text-sm truncate ${activeChannel.type === 'group' && activeChannel.id === g.id ? 'text-white' : 'text-gray-800'}`}>{g.name}</span>
-                                    {getUnreadCount('group', g.id) > 0 && <span className="bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full">{getUnreadCount('group', g.id)}</span>}
+                                    <span className="font-bold text-gray-800 text-sm truncate">{g.name}</span>
                                 </div>
-                                <p className={`text-xs truncate ${activeChannel.type === 'group' && activeChannel.id === g.id ? 'text-blue-100' : 'text-gray-500'}`}>گروه کاری</p>
+                                <p className="text-xs text-gray-500 truncate">گروه کاری</p>
                             </div>
                         </div>
                     ))}
 
-                    {/* Private Chats */}
-                    {users.map(u => (
+                    {/* Users */}
+                    {filteredUsers.map(u => (
                         <div key={u.id} 
                             onClick={() => { setActiveChannel({type: 'private', id: u.username}); setMobileShowChat(true); }}
-                            className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 ${activeChannel.type === 'private' && activeChannel.id === u.username ? 'bg-blue-500 text-white' : ''}`}
+                            className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors ${activeChannel.type === 'private' && activeChannel.id === u.username ? 'bg-blue-50 border-r-4 border-blue-600' : ''}`}
                         >
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center overflow-hidden ${activeChannel.type === 'private' && activeChannel.id === u.username ? 'bg-white text-blue-500' : 'bg-gray-200 text-gray-500'}`}>
-                                {u.avatar ? <img src={u.avatar} className="w-full h-full object-cover"/> : <UserIcon size={24}/>}
+                            <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border border-gray-100">
+                                {u.avatar ? <img src={u.avatar} className="w-full h-full object-cover"/> : <UserIcon className="text-gray-500"/>}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-center mb-1">
-                                    <span className={`font-bold text-sm truncate ${activeChannel.type === 'private' && activeChannel.id === u.username ? 'text-white' : 'text-gray-800'}`}>{u.fullName}</span>
-                                    {getUnreadCount('private', u.username) > 0 && <span className="bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full">{getUnreadCount('private', u.username)}</span>}
+                                    <span className="font-bold text-gray-800 text-sm truncate">{u.fullName}</span>
                                 </div>
-                                <p className={`text-xs truncate ${activeChannel.type === 'private' && activeChannel.id === u.username ? 'text-blue-100' : 'text-gray-500'}`}>{u.role}</p>
+                                <p className="text-xs text-gray-500 truncate">{u.role}</p>
                             </div>
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* --- MAIN CHAT AREA --- */}
-            <div className={`flex-1 flex flex-col bg-[#8e98a3] relative h-full transition-transform duration-300 w-full md:w-auto absolute md:static z-30 ${mobileShowChat ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+            {/* --- CHAT AREA --- */}
+            <div className={`absolute inset-0 md:static flex-1 flex flex-col bg-[#8E98A3] z-30 transition-transform duration-300 ${mobileShowChat ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
                 
-                {/* Chat Background Pattern (Telegram-like) */}
-                <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ 
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` 
-                }}></div>
-
-                {/* Chat Header */}
-                <div className="bg-white p-3 flex justify-between items-center shadow-sm z-10 border-b">
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => setMobileShowChat(false)} className="md:hidden p-1 text-gray-500"><ArrowRight/></button>
-                        <div className="flex flex-col">
-                            <h3 className="font-bold text-gray-800 text-sm md:text-base">
-                                {activeChannel.type === 'public' ? 'کانال عمومی' : activeChannel.type === 'private' ? users.find(u=>u.username===activeChannel.id)?.fullName : groups.find(g=>g.id===activeChannel.id)?.name}
-                            </h3>
-                            <span className="text-xs text-blue-500 font-medium">آنلاین</span>
-                        </div>
-                    </div>
-                    {/* Header Actions */}
-                    <div className="flex gap-3">
-                        {activeChannel.type === 'group' && <button className="text-gray-500" onClick={()=>setActiveTab(activeTab==='chat'?'tasks':'chat')}>{activeTab==='chat' ? <ListTodo/> : <MessageSquare/>}</button>}
-                    </div>
+                {/* Chat Background Pattern (Telegram Style) */}
+                <div className="absolute inset-0 opacity-10 pointer-events-none" 
+                     style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }}>
                 </div>
 
-                {/* Messages List */}
+                {/* Header */}
+                <div className="bg-white p-3 flex justify-between items-center shadow-sm z-10 sticky top-0 cursor-pointer" onClick={() => { if(activeChannel.type==='group') setActiveTab(activeTab==='chat'?'tasks':'chat') }}>
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setMobileShowChat(false)} className="md:hidden p-2 hover:bg-gray-100 rounded-full text-gray-600"><ArrowRight/></button>
+                        <div className="flex flex-col">
+                            <h3 className="font-bold text-gray-800 text-base">
+                                {activeChannel.type === 'public' ? 'کانال عمومی' : activeChannel.type === 'private' ? users.find(u=>u.username===activeChannel.id)?.fullName : groups.find(g=>g.id===activeChannel.id)?.name}
+                            </h3>
+                            <span className="text-xs text-blue-500 font-medium">
+                                {activeChannel.type === 'group' ? (activeTab === 'chat' ? 'بزنید برای تسک‌ها' : 'بزنید برای چت') : 'آنلاین'}
+                            </span>
+                        </div>
+                    </div>
+                    {activeChannel.type === 'group' && (
+                        <div className="bg-gray-100 p-2 rounded-lg text-gray-600">
+                            {activeTab === 'chat' ? <ListTodo size={20}/> : <MessageSquare size={20}/>}
+                        </div>
+                    )}
+                </div>
+
+                {/* Messages */}
                 {activeTab === 'chat' ? (
-                    <div className="flex-1 overflow-y-auto p-2 md:p-4 flex flex-col gap-2 relative z-0">
-                        {displayedMessages.map((msg) => {
+                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-0">
+                        {getDisplayMessages().map((msg) => {
                             const isMe = msg.senderUsername === currentUser.username;
                             return (
-                                <div key={msg.id} id={`msg-${msg.id}`} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-3 py-2 relative shadow-sm text-sm group ${isMe ? 'bg-[#eeffde] rounded-tr-none' : 'bg-white rounded-tl-none'}`}>
+                                <div key={msg.id} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'} mb-1 group`}>
+                                    <div className={`relative max-w-[85%] md:max-w-[65%] rounded-2xl px-3 py-2 shadow-sm text-sm ${isMe ? 'bg-[#EEFFDE] rounded-tr-none' : 'bg-white rounded-tl-none'}`}>
                                         
                                         {/* Reply Context */}
                                         {msg.replyTo && (
-                                            <div className="border-r-2 border-blue-500 pr-2 mb-1 cursor-pointer bg-black/5 rounded-sm p-1" onClick={() => {
-                                                const el = document.getElementById(`msg-${msg.replyTo?.id}`);
-                                                el?.scrollIntoView({behavior: 'smooth', block: 'center'});
+                                            <div className={`mb-1 px-2 py-1 rounded border-r-2 text-xs cursor-pointer ${isMe ? 'bg-[#dcf8c6] border-green-500' : 'bg-gray-50 border-blue-500'}`} onClick={() => {
+                                                document.getElementById(`msg-${msg.replyTo?.id}`)?.scrollIntoView({behavior: 'smooth', block: 'center'});
                                             }}>
-                                                <div className="text-[10px] font-bold text-blue-600">{msg.replyTo.sender}</div>
-                                                <div className="text-[10px] text-gray-500 truncate">{msg.replyTo.message}</div>
+                                                <div className="font-bold text-blue-600 opacity-80">{msg.replyTo.sender}</div>
+                                                <div className="truncate opacity-70">{msg.replyTo.message}</div>
                                             </div>
                                         )}
 
-                                        {/* Sender Name (if group) */}
+                                        {/* Sender Name (In Group) */}
                                         {!isMe && activeChannel.type !== 'private' && (
-                                            <div className="text-[10px] font-bold text-blue-600 mb-0.5">{msg.sender}</div>
+                                            <div className="text-[11px] font-bold text-orange-600 mb-1">{msg.sender}</div>
                                         )}
 
-                                        {/* Content */}
-                                        {msg.audioUrl ? (
-                                            <div className="flex items-center gap-2 min-w-[150px]">
-                                                <div className="bg-blue-500 rounded-full p-2 text-white shadow">
-                                                    <Play size={14} fill="currentColor"/>
+                                        {/* Content: Voice */}
+                                        {msg.audioUrl && (
+                                            <div className="flex items-center gap-3 min-w-[160px] py-1">
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm ${isMe ? 'bg-green-500' : 'bg-blue-500'}`}>
+                                                    <Play size={14} fill="currentColor" className="ml-0.5"/>
                                                 </div>
-                                                <audio controls className="h-8 w-40" src={msg.audioUrl} />
+                                                <audio controls src={msg.audioUrl} className="h-8 w-40 opacity-80" />
                                             </div>
-                                        ) : msg.attachment ? (
-                                            <div className="flex items-center gap-2 bg-black/5 p-2 rounded-lg min-w-[150px] cursor-pointer" onClick={() => window.open(msg.attachment?.url, '_blank')}>
-                                                <div className="bg-blue-500 rounded-full p-2 text-white"><FileText size={16}/></div>
-                                                <div className="overflow-hidden">
-                                                    <div className="text-xs font-bold truncate w-32">{msg.attachment.fileName}</div>
-                                                    <span className="text-[10px] text-blue-600">دانلود فایل</span>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="whitespace-pre-wrap leading-relaxed break-words">{msg.message}</div>
                                         )}
 
-                                        {/* Metadata Footer */}
-                                        <div className="flex justify-end items-center gap-1 mt-1 opacity-60 float-left ml-[-5px]">
+                                        {/* Content: File/Image */}
+                                        {msg.attachment && (
+                                            <div className="mb-1">
+                                                {msg.attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                    <a href={msg.attachment.url} target="_blank" className="block mb-1">
+                                                        <img src={msg.attachment.url} alt="attachment" className="max-w-full h-auto rounded-lg max-h-60 object-cover" />
+                                                    </a>
+                                                ) : (
+                                                    <div className="flex items-center gap-3 bg-black/5 p-2 rounded-lg">
+                                                        <div className={`p-2 rounded-full text-white ${isMe ? 'bg-green-500' : 'bg-blue-500'}`}><File size={18}/></div>
+                                                        <div className="overflow-hidden">
+                                                            <div className="truncate font-bold text-xs">{msg.attachment.fileName}</div>
+                                                            <a href={msg.attachment.url} target="_blank" className="text-[10px] text-blue-600 font-bold flex items-center gap-1 mt-0.5">دانلود <DownloadCloud size={10}/></a>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Content: Text */}
+                                        {msg.message && <div className="whitespace-pre-wrap leading-relaxed break-words">{msg.message}</div>}
+
+                                        {/* Meta */}
+                                        <div className="flex justify-end items-center gap-1 mt-1 opacity-50 select-none">
                                             {msg.isEdited && <span className="text-[9px]">ویرایش شده</span>}
                                             <span className="text-[10px]">{new Date(msg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>
-                                            {isMe && <CheckCheck size={12} className="text-green-600"/>}
+                                            {isMe && <CheckCheck size={14} className="text-green-600"/>}
                                         </div>
 
-                                        {/* Context Menu (Hover) */}
-                                        <div className="absolute top-0 left-0 bg-white shadow-lg rounded-lg p-1 hidden group-hover:flex z-10 -ml-12 border border-gray-100">
-                                            <button onClick={() => setReplyingTo(msg)} className="p-1 hover:bg-gray-100 rounded text-gray-600"><Reply size={14}/></button>
-                                            {isMe && <button onClick={() => handleEditMessage(msg)} className="p-1 hover:bg-gray-100 rounded text-blue-600"><Edit2 size={14}/></button>}
-                                            {(isMe || currentUser.role === UserRole.ADMIN) && <button onClick={() => handleDeleteMessage(msg.id)} className="p-1 hover:bg-gray-100 rounded text-red-600"><Trash2 size={14}/></button>}
+                                        {/* Actions (Hover) */}
+                                        <div className={`absolute top-0 ${isMe ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'} h-full px-2 hidden md:group-hover:flex items-center gap-1`}>
+                                            <button onClick={() => setReplyingTo(msg)} className="p-1.5 bg-white shadow rounded-full text-gray-500 hover:text-blue-600"><Reply size={14}/></button>
+                                            {isMe && <button onClick={() => handleEditMessage(msg)} className="p-1.5 bg-white shadow rounded-full text-gray-500 hover:text-green-600"><Edit2 size={14}/></button>}
+                                            {(isMe || currentUser.role === UserRole.ADMIN) && <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 bg-white shadow rounded-full text-gray-500 hover:text-red-600"><Trash2 size={14}/></button>}
                                         </div>
                                     </div>
                                 </div>
@@ -410,76 +479,91 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                         <div ref={messagesEndRef} />
                     </div>
                 ) : (
-                    // Task Mode UI
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50">
-                        <div className="flex gap-2 mb-4">
-                            <input className="flex-1 p-2 border rounded-lg text-sm" placeholder="تسک جدید..." value={newTaskTitle} onChange={e=>setNewTaskTitle(e.target.value)} />
-                            <button onClick={async ()=>{ 
-                                if(!newTaskTitle) return;
-                                await createTask({ id: generateUUID(), groupId: activeChannel.id!, title: newTaskTitle, isCompleted: false, createdBy: currentUser.username, createdAt: Date.now() });
-                                setNewTaskTitle(''); loadMeta();
-                            }} className="bg-blue-600 text-white px-4 rounded-lg text-sm">افزودن</button>
-                        </div>
-                        {tasks.filter(t => t.groupId === activeChannel.id).map(t => (
-                            <div key={t.id} className="bg-white p-3 rounded-xl shadow-sm flex items-center gap-3">
-                                <button onClick={async ()=>{ await updateTask({...t, isCompleted: !t.isCompleted}); loadMeta(); }}>
-                                    {t.isCompleted ? <CheckSquare className="text-green-500"/> : <Square className="text-gray-400"/>}
-                                </button>
-                                <span className={`flex-1 text-sm ${t.isCompleted ? 'line-through text-gray-400' : ''}`}>{t.title}</span>
-                                <button onClick={async ()=>{ if(confirm('حذف؟')) { await deleteTask(t.id); loadMeta(); } }} className="text-red-400"><Trash2 size={16}/></button>
+                    // Tasks View
+                    <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
+                        <div className="bg-white p-4 rounded-xl shadow-sm mb-4">
+                            <h3 className="font-bold mb-3 flex items-center gap-2 text-gray-700"><CheckSquare className="text-green-600"/> تسک‌های گروه</h3>
+                            <div className="flex gap-2">
+                                <input className="flex-1 border rounded-lg p-2 text-sm" placeholder="تسک جدید..." value={newTaskTitle} onChange={e=>setNewTaskTitle(e.target.value)}/>
+                                <button onClick={async ()=>{ 
+                                    if(!newTaskTitle) return; 
+                                    await createTask({ id: generateUUID(), groupId: activeChannel.id!, title: newTaskTitle, isCompleted: false, createdBy: currentUser.username, createdAt: Date.now() }); 
+                                    setNewTaskTitle(''); loadMeta(); 
+                                }} className="bg-green-600 text-white px-4 rounded-lg font-bold">افزودن</button>
                             </div>
-                        ))}
+                        </div>
+                        <div className="space-y-2">
+                            {tasks.filter(t => t.groupId === activeChannel.id).map(t => (
+                                <div key={t.id} className="bg-white p-3 rounded-lg shadow-sm flex items-center gap-3">
+                                    <button onClick={async ()=>{ await updateTask({...t, isCompleted: !t.isCompleted}); loadMeta(); }} className={t.isCompleted ? "text-green-500" : "text-gray-300"}>
+                                        {t.isCompleted ? <CheckSquare/> : <Square/>}
+                                    </button>
+                                    <span className={`flex-1 text-sm ${t.isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.title}</span>
+                                    <button onClick={async ()=>{ if(confirm('حذف؟')) { await deleteTask(t.id); loadMeta(); } }} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
 
                 {/* Input Area */}
                 {activeTab === 'chat' && (
-                    <div className="p-2 bg-white flex items-end gap-2 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-20">
-                        {/* Reply Context Bar */}
+                    <div className="bg-white p-2 flex items-end gap-2 border-t relative z-20">
+                        {/* Reply Preview */}
                         {replyingTo && (
-                            <div className="absolute bottom-full left-0 right-0 bg-white border-b p-2 flex justify-between items-center border-t border-gray-100 shadow-sm z-30">
-                                <div className="flex items-center gap-2 text-sm border-r-2 border-blue-500 pr-2">
-                                    <Reply size={16} className="text-blue-500"/>
+                            <div className="absolute bottom-full left-0 right-0 bg-white border-t border-b p-2 flex justify-between items-center shadow-sm z-10 animate-slide-up">
+                                <div className="flex items-center gap-2 border-r-4 border-blue-500 pr-2">
+                                    <Reply size={20} className="text-blue-500"/>
                                     <div className="flex flex-col">
-                                        <span className="font-bold text-blue-600 text-xs">{replyingTo.sender}</span>
-                                        <span className="text-xs text-gray-500 truncate max-w-[200px]">{replyingTo.message || 'فایل'}</span>
+                                        <span className="font-bold text-blue-600 text-xs">پاسخ به {replyingTo.sender}</span>
+                                        <span className="text-xs text-gray-500 truncate max-w-[200px]">{replyingTo.message || 'رسانه'}</span>
                                     </div>
                                 </div>
-                                <button onClick={() => setReplyingTo(null)}><X size={16}/></button>
+                                <button onClick={() => { setReplyingTo(null); setEditingMessageId(null); setInputText(''); }} className="p-1 hover:bg-red-50 rounded-full text-gray-500 hover:text-red-500"><X size={18}/></button>
                             </div>
                         )}
 
-                        <button onClick={() => fileInputRef.current?.click()} className="p-3 text-gray-500 hover:text-blue-600 transition-colors">
-                            {isUploading ? <Loader2 size={24} className="animate-spin"/> : <Paperclip size={24}/>}
+                        {/* File Upload */}
+                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} disabled={isUploading}/>
+                        <button onClick={() => fileInputRef.current?.click()} className="p-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors mb-1">
+                            {isUploading ? <Loader2 size={24} className="animate-spin text-blue-500"/> : <Paperclip size={24}/>}
                         </button>
-                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload}/>
 
-                        <div className="flex-1 bg-gray-100 rounded-2xl flex items-center px-4 py-2 min-h-[48px] border border-transparent focus-within:border-blue-300 focus-within:bg-white transition-all">
+                        {/* Text Input */}
+                        <div className="flex-1 bg-gray-100 rounded-3xl flex items-center px-4 py-2 min-h-[48px] border border-transparent focus-within:border-blue-400 focus-within:bg-white transition-all">
                             <textarea 
-                                ref={inputRef}
+                                ref={inputAreaRef}
                                 value={inputText}
                                 onChange={e => setInputText(e.target.value)}
-                                onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) handleSend(e); }}
-                                placeholder="پیام خود را بنویسید..."
+                                onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                                placeholder={isRecording ? "در حال ضبط..." : "پیام خود را بنویسید..."}
                                 className="bg-transparent border-none outline-none w-full text-sm resize-none max-h-32"
                                 rows={1}
                                 style={{ height: 'auto', minHeight: '24px' }}
+                                disabled={isRecording}
                             />
                         </div>
 
-                        {inputText.trim() || isUploading ? (
-                            <button onClick={(e) => handleSend(e)} className="p-3 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-transform active:scale-90 animate-scale-in">
-                                <Send size={20} className={document.dir === 'rtl' ? 'rotate-180' : ''}/>
+                        {/* Mic / Send Button */}
+                        {inputText.trim() || isUploading || editingMessageId ? (
+                            <button onClick={handleSendMessage} className="p-3 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 transition-transform active:scale-95 mb-1 animate-scale-in">
+                                {editingMessageId ? <Check size={20}/> : <Send size={20} className={document.dir === 'rtl' ? 'rotate-180' : ''}/>}
                             </button>
                         ) : (
                             <button 
-                                onMouseDown={handleStartRecording} 
-                                onMouseUp={handleStopRecording}
-                                onTouchStart={handleStartRecording}
-                                onTouchEnd={handleStopRecording}
-                                className={`p-3 rounded-full shadow-lg transition-all ${isRecording ? 'bg-red-500 scale-110' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+                                onMouseDown={startRecording}
+                                onMouseUp={stopRecording}
+                                onTouchStart={startRecording}
+                                onTouchEnd={stopRecording}
+                                onMouseLeave={cancelRecording} 
+                                className={`p-3 rounded-full shadow-lg transition-all mb-1 ${isRecording ? 'bg-red-500 scale-110 shadow-red-200' : 'bg-blue-500 hover:bg-blue-600 shadow-blue-200'}`}
                             >
-                                {isRecording ? <div className="flex items-center gap-1"><div className="w-2 h-2 bg-white rounded-full animate-ping"/> <span className="text-xs font-mono">{formatTime(recordingTime)}</span></div> : <Mic size={20}/>}
+                                {isRecording ? (
+                                    <div className="flex items-center justify-center w-5 h-5">
+                                        <div className="absolute animate-ping inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></div>
+                                        <span className="text-[10px] text-white font-mono z-10">{formatDuration(recordingTime)}</span>
+                                    </div>
+                                ) : <Mic size={20} className="text-white"/>}
                             </button>
                         )}
                     </div>
@@ -488,33 +572,34 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
             {/* Modal for Group Creation */}
             {showGroupModal && (
-                <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl p-6 w-full max-w-sm">
-                        <h3 className="font-bold mb-4">ایجاد گروه جدید</h3>
-                        <input className="w-full border rounded p-2 mb-4" placeholder="نام گروه" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} />
-                        <div className="max-h-48 overflow-y-auto mb-4 border rounded p-2">
+                <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-gray-800 text-lg">ایجاد گروه جدید</h3>
+                            <button onClick={() => setShowGroupModal(false)}><X size={20} className="text-gray-400"/></button>
+                        </div>
+                        <input className="w-full border rounded-xl p-3 mb-4 bg-gray-50 focus:bg-white transition-colors" placeholder="نام گروه" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} />
+                        <div className="max-h-48 overflow-y-auto mb-4 border rounded-xl p-2 bg-gray-50 custom-scrollbar">
                             {users.map(u => (
-                                <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer">
-                                    <input type="checkbox" onChange={e => {
+                                <label key={u.id} className="flex items-center gap-3 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors">
+                                    <input type="checkbox" className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" onChange={e => {
                                         if (e.target.checked) setSelectedGroupMembers([...selectedGroupMembers, u.username]);
                                         else setSelectedGroupMembers(selectedGroupMembers.filter(m => m !== u.username));
                                     }}/>
-                                    <span>{u.fullName}</span>
+                                    <span className="text-sm font-medium text-gray-700">{u.fullName}</span>
                                 </label>
                             ))}
                         </div>
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => setShowGroupModal(false)} className="px-4 py-2 text-gray-600">لغو</button>
-                            <button onClick={async () => {
-                                if(!newGroupName) return;
-                                await createGroup({ id: generateUUID(), name: newGroupName, members: [...selectedGroupMembers, currentUser.username], createdBy: currentUser.username });
-                                setShowGroupModal(false); loadMeta();
-                            }} className="px-4 py-2 bg-blue-600 text-white rounded">ایجاد</button>
-                        </div>
+                        <button onClick={async () => {
+                            if(!newGroupName) return;
+                            await createGroup({ id: generateUUID(), name: newGroupName, members: [...selectedGroupMembers, currentUser.username], createdBy: currentUser.username });
+                            setShowGroupModal(false); loadMeta();
+                        }} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">ایجاد گروه</button>
                     </div>
                 </div>
             )}
         </div>
     );
 };
+
 export default ChatRoom;
