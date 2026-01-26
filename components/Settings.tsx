@@ -125,7 +125,7 @@ const Settings: React.FC = () => {
   const [contactNumber, setContactNumber] = useState('');
   const [contactBaleId, setContactBaleId] = useState('');
   const [isGroupContact, setIsGroupContact] = useState(false);
-  const [editingContactId, setEditingContactId] = useState<string | null>(null); // NEW: To track editing contact
+  const [editingContactId, setEditingContactId] = useState<string | null>(null); // NEW: Editing state
   
   const [fetchingGroups, setFetchingGroups] = useState(false);
   const [newOperatingBank, setNewOperatingBank] = useState('');

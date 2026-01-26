@@ -41,7 +41,7 @@ process.on('unhandledRejection', (reason) => {
 
 import { initTelegram, sendDocument as sendTelegramDoc, sendMessage as sendTelegramMsg, notifyNewBijak } from './backend/telegram.js';
 import { initWhatsApp, sendMessage as sendWhatsAppMessage, getStatus as getWhatsAppStatus, logout as logoutWhatsApp, getGroups as getWhatsAppGroups } from './backend/whatsapp.js';
-import { sendBaleMessage } from './backend/bale.js'; // IMPORT BALE MODULE
+import { sendBaleMessage, initBaleBot } from './backend/bale.js'; // IMPORT BALE MODULE
 
 const app = express();
 
@@ -172,6 +172,8 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
 
 const db = getDb();
 if (db.settings?.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { console.error("Telegram Error:", e.message); }
+// Initialize Bale Bot
+if (db.settings?.baleBotToken) try { initBaleBot(db.settings.baleBotToken); } catch (e) { console.error("Bale Error:", e.message); }
 
 setTimeout(() => { 
     try { 
@@ -321,15 +323,18 @@ app.post('/api/upload', (req, res) => {
         const { fileName, fileData } = req.body;
         if (!fileData) return res.status(400).json({ error: 'No data provided' });
 
-        // Strip Base64 header if present
+        // Strip Base64 header if present. Handle any mime type.
         const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
         let buffer;
 
         if (matches && matches.length === 3) {
             buffer = Buffer.from(matches[2], 'base64');
         } else {
-            // Assume raw base64 string
-            buffer = Buffer.from(fileData, 'base64');
+            // Assume raw base64 string if no header or failed regex
+            // Some clients send raw base64, some send with header.
+            // If it contains comma but no data: prefix, might be partial.
+            const raw = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+            buffer = Buffer.from(raw, 'base64');
         }
 
         // Generate unique filename
