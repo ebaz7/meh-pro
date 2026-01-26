@@ -8,7 +8,7 @@ import {
     Send, User as UserIcon, MessageSquare, Users, Plus, ListTodo, Paperclip, 
     CheckSquare, Square, X, Trash2, Reply, Edit2, ArrowRight, Mic, 
     Play, Pause, Loader2, Search, MoreVertical, File, Image as ImageIcon,
-    Check, CheckCheck, DownloadCloud
+    Check, CheckCheck, DownloadCloud, StopCircle
 } from 'lucide-react';
 
 interface ChatRoomProps { 
@@ -16,8 +16,6 @@ interface ChatRoomProps {
     preloadedMessages: ChatMessage[]; 
     onRefresh: () => void; 
 }
-
-const LAST_READ_KEY = 'chat_last_read_map';
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onRefresh }) => {
     // --- Data State ---
@@ -31,7 +29,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const [activeTab, setActiveTab] = useState<'chat' | 'tasks'>('chat'); 
     const [mobileShowChat, setMobileShowChat] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // --- Input & Action State ---
     const [inputText, setInputText] = useState('');
@@ -80,7 +77,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             setUsers(usrList.filter(u => u.username !== currentUser.username));
             
             const grpList = await getGroups();
-            // User sees groups they are member of, or created, or if they are admin/manager
             const isManager = [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role as UserRole);
             const visibleGroups = grpList.filter(g => isManager || g.members.includes(currentUser.username) || g.createdBy === currentUser.username);
             setGroups(visibleGroups);
@@ -94,9 +90,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    // --- Helper Functions ---
-    const getChannelKey = (type: string, id: string | null) => type === 'public' ? 'public' : `${type}_${id}`;
-    
     const getDisplayMessages = () => {
         return messages.filter(msg => { 
             if (activeChannel.type === 'public') return !msg.recipient && !msg.groupId; 
@@ -106,16 +99,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         });
     };
 
-    const getUnreadCount = (type: string, id: string | null) => {
-        // Implementation for unread count logic would go here using LocalStorage
-        // For now returning 0 to keep UI clean, or could be implemented fully
-        return 0; 
-    };
-
     // --- Action Handlers ---
 
     const handleSendMessage = async () => {
-        if ((!inputText.trim() && !isRecording) || isUploading) return;
+        if ((!inputText.trim()) || isUploading) return;
 
         if (editingMessageId) {
             const msgToUpdate = messages.find(m => m.id === editingMessageId);
@@ -155,6 +142,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // Size Limit Check (5MB) to prevent mobile browser crash
+        if (file.size > 5 * 1024 * 1024) {
+            alert('حجم فایل نباید بیشتر از ۵ مگابایت باشد.');
+            return;
+        }
+
         setIsUploading(true);
         const reader = new FileReader();
         reader.onload = async (ev) => {
@@ -176,7 +169,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 await sendMessage(newMsg);
                 onRefresh();
             } catch (error) {
-                alert('خطا در ارسال فایل');
+                console.error("File Upload Error:", error);
+                alert('خطا در ارسال فایل. لطفاً اتصال اینترنت را بررسی کنید.');
             } finally {
                 setIsUploading(false);
             }
@@ -185,80 +179,81 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         e.target.value = '';
     };
 
-    // --- Voice Recording Logic ---
-    const startRecording = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = mediaRecorder;
-            audioChunksRef.current = [];
+    // --- Voice Recording Logic (TOGGLE MODE) ---
+    // Changed from hold-to-record to click-to-start/click-to-send for mobile stability
+    const toggleRecording = async () => {
+        if (isRecording) {
+            // STOP RECORDING
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+                setIsRecording(false);
+                clearInterval(recordingTimerRef.current);
+            }
+        } else {
+            // START RECORDING
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mediaRecorder = new MediaRecorder(stream);
+                mediaRecorderRef.current = mediaRecorder;
+                audioChunksRef.current = [];
 
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                const reader = new FileReader();
-                reader.readAsDataURL(audioBlob);
-                reader.onloadend = async () => {
-                    const base64 = reader.result as string;
-                    setIsUploading(true);
-                    try {
-                        const result = await uploadFile(`voice_${Date.now()}.webm`, base64);
-                        const newMsg: ChatMessage = {
-                            id: generateUUID(),
-                            sender: currentUser.fullName,
-                            senderUsername: currentUser.username,
-                            role: currentUser.role,
-                            message: '',
-                            timestamp: Date.now(),
-                            recipient: activeChannel.type === 'private' ? activeChannel.id! : undefined,
-                            groupId: activeChannel.type === 'group' ? activeChannel.id! : undefined,
-                            audioUrl: result.url
-                        };
-                        await sendMessage(newMsg);
-                        onRefresh();
-                    } catch (e) {
-                        alert('خطا در ارسال ویس');
-                    } finally {
-                        setIsUploading(false);
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunksRef.current.push(event.data);
                     }
                 };
-                stream.getTracks().forEach(track => track.stop());
-            };
 
-            mediaRecorder.start();
-            setIsRecording(true);
-            setRecordingTime(0);
-            recordingTimerRef.current = setInterval(() => {
-                setRecordingTime(prev => prev + 1);
-            }, 1000);
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                    
+                    // Don't send if empty or too short (< 1s)
+                    if (audioBlob.size < 1000) {
+                        setIsUploading(false);
+                        return;
+                    }
 
-        } catch (err) {
-            console.error("Mic error:", err);
-            alert("دسترسی به میکروفون امکان‌پذیر نیست. (نیاز به HTTPS یا Localhost)");
-        }
-    };
+                    setIsUploading(true);
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = async () => {
+                        const base64 = reader.result as string;
+                        try {
+                            const result = await uploadFile(`voice_${Date.now()}.webm`, base64);
+                            const newMsg: ChatMessage = {
+                                id: generateUUID(),
+                                sender: currentUser.fullName,
+                                senderUsername: currentUser.username,
+                                role: currentUser.role,
+                                message: '',
+                                timestamp: Date.now(),
+                                recipient: activeChannel.type === 'private' ? activeChannel.id! : undefined,
+                                groupId: activeChannel.type === 'group' ? activeChannel.id! : undefined,
+                                audioUrl: result.url
+                            };
+                            await sendMessage(newMsg);
+                            onRefresh();
+                        } catch (e) {
+                            console.error("Voice Upload Error:", e);
+                            alert('خطا در ارسال ویس');
+                        } finally {
+                            setIsUploading(false);
+                        }
+                    };
+                    stream.getTracks().forEach(track => track.stop());
+                };
 
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            clearInterval(recordingTimerRef.current);
-        }
-    };
+                mediaRecorder.start();
+                setIsRecording(true);
+                setRecordingTime(0);
+                recordingTimerRef.current = setInterval(() => {
+                    setRecordingTime(prev => prev + 1);
+                }, 1000);
 
-    const cancelRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop(); // Stop but don't process
-            mediaRecorderRef.current.onstop = null; // Remove handler
-            setIsRecording(false);
-            clearInterval(recordingTimerRef.current);
-            // Stop tracks
-            mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+            } catch (err) {
+                console.error("Mic error:", err);
+                alert("دسترسی به میکروفون امکان‌پذیر نیست. (در نسخه وب موبایل، باید از HTTPS استفاده کنید)");
+                setIsRecording(false);
+            }
         }
     };
 
@@ -378,7 +373,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             {/* --- CHAT AREA --- */}
             <div className={`absolute inset-0 md:static flex-1 flex flex-col bg-[#8E98A3] z-30 transition-transform duration-300 ${mobileShowChat ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
                 
-                {/* Chat Background Pattern (Telegram Style) */}
+                {/* Chat Background Pattern */}
                 <div className="absolute inset-0 opacity-10 pointer-events-none" 
                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }}>
                 </div>
@@ -536,7 +531,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                 value={inputText}
                                 onChange={e => setInputText(e.target.value)}
                                 onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                                placeholder={isRecording ? "در حال ضبط..." : "پیام خود را بنویسید..."}
+                                placeholder={isRecording ? "در حال ضبط (برای پایان ضربه بزنید)..." : "پیام خود را بنویسید..."}
                                 className="bg-transparent border-none outline-none w-full text-sm resize-none max-h-32"
                                 rows={1}
                                 style={{ height: 'auto', minHeight: '24px' }}
@@ -550,18 +545,15 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                 {editingMessageId ? <Check size={20}/> : <Send size={20} className={document.dir === 'rtl' ? 'rotate-180' : ''}/>}
                             </button>
                         ) : (
+                            // TOGGLE RECORDING (Click to Start / Click to Send)
                             <button 
-                                onMouseDown={startRecording}
-                                onMouseUp={stopRecording}
-                                onTouchStart={startRecording}
-                                onTouchEnd={stopRecording}
-                                onMouseLeave={cancelRecording} 
+                                onClick={toggleRecording}
                                 className={`p-3 rounded-full shadow-lg transition-all mb-1 ${isRecording ? 'bg-red-500 scale-110 shadow-red-200' : 'bg-blue-500 hover:bg-blue-600 shadow-blue-200'}`}
                             >
                                 {isRecording ? (
-                                    <div className="flex items-center justify-center w-5 h-5">
+                                    <div className="flex items-center justify-center w-5 h-5 relative">
                                         <div className="absolute animate-ping inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></div>
-                                        <span className="text-[10px] text-white font-mono z-10">{formatDuration(recordingTime)}</span>
+                                        <div className="z-10"><Send size={20} className={document.dir === 'rtl' ? 'rotate-180 text-white' : 'text-white'}/></div>
                                     </div>
                                 ) : <Mic size={20} className="text-white"/>}
                             </button>

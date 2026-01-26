@@ -57,14 +57,23 @@ const BACKUPS_DIR = path.join(__dirname, 'backups');
 const WAUTH_DIR = path.join(__dirname, 'wauth');
 const SSL_DIR = path.join(__dirname, 'ssl'); 
 
-// Ensure directories exist
-[UPLOADS_DIR, AI_UPLOADS_DIR, BACKUPS_DIR, WAUTH_DIR, SSL_DIR].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); });
+// Ensure directories exist synchronously
+try {
+    if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    if (!fs.existsSync(AI_UPLOADS_DIR)) fs.mkdirSync(AI_UPLOADS_DIR, { recursive: true });
+    if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    if (!fs.existsSync(WAUTH_DIR)) fs.mkdirSync(WAUTH_DIR, { recursive: true });
+    if (!fs.existsSync(SSL_DIR)) fs.mkdirSync(SSL_DIR, { recursive: true });
+} catch (err) {
+    console.error("Directory Creation Error:", err);
+    logToFile(`Dir Creation Error: ${err.message}`);
+}
 
 app.set('trust proxy', 1); 
 
 app.use(cors()); 
 app.use(compression()); 
-// INCREASED LIMIT FOR PDF GENERATION
+// INCREASED LIMIT FOR PDF GENERATION & FILE UPLOAD
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
