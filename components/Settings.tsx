@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { SystemSettings, UserRole, RolePermissions, Company, Contact, CompanyBank, User, CustomRole, PrintTemplate } from '../types';
-import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, ChevronDown, ChevronUp, WifiOff, Info } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, ChevronDown, ChevronUp, WifiOff, Info, Lock } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp } from '../services/notificationService';
 import { getUsers } from '../services/authService';
@@ -125,7 +125,7 @@ const Settings: React.FC = () => {
   const [contactNumber, setContactNumber] = useState('');
   const [contactBaleId, setContactBaleId] = useState('');
   const [isGroupContact, setIsGroupContact] = useState(false);
-  const [editingContactId, setEditingContactId] = useState<string | null>(null); // NEW: Editing state
+  const [editingContactId, setEditingContactId] = useState<string | null>(null); // NEW: To track editing contact
   
   const [fetchingGroups, setFetchingGroups] = useState(false);
   const [newOperatingBank, setNewOperatingBank] = useState('');
@@ -596,7 +596,7 @@ const Settings: React.FC = () => {
                             <div className="mt-6">
                                 <h4 className="font-bold text-sm text-gray-700 mb-3 border-b pb-1">تنظیمات اختصاصی شرکت‌ها (اختیاری)</h4>
                                 <div className="space-y-3">
-                                    {settings.companies?.filter(c => c.showInWarehouse).map(c => {
+                                    {settings.companies?.filter(c => c.showInWarehouse !== false).map(c => {
                                         const conf = settings.companyNotifications?.[c.name] || {};
                                         return (
                                             <div key={c.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
