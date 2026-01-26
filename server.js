@@ -276,18 +276,32 @@ app.post('/api/send-whatsapp', async (req, res) => {
 
         // 2. Check for Bale integration (Automatic Parallel Send)
         if (db && db.settings.baleBotToken) {
-            // Find user by phone number to get Bale Chat ID
-            // WhatsApp numbers often have country code, we try to match loosely
+            let targetBaleId = null;
+
+            // Strategy A: Check User (Direct Mapping)
+            // WhatsApp numbers usually have country code (e.g., 98912...). We normalize for search.
             const targetPhone = number.replace(/\D/g, '').slice(-10); // Last 10 digits
             const targetUser = db.users.find(u => u.phoneNumber && u.phoneNumber.replace(/\D/g, '').includes(targetPhone));
-            
             if (targetUser && targetUser.baleChatId) {
-                console.log(`Sending copy to Bale for user ${targetUser.username} (${targetUser.baleChatId})`);
+                targetBaleId = targetUser.baleChatId;
+            }
+
+            // Strategy B: Check Saved Contacts (Group Mapping)
+            // If the number corresponds to a saved group ID (e.g. 12036... @g.us)
+            if (!targetBaleId && db.settings.savedContacts) {
+                 const contact = db.settings.savedContacts.find(c => c.number === number);
+                 if (contact && contact.baleId) {
+                     targetBaleId = contact.baleId;
+                 }
+            }
+            
+            if (targetBaleId) {
+                console.log(`Sending copy to Bale ID: ${targetBaleId}`);
                 try {
-                    await sendBaleMessage(db.settings.baleBotToken, targetUser.baleChatId, message, mediaData);
+                    await sendBaleMessage(db.settings.baleBotToken, targetBaleId, message, mediaData);
                 } catch (baleErr) {
                     console.error("Bale Send Error:", baleErr);
-                    // Don't fail the request if Bale fails, just log it
+                    // Don't fail request if secondary channel fails
                 }
             }
         }

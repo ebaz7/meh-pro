@@ -82,7 +82,7 @@ export interface User {
   canManageTrade?: boolean;
   avatar?: string;
   telegramChatId?: string;
-  baleChatId?: string; // NEW: Added Bale Chat ID
+  baleChatId?: string; // For individual users
   phoneNumber?: string;
   receiveNotifications?: boolean;
 }
@@ -167,6 +167,7 @@ export interface Contact {
   id: string;
   name: string;
   number: string;
+  baleId?: string; // NEW: Added for mapping WA groups to Bale groups
   isGroup: boolean;
 }
 

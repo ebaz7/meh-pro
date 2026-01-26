@@ -369,7 +369,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             </div>
 
             {/* --- CHAT AREA --- */}
-            {/* Added min-w-0 to prevent flex item overflow issue on desktop */}
             <div className={`absolute inset-0 md:static flex-1 min-w-0 flex flex-col bg-[#8E98A3] z-30 transition-transform duration-300 ${mobileShowChat ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
                 
                 {/* Chat Background Pattern */}
@@ -397,9 +396,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     )}
                 </div>
 
-                {/* Messages */}
+                {/* Messages - Added pb-20 to ensure last message is visible above input */}
                 {activeTab === 'chat' ? (
-                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-0 overflow-x-hidden">
+                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative z-0 overflow-x-hidden pb-20">
                         {getDisplayMessages().map((msg) => {
                             const isMe = msg.senderUsername === currentUser.username;
                             return (
@@ -454,18 +453,21 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                         {/* Content: Text - Added break-words to fix horizontal scrolling */}
                                         {msg.message && <div className="whitespace-pre-wrap leading-relaxed break-words break-all">{msg.message}</div>}
 
-                                        {/* Meta */}
-                                        <div className="flex justify-end items-center gap-1 mt-1 opacity-50 select-none">
-                                            {msg.isEdited && <span className="text-[9px]">ویرایش شده</span>}
-                                            <span className="text-[10px]">{new Date(msg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>
-                                            {isMe && <CheckCheck size={14} className="text-green-600"/>}
-                                        </div>
+                                        {/* Meta & Actions Row (Inside Bubble) */}
+                                        <div className="flex justify-between items-end mt-1 pt-1 border-t border-black/5">
+                                            {/* Left: Actions (Always visible/accessible) */}
+                                            <div className="flex items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+                                                <button onClick={() => setReplyingTo(msg)} className="p-0.5 hover:text-blue-600"><Reply size={12}/></button>
+                                                {isMe && <button onClick={() => handleEditMessage(msg)} className="p-0.5 hover:text-green-600"><Edit2 size={12}/></button>}
+                                                {(isMe || currentUser.role === UserRole.ADMIN) && <button onClick={() => handleDeleteMessage(msg.id)} className="p-0.5 hover:text-red-600"><Trash2 size={12}/></button>}
+                                            </div>
 
-                                        {/* Actions (Hover) */}
-                                        <div className={`absolute top-0 ${isMe ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'} h-full px-2 hidden md:group-hover:flex items-center gap-1`}>
-                                            <button onClick={() => setReplyingTo(msg)} className="p-1.5 bg-white shadow rounded-full text-gray-500 hover:text-blue-600"><Reply size={14}/></button>
-                                            {isMe && <button onClick={() => handleEditMessage(msg)} className="p-1.5 bg-white shadow rounded-full text-gray-500 hover:text-green-600"><Edit2 size={14}/></button>}
-                                            {(isMe || currentUser.role === UserRole.ADMIN) && <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 bg-white shadow rounded-full text-gray-500 hover:text-red-600"><Trash2 size={14}/></button>}
+                                            {/* Right: Time & Status */}
+                                            <div className="flex items-center gap-1 opacity-50 select-none text-[10px]">
+                                                {msg.isEdited && <span className="text-[8px]">ویرایش شده</span>}
+                                                <span>{new Date(msg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>
+                                                {isMe && <CheckCheck size={12} className="text-green-600"/>}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

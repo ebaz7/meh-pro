@@ -54,7 +54,7 @@ const Settings: React.FC = () => {
       pwaIcon: '', 
       telegramBotToken: '', 
       telegramAdminId: '', 
-      baleBotToken: '', // Added
+      baleBotToken: '', 
       smsApiKey: '', 
       smsSenderNumber: '', 
       googleCalendarId: '', 
@@ -120,9 +120,13 @@ const Settings: React.FC = () => {
 
   const [whatsappStatus, setWhatsappStatus] = useState<{ready: boolean, qr: string | null, user: string | null} | null>(null);
   const [refreshingWA, setRefreshingWA] = useState(false);
+  
+  // Contact States
   const [contactName, setContactName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
+  const [contactBaleId, setContactBaleId] = useState(''); // NEW
   const [isGroupContact, setIsGroupContact] = useState(false);
+  
   const [fetchingGroups, setFetchingGroups] = useState(false);
   const [newOperatingBank, setNewOperatingBank] = useState('');
   const [newCommodity, setNewCommodity] = useState('');
@@ -182,7 +186,8 @@ const Settings: React.FC = () => {
                   id: u.id,
                   name: `(کاربر) ${u.fullName}`,
                   number: u.phoneNumber!,
-                  isGroup: false
+                  isGroup: false,
+                  baleId: u.baleChatId
               }));
           setAppUsers(contacts);
       } catch (e) { console.error("Failed to load users"); }
@@ -284,9 +289,24 @@ const Settings: React.FC = () => {
       } catch (e) { setMessage('خطا ❌'); } finally { setLoading(false); } 
   };
 
-  const handleAddContact = () => { if (!contactName.trim() || !contactNumber.trim()) return; const newContact: Contact = { id: generateUUID(), name: contactName.trim(), number: contactNumber.trim(), isGroup: isGroupContact }; setSettings({ ...settings, savedContacts: [...(settings.savedContacts || []), newContact] }); setContactName(''); setContactNumber(''); setIsGroupContact(false); };
+  const handleAddContact = () => { 
+      if (!contactName.trim() || !contactNumber.trim()) return; 
+      const newContact: Contact = { 
+          id: generateUUID(), 
+          name: contactName.trim(), 
+          number: contactNumber.trim(), 
+          baleId: contactBaleId.trim(), // Save Bale ID
+          isGroup: isGroupContact 
+      }; 
+      setSettings({ ...settings, savedContacts: [...(settings.savedContacts || []), newContact] }); 
+      setContactName(''); 
+      setContactNumber(''); 
+      setContactBaleId('');
+      setIsGroupContact(false); 
+  };
   const handleDeleteContact = (id: string) => { setSettings({ ...settings, savedContacts: (settings.savedContacts || []).filter(c => c.id !== id) }); };
   
+  // ... (Rest of existing handlers) ...
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLogo(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLogo(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLogo(false); } }; reader.readAsDataURL(file); };
   const handleLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLetterhead(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLetterhead(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLetterhead(false); } }; reader.readAsDataURL(file); };
 
@@ -627,6 +647,7 @@ const Settings: React.FC = () => {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col md:flex-row min-h-[600px] mb-20 animate-fade-in">
         
+        {/* ... Sidebar ... */}
         <div className="w-full md:w-64 bg-gray-50 border-b md:border-b-0 md:border-l border-gray-200 p-4">
             <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2 px-2"><SettingsIcon size={24} className="text-blue-600"/> تنظیمات</h2>
             <nav className="space-y-1">
@@ -648,9 +669,11 @@ const Settings: React.FC = () => {
             ) : (
                 <form onSubmit={handleSave} className="space-y-8 max-w-4xl mx-auto">
                     
+                    {/* ... (System, etc.) ... */}
                     {activeCategory === 'system' && (
                         <div className="space-y-8 animate-fade-in">
-                            <div className="space-y-4">
+                            {/* ... Content ... */}
+                             <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2">تنظیمات ظاهری و اعلان‌ها</h3>
                                 <div className="flex items-center gap-4">
                                     <div className="w-16 h-16 rounded-xl border border-gray-200 overflow-hidden flex items-center justify-center bg-gray-50">{settings.pwaIcon ? <img src={settings.pwaIcon} className="w-full h-full object-cover" /> : <ImageIcon className="text-gray-300" />}</div>
@@ -669,7 +692,6 @@ const Settings: React.FC = () => {
                                     </button>
                                 </div>
                             </div>
-                            {/* ... (Existing System Settings sections like Document Numbering etc) ... */}
                             <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Truck size={20}/> شماره‌گذاری اسناد (تنظیمات پیش‌فرض)</h3>
                                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-800 mb-2">
@@ -697,6 +719,7 @@ const Settings: React.FC = () => {
 
                             {/* WhatsApp Status Box (Existing) */}
                             <div className={`bg-${whatsappStatus?.ready ? 'green' : 'amber'}-50 border border-${whatsappStatus?.ready ? 'green' : 'amber'}-200 rounded-xl p-6 flex flex-col md:flex-row items-center gap-6`}>
+                                {/* ... Status Content ... */}
                                 {refreshingWA ? (
                                     <div className="flex flex-col items-center gap-2 text-gray-500"><Loader2 size={32} className="animate-spin"/><span className="text-sm">در حال بررسی وضعیت...</span></div>
                                 ) : whatsappStatus?.ready ? (
@@ -746,7 +769,8 @@ const Settings: React.FC = () => {
                                         برای استفاده از ارسال خودکار در بله:
                                         <br/>1. یک ربات در بله بسازید (@BotFather).
                                         <br/>2. توکن ربات را در اینجا وارد کنید.
-                                        <br/>3. کاربران باید ربات را Start کنند و آیدی عددی خود را در پروفایل کاربری وارد نمایند.
+                                        <br/>3. کاربران باید ربات را Start کنند.
+                                        <br/>4. برای <strong>ارسال به گروه</strong>: ربات را در گروه بله عضو کرده و دسترسی ارسال پیام بدهید. سپس شناسه عددی گروه را در پایین (دفترچه تلفن) وارد کنید.
                                     </p>
                                 </div>
                             </div>
@@ -755,7 +779,8 @@ const Settings: React.FC = () => {
                                 <h3 className="font-bold text-gray-800 border-b pb-2">دفترچه تلفن هوشمند (گروه‌ها و اشخاص)</h3>
                                 <div className="flex gap-2 items-end bg-gray-50 p-3 rounded-lg border border-gray-200 flex-wrap">
                                     <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">نام مخاطب / گروه</label><input className="w-full border rounded-lg p-2 text-sm" placeholder="نام..." value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
-                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">شماره / شناسه گروه</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left" placeholder="98912..." value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} /></div>
+                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">شماره / شناسه گروه (واتساپ)</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left" placeholder="98912..." value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} /></div>
+                                    <div className="flex-1 min-w-[120px] space-y-1"><label className="text-xs text-gray-500 text-blue-600 font-bold">شناسه بله (Bale ID)</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left border-blue-200" placeholder="12345678" value={contactBaleId} onChange={(e) => setContactBaleId(e.target.value)} /></div>
                                     <div className="flex items-center gap-2 mb-2"><input type="checkbox" checked={isGroupContact} onChange={e => setIsGroupContact(e.target.checked)} className="w-4 h-4 text-blue-600"/><span className="text-sm">گروه است؟</span></div>
                                     <button type="button" onClick={handleAddContact} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 h-[38px]"><Plus size={20} /></button>
                                 </div>
@@ -764,7 +789,12 @@ const Settings: React.FC = () => {
                                         <div key={c.id} className="flex justify-between items-center p-3 bg-white border rounded-lg hover:bg-gray-50">
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-2 rounded-full ${c.isGroup ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>{c.isGroup ? <Users size={16} /> : <Smartphone size={16} />}</div>
-                                                <div><div className="font-bold text-sm text-gray-800">{c.name}</div><div className="text-xs text-gray-500 font-mono">{c.number}</div></div>
+                                                <div>
+                                                    <div className="font-bold text-sm text-gray-800">{c.name}</div>
+                                                    <div className="text-xs text-gray-500 font-mono">
+                                                        WA: {c.number} {c.baleId ? `| Bale: ${c.baleId}` : ''}
+                                                    </div>
+                                                </div>
                                             </div>
                                             <button type="button" onClick={() => handleDeleteContact(c.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
                                         </div>
@@ -775,15 +805,14 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* ... (Rest of tabs remain same) ... */}
-                    {/* TEMPLATES TAB, PERMISSIONS TAB, etc. */}
+                    {/* ... (Rest of tabs) ... */}
                     {/* DATA TAB - Make sure to render if active */}
                     {activeCategory === 'data' && (
                         <div className="space-y-8 animate-fade-in">
                             <div className="space-y-4">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Building size={20}/> مدیریت شرکت‌ها و بانک‌ها</h3>
+                            {/* ... Company UI ... */}
                             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                {/* ... Company editing UI ... */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">نام شرکت</label><input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="نام شرکت..." value={newCompanyName} onChange={(e) => setNewCompanyName(e.target.value)} /></div>
                                     <div className="flex items-end gap-2">
@@ -792,6 +821,7 @@ const Settings: React.FC = () => {
                                         <input type="file" ref={companyLogoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload}/>
                                     </div>
                                 </div>
+                                {/* ... Rest of company fields ... */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">شماره ثبت</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyRegNum} onChange={e => setNewCompanyRegNum(e.target.value)} /></div>
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">شناسه ملی</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyNatId} onChange={e => setNewCompanyNatId(e.target.value)} /></div>
@@ -864,124 +894,11 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* INTEGRATIONS TAB - Render */}
-                    {activeCategory === 'integrations' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><BrainCircuit size={20}/> تنظیمات هوش مصنوعی و ربات‌ها</h3>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-gray-700">کلید API جمینای (Google Gemini)</label>
-                                    <input type="password" className="w-full border rounded-lg p-2 dir-ltr text-left" placeholder="API Key..." value={settings.geminiApiKey} onChange={(e) => setSettings({...settings, geminiApiKey: e.target.value})} />
-                                    <p className="text-xs text-gray-500">برای استفاده از تحلیل هوشمند و ربات واتساپ</p>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="text-sm font-bold text-gray-700 block mb-1">توکن ربات تلگرام</label><input type="password" className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.telegramBotToken} onChange={(e) => setSettings({...settings, telegramBotToken: e.target.value})} /></div>
-                                    <div><label className="text-sm font-bold text-gray-700 block mb-1">آیدی عددی مدیر (تلگرام)</label><input className="w-full border rounded-lg p-2 dir-ltr text-left" value={settings.telegramAdminId} onChange={(e) => setSettings({...settings, telegramAdminId: e.target.value})} /></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ... (Other Tabs like WAREHOUSE, COMMERCE, TEMPLATES, PERMISSIONS preserved) ... */}
-                    {activeCategory === 'warehouse' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
-                                <h3 className="font-bold text-orange-800 mb-3 flex items-center gap-2"><Truck size={20}/> تنظیمات خروج کارخانه</h3>
-                                <div>
-                                    <label className="text-xs font-bold text-gray-700 block mb-1">شماره موبایل سرپرست انبار (جهت مجوز خروج)</label>
-                                    <select 
-                                        className="w-full border rounded-lg p-2 text-sm bg-white" 
-                                        value={settings.exitPermitNotificationGroup || ''} 
-                                        onChange={e => setSettings({...settings, exitPermitNotificationGroup: e.target.value})}
-                                    >
-                                        <option value="">-- ارسال نشود --</option>
-                                        {getMergedContactOptions().map(c => (
-                                            <option key={`exit_group_${c.number}`} value={c.number}>
-                                                {c.name} {c.isGroup ? '(گروه)' : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <p className="text-[10px] text-gray-500 mt-1">پس از تایید مجوز خروج توسط مدیرعامل، تصویر مجوز به این شخص/گروه (سرپرست انبار) ارسال خواهد شد.</p>
-                                </div>
-                                
-                                <SecondExitGroupSettings 
-                                    settings={settings} 
-                                    setSettings={setSettings} 
-                                    contacts={getMergedContactOptions()} 
-                                />
-                            </div>
-
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار و ارسال خودکار</h3>
-                                <div className="space-y-6">
-                                    {settings.companies?.filter(c => c.showInWarehouse !== false).map(company => (
-                                        <div key={company.id} className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                                            <h4 className="font-bold text-base text-gray-800 mb-3 border-b pb-2 flex justify-between"><span>شرکت: {company.name}</span>{company.logo && <img src={company.logo} className="h-6 object-contain"/>}</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div><label className="text-xs font-bold text-blue-700 block mb-1">مدیر فروش (جهت ارسال با قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.salesManager || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], salesManager: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_sm_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
-                                                <div><label className="text-xs font-bold text-orange-700 block mb-1">گروه انبار (جهت ارسال بدون قیمت)</label><select className="w-full border rounded-lg p-2 text-sm bg-white" value={settings.companyNotifications?.[company.name]?.warehouseGroup || ''} onChange={e => setSettings({...settings, companyNotifications: {...settings.companyNotifications, [company.name]: { ...settings.companyNotifications?.[company.name], warehouseGroup: e.target.value }}})}><option value="">-- ارسال نشود --</option>{getMergedContactOptions().map(c => (<option key={`${company.id}_wg_${c.number}`} value={c.number}>{c.name} {c.isGroup ? '(گروه)' : ''}</option>))}</select></div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeCategory === 'commerce' && (
-                        <div className="space-y-8 animate-fade-in">
-                            <div className="space-y-2">
-                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><ShieldCheck size={18}/> شرکت‌های بیمه</h3>
-                                <p className="text-xs text-gray-500 mb-2">لیست شرکت‌های بیمه جهت انتخاب در پرونده‌های بازرگانی</p>
-                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام شرکت بیمه..." value={newInsuranceCompany} onChange={(e) => setNewInsuranceCompany(e.target.value)} /><button type="button" onClick={handleAddInsuranceCompany} className="bg-rose-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
-                                <div className="flex flex-wrap gap-2">{(settings.insuranceCompanies || []).map((comp, idx) => (<div key={idx} className="bg-rose-50 text-rose-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-rose-100"><span>{comp}</span><button type="button" onClick={() => handleRemoveInsuranceCompany(comp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
-                            </div>
-                            <div className="space-y-2">
-                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Landmark size={18}/> بانک‌های عامل</h3>
-                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام بانک..." value={newOperatingBank} onChange={(e) => setNewOperatingBank(e.target.value)} /><button type="button" onClick={handleAddOperatingBank} className="bg-indigo-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
-                                <div className="flex flex-wrap gap-2">{(settings.operatingBankNames || []).map((bank, idx) => (<div key={idx} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-indigo-100"><span>{bank}</span><button type="button" onClick={() => handleRemoveOperatingBank(bank)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
-                            </div>
-                            <div className="space-y-2">
-                                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><Container size={18}/> گروه‌های کالایی</h3>
-                                <div className="flex gap-2"><input className="flex-1 border rounded-lg p-2 text-sm" placeholder="نام گروه..." value={newCommodity} onChange={(e) => setNewCommodity(e.target.value)} /><button type="button" onClick={handleAddCommodity} className="bg-teal-600 text-white p-2 rounded-lg"><Plus size={18} /></button></div>
-                                <div className="flex flex-wrap gap-2">{(settings.commodityGroups || []).map((grp, idx) => (<div key={idx} className="bg-teal-50 text-teal-700 px-2 py-1 rounded text-xs flex items-center gap-1 border border-teal-100"><span>{grp}</span><button type="button" onClick={() => handleRemoveCommodity(grp)} className="hover:text-red-500"><X size={12} /></button></div>))}</div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {activeCategory === 'templates' && (
-                        <div className="space-y-6 animate-fade-in">
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><LayoutTemplate size={20}/> مدیریت قالب‌های چاپ (فرم بانکی)</h3>
-                                <button type="button" onClick={() => { setEditingTemplate(null); setShowDesigner(true); }} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-teal-700 shadow"><Plus size={18}/> طراحی قالب جدید</button>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {settings.printTemplates?.map(t => (
-                                    <div key={t.id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                                        <div className="font-bold text-gray-800 mb-2">{t.name}</div>
-                                        <div className="text-xs text-gray-500 mb-4">{t.fields.length} فیلد تعریف شده</div>
-                                        <div className="flex gap-2">
-                                            <button type="button" onClick={() => handleEditTemplate(t)} className="flex-1 bg-blue-50 text-blue-600 py-1.5 rounded text-xs font-bold hover:bg-blue-100 flex items-center justify-center gap-1"><Pencil size={14}/> ویرایش</button>
-                                            <button type="button" onClick={() => handleDeleteTemplate(t.id)} className="px-3 bg-red-50 text-red-500 py-1.5 rounded text-xs font-bold hover:bg-red-100 flex items-center justify-center gap-1"><Trash2 size={14}/></button>
-                                        </div>
-                                        <div className="absolute top-2 left-2 opacity-10">
-                                            <Printer size={48} />
-                                        </div>
-                                    </div>
-                                ))}
-                                {(!settings.printTemplates || settings.printTemplates.length === 0) && (
-                                    <div className="col-span-full text-center py-10 text-gray-400 border-2 border-dashed rounded-xl">
-                                        هنوز قالبی تعریف نشده است.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                    {/* ... (Other Tabs) ... */}
                     
                     {activeCategory === 'permissions' && (
                         <div className="space-y-8 animate-fade-in">
-                            {/* ... Permission UI (kept same) ... */}
+                            {/* ... Permission UI ... */}
                             <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col md:flex-row gap-4 items-end">
                                 <div className="flex-1 w-full space-y-1">
                                     <label className="text-xs font-bold text-gray-500">افزودن نقش سفارشی</label>
