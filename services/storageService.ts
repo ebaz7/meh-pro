@@ -106,7 +106,23 @@ export const saveWarehouseItem = async (item: WarehouseItem): Promise<WarehouseI
 export const updateWarehouseItem = async (item: WarehouseItem): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>(`/warehouse/items/${item.id}`, 'PUT', item); };
 export const deleteWarehouseItem = async (id: string): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>(`/warehouse/items/${id}`, 'DELETE'); };
 export const getWarehouseTransactions = async (): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>('/warehouse/transactions'); };
-export const saveWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { if (tx.type === 'OUT' && !tx.id.includes('updated')) { const settings = await getSettings(); const currentSeq = settings.warehouseSequences?.[tx.company] || 1000; if (!tx.number || tx.number === 0) { const newSeq = currentSeq + 1; await saveSettings({ ...settings, warehouseSequences: { ...settings.warehouseSequences, [tx.company]: newSeq } }); tx.number = newSeq; } } return await apiCall<WarehouseTransaction[]>('/warehouse/transactions', 'POST', tx); };
+export const saveWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { 
+    // Logic for number generation is now primarily handled by the server for consistency
+    // But if we wanted to pre-fill in offline mode, we might do it here.
+    // However, the server will overwrite it with the correct sequence.
+    return await apiCall<WarehouseTransaction[]>('/warehouse/transactions', 'POST', tx); 
+};
 export const updateWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${tx.id}`, 'PUT', tx); };
 export const deleteWarehouseTransaction = async (id: string): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${id}`, 'DELETE'); };
-export const getNextBijakNumber = async (company: string): Promise<number> => { const settings = await getSettings(); return (settings.warehouseSequences?.[company] || 1000) + 1; };
+
+// UPDATED: Now fetches from server to ensure consistency with fiscal year settings
+export const getNextBijakNumber = async (company: string): Promise<number> => { 
+    try {
+        const response = await apiCall<{ nextNumber: number }>(`/next-bijak-number?company=${encodeURIComponent(company)}`);
+        return response.nextNumber;
+    } catch (e) {
+        // Fallback for offline or legacy
+        const settings = await getSettings(); 
+        return (settings.warehouseSequences?.[company] || 1000) + 1; 
+    }
+};
