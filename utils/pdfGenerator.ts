@@ -18,7 +18,7 @@ export interface PdfOptions {
 export const generatePdf = async ({
     elementId,
     filename,
-    format, // No default to allow Smart Detection via CSS
+    format,
     orientation = 'portrait',
     width,
     height,
@@ -56,14 +56,40 @@ export const generatePdf = async ({
 
         const htmlContent = clone.outerHTML;
 
-        // 2. Prepare Full HTML
+        // 2. Extract Styles (Offline Mode Support)
+        // Instead of linking to CDNs, we grab the styles currently applied to the page
+        let collectedStyles = '';
+        
+        // A. From <style> tags (Vite dev usually puts CSS here)
+        const styleTags = document.querySelectorAll('style');
+        styleTags.forEach(tag => {
+            collectedStyles += tag.innerHTML + "\n";
+        });
+
+        // B. From <link rel="stylesheet"> (Vite production bundles)
+        // We try to access cssRules from the CSSOM. This avoids making new network requests for local files.
+        Array.from(document.styleSheets).forEach(sheet => {
+            try {
+                // Skip external sheets if CORS blocks access (like some CDNs), but local app CSS is fine
+                if (sheet.href && !sheet.href.startsWith(window.location.origin)) return;
+                
+                const rules = sheet.cssRules;
+                if (rules) {
+                    Array.from(rules).forEach(rule => {
+                        collectedStyles += rule.cssText + "\n";
+                    });
+                }
+            } catch (e) {
+                // Access denied to cross-origin stylesheet
+            }
+        });
+
+        // 3. Prepare Full HTML
         const fullHtml = `
             <!DOCTYPE html>
             <html lang="fa" dir="rtl">
             <head>
                 <meta charset="UTF-8">
-                <script src="https://cdn.tailwindcss.com"></script>
-                <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
                 <style>
                     /* ZERO MARGIN RESET FOR PDF ENGINE */
                     @page { margin: 0; size: auto; }
@@ -79,6 +105,9 @@ export const generatePdf = async ({
                     }
                     input, select, textarea { background: transparent; border: none; font-family: inherit; }
                     .printable-content { margin: 0 auto; width: 100%; height: 100%; box-shadow: none !important; }
+                    
+                    /* INJECTED APP STYLES */
+                    ${collectedStyles}
                 </style>
             </head>
             <body>
@@ -87,7 +116,7 @@ export const generatePdf = async ({
             </html>
         `;
 
-        // 3. Send to Backend
+        // 4. Send to Backend
         const body: any = {
             html: fullHtml,
             landscape: orientation === 'landscape',
@@ -110,7 +139,7 @@ export const generatePdf = async ({
             throw new Error((errData.error || 'Server Error') + (errData.details ? `: ${errData.details}` : ''));
         }
 
-        // 4. Download Blob
+        // 5. Download Blob
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');

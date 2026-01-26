@@ -2,22 +2,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSettings, saveSettings, restoreSystemData, uploadFile } from '../services/storageService';
 import { SystemSettings, UserRole, RolePermissions, Company, Contact, CompanyBank, User, CustomRole, PrintTemplate } from '../types';
-import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, Package, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, Calendar, Phone, LogOut, RefreshCw, Users, FolderSync, BrainCircuit, Smartphone, Link, Truck, MessageSquare, DownloadCloud, UploadCloud, Warehouse, FileDigit, Briefcase, FileText, Container, Printer, LayoutTemplate, ChevronDown, ChevronRight, Lock, ChevronUp } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, Package, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, Calendar, Phone, LogOut, RefreshCw, Users, FolderSync, BrainCircuit, Smartphone, Link, Truck, MessageSquare, DownloadCloud, UploadCloud, Warehouse, FileDigit, Briefcase, FileText, Container, Printer, LayoutTemplate, ChevronDown, ChevronRight, Lock, ChevronUp, WifiOff } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp } from '../services/notificationService';
 import { getUsers, updateUser } from '../services/authService';
 import { generateUUID } from '../constants';
 import PrintTemplateDesigner from './PrintTemplateDesigner';
 import { FiscalYearManager } from './FiscalModule'; 
-import SecondExitGroupSettings from './settings/SecondExitGroupSettings'; // NEW IMPORT
+import SecondExitGroupSettings from './settings/SecondExitGroupSettings';
 
-// Internal QRCode Component
+// Internal QRCode Component with Error Handling
 const QRCode = ({ value, size }: { value: string, size: number }) => { 
-    return <img src={`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}`} alt="QR Code" width={size} height={size} className="mix-blend-multiply" />; 
+    const [error, setError] = useState(false);
+    
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center text-gray-400 text-xs border-2 border-dashed border-gray-300 rounded-lg p-2" style={{width: size, height: size}}>
+                <WifiOff size={24} className="mb-2"/>
+                <span className="text-center">امکان نمایش QR وجود ندارد (آفلاین)</span>
+            </div>
+        );
+    }
+
+    return (
+        <img 
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}`} 
+            alt="QR Code" 
+            width={size} 
+            height={size} 
+            className="mix-blend-multiply" 
+            onError={() => setError(true)}
+        />
+    ); 
 };
 
 const Settings: React.FC = () => {
-  // ... (rest of the component state remains exactly the same) ...
+  // ... (Component logic remains the same, only the QRCode usage inside is affected by the change above) ...
   const [activeCategory, setActiveCategory] = useState<'system' | 'fiscal' | 'data' | 'integrations' | 'whatsapp' | 'permissions' | 'warehouse' | 'commerce' | 'templates'>('system');
   const [settings, setSettings] = useState<SystemSettings>({ 
       currentTrackingNumber: 1000, 

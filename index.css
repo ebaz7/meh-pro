@@ -2,10 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Font Face - Keeps online link as primary but allows fallback if offline */
+/* Font Face - Updated for better Offline Support */
 @font-face {
   font-family: 'Vazirmatn';
-  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
+  src: local('Vazirmatn'), local('Vazirmatn-Regular'),
+       url('/fonts/Vazirmatn-Regular.woff2') format('woff2'),
+       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
   font-display: swap;
 }
 
