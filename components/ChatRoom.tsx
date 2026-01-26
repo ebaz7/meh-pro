@@ -153,6 +153,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         reader.onload = async (ev) => {
             try {
                 const base64 = ev.target?.result as string;
+                // Upload returns { fileName, url }
                 const result = await uploadFile(file.name, base64);
                 
                 const newMsg: ChatMessage = {

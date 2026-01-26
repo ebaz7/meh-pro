@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getSettings, saveSettings, restoreSystemData, uploadFile } from '../services/storageService';
+import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { SystemSettings, UserRole, RolePermissions, Company, Contact, CompanyBank, User, CustomRole, PrintTemplate } from '../types';
-import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, Package, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, Calendar, Phone, LogOut, RefreshCw, Users, FolderSync, BrainCircuit, Smartphone, Link, Truck, MessageSquare, DownloadCloud, UploadCloud, Warehouse, FileDigit, Briefcase, FileText, Container, Printer, LayoutTemplate, ChevronDown, ChevronRight, Lock, ChevronUp, WifiOff } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, ChevronDown, ChevronUp, WifiOff, Info } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp } from '../services/notificationService';
-import { getUsers, updateUser } from '../services/authService';
+import { getUsers } from '../services/authService';
 import { generateUUID } from '../constants';
 import PrintTemplateDesigner from './PrintTemplateDesigner';
 import { FiscalYearManager } from './FiscalModule'; 
@@ -125,6 +125,7 @@ const Settings: React.FC = () => {
   const [contactNumber, setContactNumber] = useState('');
   const [contactBaleId, setContactBaleId] = useState('');
   const [isGroupContact, setIsGroupContact] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null); // NEW: To track editing contact
   
   const [fetchingGroups, setFetchingGroups] = useState(false);
   const [newOperatingBank, setNewOperatingBank] = useState('');
@@ -286,351 +287,93 @@ const Settings: React.FC = () => {
       } catch (e) { setMessage('خطا ❌'); } finally { setLoading(false); } 
   };
 
-  const handleAddContact = () => { 
+  // --- CONTACTS LOGIC UPDATED ---
+  const handleAddOrUpdateContact = () => { 
       if (!contactName.trim() || !contactNumber.trim()) return; 
-      const newContact: Contact = { 
-          id: generateUUID(), 
+      
+      const newContactData: Contact = { 
+          id: editingContactId || generateUUID(), 
           name: contactName.trim(), 
           number: contactNumber.trim(), 
           baleId: contactBaleId.trim(),
           isGroup: isGroupContact 
       }; 
-      setSettings({ ...settings, savedContacts: [...(settings.savedContacts || []), newContact] }); 
+      
+      let updatedContacts;
+      if (editingContactId) {
+          updatedContacts = (settings.savedContacts || []).map(c => c.id === editingContactId ? newContactData : c);
+      } else {
+          updatedContacts = [...(settings.savedContacts || []), newContactData];
+      }
+
+      setSettings({ ...settings, savedContacts: updatedContacts }); 
+      resetContactForm();
+  };
+
+  const handleEditContact = (c: Contact) => {
+      setEditingContactId(c.id);
+      setContactName(c.name);
+      setContactNumber(c.number);
+      setContactBaleId(c.baleId || '');
+      setIsGroupContact(c.isGroup);
+  };
+
+  const handleDeleteContact = (id: string) => { 
+      if(confirm('حذف شود؟')) {
+        setSettings({ ...settings, savedContacts: (settings.savedContacts || []).filter(c => c.id !== id) }); 
+        if(editingContactId === id) resetContactForm();
+      }
+  };
+
+  const resetContactForm = () => {
       setContactName(''); 
       setContactNumber(''); 
       setContactBaleId('');
       setIsGroupContact(false); 
+      setEditingContactId(null);
   };
-  const handleDeleteContact = (id: string) => { setSettings({ ...settings, savedContacts: (settings.savedContacts || []).filter(c => c.id !== id) }); };
   
+  // ... (Upload handlers remain same)
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLogo(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLogo(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLogo(false); } }; reader.readAsDataURL(file); };
   const handleLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLetterhead(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLetterhead(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLetterhead(false); } }; reader.readAsDataURL(file); };
 
-  const handleSaveCompany = () => { 
-      if (!newCompanyName.trim()) return; 
-      let updatedCompanies = settings.companies || []; 
-      const companyData = { 
-          id: editingCompanyId || generateUUID(), 
-          name: newCompanyName.trim(), 
-          logo: newCompanyLogo, 
-          showInWarehouse: newCompanyShowInWarehouse,
-          banks: newCompanyBanks,
-          letterhead: newCompanyLetterhead,
-          registrationNumber: newCompanyRegNum,
-          nationalId: newCompanyNatId,
-          address: newCompanyAddress,
-          phone: newCompanyPhone,
-          fax: newCompanyFax,
-          postalCode: newCompanyPostalCode,
-          economicCode: newCompanyEcoCode
-      };
-
-      if (editingCompanyId) {
-          updatedCompanies = updatedCompanies.map(c => c.id === editingCompanyId ? companyData : c); 
-      } else {
-          updatedCompanies = [...updatedCompanies, companyData]; 
-      }
-      setSettings({ ...settings, companies: updatedCompanies, companyNames: updatedCompanies.map(c => c.name) }); 
-      resetCompanyForm();
-  };
-
-  const handleEditCompany = (c: Company) => { 
-      setNewCompanyName(c.name); 
-      setNewCompanyLogo(c.logo || ''); 
-      setNewCompanyShowInWarehouse(c.showInWarehouse !== false);
-      setNewCompanyBanks(c.banks || []);
-      setNewCompanyLetterhead(c.letterhead || '');
-      setNewCompanyRegNum(c.registrationNumber || '');
-      setNewCompanyNatId(c.nationalId || '');
-      setNewCompanyAddress(c.address || '');
-      setNewCompanyPhone(c.phone || '');
-      setNewCompanyFax(c.fax || '');
-      setNewCompanyPostalCode(c.postalCode || '');
-      setNewCompanyEcoCode(c.economicCode || '');
-      setEditingCompanyId(c.id); 
-  };
-
-  const resetCompanyForm = () => {
-      setNewCompanyName(''); 
-      setNewCompanyLogo(''); 
-      setNewCompanyShowInWarehouse(true);
-      setNewCompanyBanks([]);
-      setNewCompanyLetterhead('');
-      setNewCompanyRegNum('');
-      setNewCompanyNatId('');
-      setNewCompanyAddress('');
-      setNewCompanyPhone('');
-      setNewCompanyFax('');
-      setNewCompanyPostalCode('');
-      setNewCompanyEcoCode('');
-      setEditingCompanyId(null); 
-      
-      resetBankForm();
-  };
-
-  const resetBankForm = () => {
-      setTempBankName('');
-      setTempAccountNum('');
-      setTempBankSheba('');
-      setTempBankLayout('');
-      setTempInternalLayout('');
-      setTempInternalWithdrawalLayout('');
-      setTempInternalDepositLayout('');
-      setTempDualPrint(false);
-      setEditingBankId(null);
-  };
-
+  // ... (Company handlers remain same)
+  const handleSaveCompany = () => { if (!newCompanyName.trim()) return; let updatedCompanies = settings.companies || []; const companyData = { id: editingCompanyId || generateUUID(), name: newCompanyName.trim(), logo: newCompanyLogo, showInWarehouse: newCompanyShowInWarehouse, banks: newCompanyBanks, letterhead: newCompanyLetterhead, registrationNumber: newCompanyRegNum, nationalId: newCompanyNatId, address: newCompanyAddress, phone: newCompanyPhone, fax: newCompanyFax, postalCode: newCompanyPostalCode, economicCode: newCompanyEcoCode }; if (editingCompanyId) { updatedCompanies = updatedCompanies.map(c => c.id === editingCompanyId ? companyData : c); } else { updatedCompanies = [...updatedCompanies, companyData]; } setSettings({ ...settings, companies: updatedCompanies, companyNames: updatedCompanies.map(c => c.name) }); resetCompanyForm(); };
+  const handleEditCompany = (c: Company) => { setNewCompanyName(c.name); setNewCompanyLogo(c.logo || ''); setNewCompanyShowInWarehouse(c.showInWarehouse !== false); setNewCompanyBanks(c.banks || []); setNewCompanyLetterhead(c.letterhead || ''); setNewCompanyRegNum(c.registrationNumber || ''); setNewCompanyNatId(c.nationalId || ''); setNewCompanyAddress(c.address || ''); setNewCompanyPhone(c.phone || ''); setNewCompanyFax(c.fax || ''); setNewCompanyPostalCode(c.postalCode || ''); setNewCompanyEcoCode(c.economicCode || ''); setEditingCompanyId(c.id); };
+  const resetCompanyForm = () => { setNewCompanyName(''); setNewCompanyLogo(''); setNewCompanyShowInWarehouse(true); setNewCompanyBanks([]); setNewCompanyLetterhead(''); setNewCompanyRegNum(''); setNewCompanyNatId(''); setNewCompanyAddress(''); setNewCompanyPhone(''); setNewCompanyFax(''); setNewCompanyPostalCode(''); setNewCompanyEcoCode(''); setEditingCompanyId(null); resetBankForm(); };
+  const resetBankForm = () => { setTempBankName(''); setTempAccountNum(''); setTempBankSheba(''); setTempBankLayout(''); setTempInternalLayout(''); setTempInternalWithdrawalLayout(''); setTempInternalDepositLayout(''); setTempDualPrint(false); setEditingBankId(null); };
   const handleRemoveCompany = (id: string) => { if(confirm("حذف؟")) { const updated = (settings.companies || []).filter(c => c.id !== id); setSettings({ ...settings, companies: updated, companyNames: updated.map(c => c.name) }); } };
-  
-  const addOrUpdateCompanyBank = () => {
-      if (!tempBankName) return;
-      const bankData: CompanyBank = { 
-          id: editingBankId || generateUUID(), 
-          bankName: tempBankName, 
-          accountNumber: tempAccountNum,
-          sheba: tempBankSheba,
-          formLayoutId: tempBankLayout,
-          internalTransferTemplateId: tempInternalLayout, // Keep for backward compat
-          enableDualPrint: tempDualPrint,
-          internalWithdrawalTemplateId: tempInternalWithdrawalLayout,
-          internalDepositTemplateId: tempInternalDepositLayout
-      };
+  const addOrUpdateCompanyBank = () => { if (!tempBankName) return; const bankData: CompanyBank = { id: editingBankId || generateUUID(), bankName: tempBankName, accountNumber: tempAccountNum, sheba: tempBankSheba, formLayoutId: tempBankLayout, internalTransferTemplateId: tempInternalLayout, enableDualPrint: tempDualPrint, internalWithdrawalTemplateId: tempInternalWithdrawalLayout, internalDepositTemplateId: tempInternalDepositLayout }; if (editingBankId) { setNewCompanyBanks(newCompanyBanks.map(b => b.id === editingBankId ? bankData : b)); } else { setNewCompanyBanks([...newCompanyBanks, bankData]); } resetBankForm(); };
+  const editCompanyBank = (bank: CompanyBank) => { setTempBankName(bank.bankName); setTempAccountNum(bank.accountNumber); setTempBankSheba(bank.sheba || ''); setTempBankLayout(bank.formLayoutId || ''); setTempInternalLayout(bank.internalTransferTemplateId || ''); setTempDualPrint(bank.enableDualPrint || false); setTempInternalWithdrawalLayout(bank.internalWithdrawalTemplateId || ''); setTempInternalDepositLayout(bank.internalDepositTemplateId || ''); setEditingBankId(bank.id); };
+  const removeCompanyBank = (id: string) => { setNewCompanyBanks(newCompanyBanks.filter(b => b.id !== id)); if (editingBankId === id) resetBankForm(); };
 
-      if (editingBankId) {
-          setNewCompanyBanks(newCompanyBanks.map(b => b.id === editingBankId ? bankData : b));
-      } else {
-          setNewCompanyBanks([...newCompanyBanks, bankData]);
-      }
-      resetBankForm();
-  };
-
-  const editCompanyBank = (bank: CompanyBank) => {
-      setTempBankName(bank.bankName);
-      setTempAccountNum(bank.accountNumber);
-      setTempBankSheba(bank.sheba || '');
-      setTempBankLayout(bank.formLayoutId || '');
-      setTempInternalLayout(bank.internalTransferTemplateId || '');
-      setTempDualPrint(bank.enableDualPrint || false);
-      setTempInternalWithdrawalLayout(bank.internalWithdrawalTemplateId || '');
-      setTempInternalDepositLayout(bank.internalDepositTemplateId || '');
-      setEditingBankId(bank.id);
-  };
-
-  const removeCompanyBank = (id: string) => {
-      setNewCompanyBanks(newCompanyBanks.filter(b => b.id !== id));
-      if (editingBankId === id) resetBankForm();
-  };
-
+  // ... (Other handlers remain same)
   const handleAddOperatingBank = () => { if (newOperatingBank.trim() && !(settings.operatingBankNames || []).includes(newOperatingBank.trim())) { setSettings({ ...settings, operatingBankNames: [...(settings.operatingBankNames || []), newOperatingBank.trim()] }); setNewOperatingBank(''); } };
   const handleRemoveOperatingBank = (name: string) => { setSettings({ ...settings, operatingBankNames: (settings.operatingBankNames || []).filter(b => b !== name) }); };
-
   const handleAddCommodity = () => { if (newCommodity.trim() && !settings.commodityGroups.includes(newCommodity.trim())) { setSettings({ ...settings, commodityGroups: [...settings.commodityGroups, newCommodity.trim()] }); setNewCommodity(''); } };
   const handleRemoveCommodity = (name: string) => { setSettings({ ...settings, commodityGroups: settings.commodityGroups.filter(c => c !== name) }); };
-  
   const handleAddInsuranceCompany = () => { if (newInsuranceCompany.trim() && !(settings.insuranceCompanies || []).includes(newInsuranceCompany.trim())) { setSettings({ ...settings, insuranceCompanies: [...(settings.insuranceCompanies || []), newInsuranceCompany.trim()] }); setNewInsuranceCompany(''); } };
   const handleRemoveInsuranceCompany = (name: string) => { setSettings({ ...settings, insuranceCompanies: (settings.insuranceCompanies || []).filter(c => c !== name) }); };
-
-  const handleAddRole = () => {
-      if (!newRoleName.trim()) return;
-      const roleId = `role_${Date.now()}`;
-      const newRole: CustomRole = { id: roleId, label: newRoleName.trim() };
-      setSettings({
-          ...settings,
-          customRoles: [...(settings.customRoles || []), newRole]
-      });
-      setNewRoleName('');
-  };
-
-  const handleRemoveRole = (roleId: string) => {
-      if (!confirm("آیا از حذف این نقش اطمینان دارید؟")) return;
-      const updatedRoles = (settings.customRoles || []).filter(r => r.id !== roleId);
-      const updatedPermissions = { ...settings.rolePermissions };
-      delete updatedPermissions[roleId];
-      
-      setSettings({
-          ...settings,
-          customRoles: updatedRoles,
-          rolePermissions: updatedPermissions
-      });
-  };
-
-  const handlePermissionChange = (role: string, field: keyof RolePermissions, value: boolean) => {
-      const currentRolePerms = settings.rolePermissions[role] || ({} as RolePermissions);
-      const newRolePerms = { ...currentRolePerms, [field]: value };
-      setSettings({ 
-          ...settings, 
-          rolePermissions: { 
-              ...settings.rolePermissions, 
-              [role]: newRolePerms as RolePermissions
-          } 
-      }); 
-  };
+  const handleAddRole = () => { if (!newRoleName.trim()) return; const roleId = `role_${Date.now()}`; const newRole: CustomRole = { id: roleId, label: newRoleName.trim() }; setSettings({ ...settings, customRoles: [...(settings.customRoles || []), newRole] }); setNewRoleName(''); };
+  const handleRemoveRole = (roleId: string) => { if (!confirm("آیا از حذف این نقش اطمینان دارید؟")) return; const updatedRoles = (settings.customRoles || []).filter(r => r.id !== roleId); const updatedPermissions = { ...settings.rolePermissions }; delete updatedPermissions[roleId]; setSettings({ ...settings, customRoles: updatedRoles, rolePermissions: updatedPermissions }); };
+  const handlePermissionChange = (role: string, field: keyof RolePermissions, value: boolean) => { const currentRolePerms = settings.rolePermissions[role] || ({} as RolePermissions); const newRolePerms = { ...currentRolePerms, [field]: value }; setSettings({ ...settings, rolePermissions: { ...settings.rolePermissions, [role]: newRolePerms as RolePermissions } }); };
   const handleIconChange = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingIcon(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const res = await uploadFile(file.name, ev.target?.result as string); setSettings({ ...settings, pwaIcon: res.url }); } catch (error) { alert('خطا'); } finally { setUploadingIcon(false); } }; reader.readAsDataURL(file); };
-  
-  const handleToggleNotifications = async () => { 
-      if (!isSecure && window.location.hostname !== 'localhost') { 
-          alert("برای فعال‌سازی نوتیفیکیشن نیاز به HTTPS است."); 
-          return; 
-      }
-      
-      const granted = await requestNotificationPermission(); 
-      if (granted) { 
-          setNotificationPreference(true); 
-          setNotificationsEnabled(true); 
-          alert("نوتیفیکیشن فعال شد. اتصال به سرور بروزرسانی شد.");
-      } else {
-          alert("دسترسی به نوتیفیکیشن مسدود است یا پشتیبانی نمی‌شود.");
-      }
-  };
-
-  const handleTestNotification = async () => {
-      try {
-          const userStr = localStorage.getItem('app_current_user');
-          const username = userStr ? JSON.parse(userStr).username : 'test';
-          await apiCall('/send-test-push', 'POST', { username });
-          alert("درخواست تست ارسال شد.");
-      } catch (e: any) {
-          let msg = "خطا در ارسال تست";
-          if (e.message && e.message.includes('404')) {
-              if (confirm("اشتراک نوتیفیکیشن شما در سرور یافت نشد. آیا می‌خواهید مجدداً فعال‌سازی کنید؟")) {
-                  handleToggleNotifications();
-                  return;
-              }
-              msg = "اشتراک یافت نشد.";
-          } else if (e.message) {
-              msg += `: ${e.message}`;
-          }
-          alert(msg);
-      }
-  };
-
-  const handleDownloadBackup = (includeFiles: boolean) => { 
-      window.location.href = `/api/full-backup?includeFiles=${includeFiles}`; 
-  };
-  
+  const handleToggleNotifications = async () => { if (!isSecure && window.location.hostname !== 'localhost') { alert("برای فعال‌سازی نوتیفیکیشن نیاز به HTTPS است."); return; } const granted = await requestNotificationPermission(); if (granted) { setNotificationPreference(true); setNotificationsEnabled(true); alert("نوتیفیکیشن فعال شد. اتصال به سرور بروزرسانی شد."); } else { alert("دسترسی به نوتیفیکیشن مسدود است یا پشتیبانی نمی‌شود."); } };
+  const handleTestNotification = async () => { try { const userStr = localStorage.getItem('app_current_user'); const username = userStr ? JSON.parse(userStr).username : 'test'; await apiCall('/send-test-push', 'POST', { username }); alert("درخواست تست ارسال شد."); } catch (e: any) { let msg = "خطا در ارسال تست"; if (e.message && e.message.includes('404')) { if (confirm("اشتراک نوتیفیکیشن شما در سرور یافت نشد. آیا می‌خواهید مجدداً فعال‌سازی کنید؟")) { handleToggleNotifications(); return; } msg = "اشتراک یافت نشد."; } else if (e.message) { msg += `: ${e.message}`; } alert(msg); } };
+  const handleDownloadBackup = (includeFiles: boolean) => { window.location.href = `/api/full-backup?includeFiles=${includeFiles}`; };
   const handleRestoreClick = () => { if (confirm('بازگردانی اطلاعات کامل (شامل عکس‌ها)؟ همه اطلاعات فعلی پاک می‌شود.')) fileInputRef.current?.click(); };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setRestoring(true); const reader = new FileReader(); reader.onload = async (ev) => { const base64 = ev.target?.result as string; try { const response = await apiCall<{success: boolean}>('/full-restore', 'POST', { fileData: base64 }); if (response.success) { alert('بازگردانی کامل با موفقیت انجام شد. سیستم رفرش می‌شود.'); window.location.reload(); } } catch (error) { alert('خطا در بازگردانی فایل Zip'); } finally { setRestoring(false); } }; reader.readAsDataURL(file); };
+  const handleSaveTemplate = (template: PrintTemplate) => { const existing = settings.printTemplates || []; const updated = editingTemplate ? existing.map(t => t.id === template.id ? template : t) : [...existing, template]; setSettings({ ...settings, printTemplates: updated }); setShowDesigner(false); setEditingTemplate(null); };
+  const handleEditTemplate = (t: PrintTemplate) => { setEditingTemplate(t); setShowDesigner(true); };
+  const handleDeleteTemplate = (id: string) => { if(!confirm('حذف قالب؟')) return; const updated = (settings.printTemplates || []).filter(t => t.id !== id); setSettings({ ...settings, printTemplates: updated }); };
 
-  const handleSaveTemplate = (template: PrintTemplate) => {
-      const existing = settings.printTemplates || [];
-      const updated = editingTemplate 
-          ? existing.map(t => t.id === template.id ? template : t)
-          : [...existing, template];
-      
-      setSettings({ ...settings, printTemplates: updated });
-      setShowDesigner(false);
-      setEditingTemplate(null);
-  };
-
-  const handleEditTemplate = (t: PrintTemplate) => {
-      setEditingTemplate(t);
-      setShowDesigner(true);
-  };
-
-  const handleDeleteTemplate = (id: string) => {
-      if(!confirm('حذف قالب؟')) return;
-      const updated = (settings.printTemplates || []).filter(t => t.id !== id);
-      setSettings({ ...settings, printTemplates: updated });
-  };
-
-  const defaultRoles = [ 
-      { id: UserRole.USER, label: 'کاربر عادی' }, 
-      { id: UserRole.FINANCIAL, label: 'مدیر مالی' }, 
-      { id: UserRole.MANAGER, label: 'مدیر داخلی' }, 
-      { id: UserRole.CEO, label: 'مدیر عامل' }, 
-      { id: UserRole.SALES_MANAGER, label: 'مدیر فروش' },
-      { id: UserRole.FACTORY_MANAGER, label: 'مدیر کارخانه' },
-      { id: UserRole.WAREHOUSE_KEEPER, label: 'انبار واردات' },
-      { id: UserRole.SECURITY_HEAD, label: 'سرپرست انتظامات' },
-      { id: UserRole.SECURITY_GUARD, label: 'نگهبان' },
-      { id: UserRole.ADMIN, label: 'مدیر سیستم' }, 
-  ];
-
+  // ... (Permission groups and toggle logic remain same)
+  const defaultRoles = [ { id: UserRole.USER, label: 'کاربر عادی' }, { id: UserRole.FINANCIAL, label: 'مدیر مالی' }, { id: UserRole.MANAGER, label: 'مدیر داخلی' }, { id: UserRole.CEO, label: 'مدیر عامل' }, { id: UserRole.SALES_MANAGER, label: 'مدیر فروش' }, { id: UserRole.FACTORY_MANAGER, label: 'مدیر کارخانه' }, { id: UserRole.WAREHOUSE_KEEPER, label: 'انبار واردات' }, { id: UserRole.SECURITY_HEAD, label: 'سرپرست انتظامات' }, { id: UserRole.SECURITY_GUARD, label: 'نگهبان' }, { id: UserRole.ADMIN, label: 'مدیر سیستم' }, ];
   const allRoles = [...defaultRoles, ...(settings.customRoles || [])];
-  
-  const PERMISSION_GROUPS = [
-      {
-          id: 'payment',
-          title: 'ماژول پرداخت',
-          icon: Landmark,
-          color: 'blue',
-          items: [
-              { id: 'canCreatePaymentOrder', label: 'ثبت دستور پرداخت جدید' },
-              { id: 'canViewPaymentOrders', label: 'مشاهده کارتابل پرداخت' },
-              { id: 'canApproveFinancial', label: 'تایید مرحله مالی' },
-              { id: 'canApproveManager', label: 'تایید مرحله مدیریت' },
-              { id: 'canApproveCeo', label: 'تایید مرحله نهایی (مدیرعامل)' }
-          ]
-      },
-      {
-          id: 'exit',
-          title: 'ماژول خروج کارخانه',
-          icon: Truck,
-          color: 'orange',
-          items: [
-              { id: 'canCreateExitPermit', label: 'ثبت درخواست خروج بار' },
-              { id: 'canViewExitPermits', label: 'مشاهده کارتابل خروج' },
-              { id: 'canApproveExitCeo', label: 'تایید خروج (مدیرعامل)' },
-              { id: 'canApproveExitFactory', label: 'تایید خروج (مدیر کارخانه)' },
-              { id: 'canApproveExitWarehouse', label: 'تایید خروج (سرپرست انبار)' },
-              { id: 'canApproveExitSecurity', label: 'تایید خروج (انتظامات - نهایی)' }, 
-              { id: 'canViewExitArchive', label: 'مشاهده بایگانی خروج' },
-              { id: 'canEditExitArchive', label: 'اصلاح اسناد بایگانی (Admin)' }
-          ]
-      },
-      {
-          id: 'warehouse',
-          title: 'ماژول انبار',
-          icon: Warehouse,
-          color: 'green',
-          items: [
-              { id: 'canManageWarehouse', label: 'مدیریت انبار (ورود/خروج)' },
-              { id: 'canViewWarehouseReports', label: 'مشاهده گزارشات انبار' },
-              { id: 'canApproveBijak', label: 'تایید نهایی بیجک (مدیریت)' }
-          ]
-      },
-      {
-          id: 'security',
-          title: 'ماژول انتظامات',
-          icon: ShieldCheck,
-          color: 'purple',
-          items: [
-              { id: 'canViewSecurity', label: 'مشاهده ماژول انتظامات' },
-              { id: 'canCreateSecurityLog', label: 'ثبت گزارشات (نگهبان)' },
-              { id: 'canApproveSecuritySupervisor', label: 'تایید گزارشات (سرپرست)' }
-          ]
-      },
-      {
-          id: 'general',
-          title: 'عمومی و مدیریتی',
-          icon: Lock,
-          color: 'gray',
-          items: [
-              { id: 'canViewAll', label: 'مشاهده تمام دستورات (همه کاربران)' },
-              { id: 'canEditOwn', label: 'ویرایش دستور خود' },
-              { id: 'canDeleteOwn', label: 'حذف دستور خود' },
-              { id: 'canEditAll', label: 'ویرایش تمام دستورات' },
-              { id: 'canDeleteAll', label: 'حذف تمام دستورات' },
-              { id: 'canManageTrade', label: 'دسترسی به بخش بازرگانی' },
-              { id: 'canManageSettings', label: 'دسترسی به تنظیمات سیستم' }
-          ]
-      }
-  ];
-
-  const togglePermissionGroup = (roleId: string, groupItems: {id: string}[], isChecked: boolean) => {
-      const newPermissions: any = { ...settings.rolePermissions?.[roleId] || {} };
-      groupItems.forEach(item => {
-          newPermissions[item.id] = isChecked;
-      });
-      setSettings({
-          ...settings,
-          rolePermissions: { ...settings.rolePermissions, [roleId]: newPermissions as RolePermissions }
-      });
-  };
-
-  const toggleGroupExpand = (key: string) => {
-      setExpandedPermGroups(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+  const PERMISSION_GROUPS = [ { id: 'payment', title: 'ماژول پرداخت', icon: Landmark, color: 'blue', items: [ { id: 'canCreatePaymentOrder', label: 'ثبت دستور پرداخت جدید' }, { id: 'canViewPaymentOrders', label: 'مشاهده کارتابل پرداخت' }, { id: 'canApproveFinancial', label: 'تایید مرحله مالی' }, { id: 'canApproveManager', label: 'تایید مرحله مدیریت' }, { id: 'canApproveCeo', label: 'تایید مرحله نهایی (مدیرعامل)' } ] }, { id: 'exit', title: 'ماژول خروج کارخانه', icon: Truck, color: 'orange', items: [ { id: 'canCreateExitPermit', label: 'ثبت درخواست خروج بار' }, { id: 'canViewExitPermits', label: 'مشاهده کارتابل خروج' }, { id: 'canApproveExitCeo', label: 'تایید خروج (مدیرعامل)' }, { id: 'canApproveExitFactory', label: 'تایید خروج (مدیر کارخانه)' }, { id: 'canApproveExitWarehouse', label: 'تایید خروج (سرپرست انبار)' }, { id: 'canApproveExitSecurity', label: 'تایید خروج (انتظامات - نهایی)' }, { id: 'canViewExitArchive', label: 'مشاهده بایگانی خروج' }, { id: 'canEditExitArchive', label: 'اصلاح اسناد بایگانی (Admin)' } ] }, { id: 'warehouse', title: 'ماژول انبار', icon: Warehouse, color: 'green', items: [ { id: 'canManageWarehouse', label: 'مدیریت انبار (ورود/خروج)' }, { id: 'canViewWarehouseReports', label: 'مشاهده گزارشات انبار' }, { id: 'canApproveBijak', label: 'تایید نهایی بیجک (مدیریت)' } ] }, { id: 'security', title: 'ماژول انتظامات', icon: ShieldCheck, color: 'purple', items: [ { id: 'canViewSecurity', label: 'مشاهده ماژول انتظامات' }, { id: 'canCreateSecurityLog', label: 'ثبت گزارشات (نگهبان)' }, { id: 'canApproveSecuritySupervisor', label: 'تایید گزارشات (سرپرست)' } ] }, { id: 'general', title: 'عمومی و مدیریتی', icon: Lock, color: 'gray', items: [ { id: 'canViewAll', label: 'مشاهده تمام دستورات (همه کاربران)' }, { id: 'canEditOwn', label: 'ویرایش دستور خود' }, { id: 'canDeleteOwn', label: 'حذف دستور خود' }, { id: 'canEditAll', label: 'ویرایش تمام دستورات' }, { id: 'canDeleteAll', label: 'حذف تمام دستورات' }, { id: 'canManageTrade', label: 'دسترسی به بخش بازرگانی' }, { id: 'canManageSettings', label: 'دسترسی به تنظیمات سیستم' } ] } ];
+  const togglePermissionGroup = (roleId: string, groupItems: {id: string}[], isChecked: boolean) => { const newPermissions: any = { ...settings.rolePermissions?.[roleId] || {} }; groupItems.forEach(item => { newPermissions[item.id] = isChecked; }); setSettings({ ...settings, rolePermissions: { ...settings.rolePermissions, [roleId]: newPermissions as RolePermissions } }); };
+  const toggleGroupExpand = (key: string) => { setExpandedPermGroups(prev => ({ ...prev, [key]: !prev[key] })); };
+  const getMergedContactOptions = () => { return [...(settings.savedContacts || []), ...appUsers as Contact[]]; };
 
   if (showDesigner) {
       return <PrintTemplateDesigner onSave={handleSaveTemplate} onCancel={() => setShowDesigner(false)} initialTemplate={editingTemplate} />;
@@ -664,6 +407,7 @@ const Settings: React.FC = () => {
                     {/* SYSTEM SETTINGS */}
                     {activeCategory === 'system' && (
                         <div className="space-y-8 animate-fade-in">
+                             {/* ... */}
                              <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2">تنظیمات ظاهری و اعلان‌ها</h3>
                                 <div className="flex items-center gap-4">
@@ -765,41 +509,50 @@ const Settings: React.FC = () => {
                                         value={settings.baleBotToken || ''} 
                                         onChange={(e) => setSettings({...settings, baleBotToken: e.target.value})} 
                                     />
-                                    <p className="text-xs text-gray-500 leading-relaxed">
-                                        برای استفاده از ارسال خودکار در بله:
-                                        <br/>1. یک ربات در بله بسازید (@BotFather).
-                                        <br/>2. توکن ربات را در اینجا وارد کنید.
-                                        <br/>3. کاربران باید ربات را Start کنند.
-                                        <br/>4. برای <strong>ارسال به گروه</strong>: ربات را در گروه بله عضو کرده و دسترسی ارسال پیام بدهید. سپس شناسه عددی گروه را در پایین (دفترچه تلفن) وارد کنید.
-                                    </p>
+                                    <div className="text-xs text-gray-500 leading-relaxed bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                        <div className="flex items-center gap-1 font-bold text-blue-800 mb-1"><Info size={14}/> راهنما:</div>
+                                        برای ارسال پیام به یک گروه در بله (هنگام تایید اسناد):
+                                        <ol className="list-decimal list-inside mt-1 space-y-1">
+                                            <li>یک ربات در بله بسازید (@BotFather) و توکن را در بالا وارد کنید.</li>
+                                            <li>ربات را در گروه بله خود عضو کنید و دسترسی ادمین بدهید.</li>
+                                            <li>شناسه عددی گروه بله را پیدا کنید.</li>
+                                            <li>در پایین (دفترچه تلفن)، گروه واتساپی مربوطه را <strong>ویرایش</strong> کنید و <strong>شناسه بله</strong> را وارد نمایید.</li>
+                                        </ol>
+                                    </div>
                                 </div>
                             </div>
-                            
-                            {/* Other API Keys (Gemini/Telegram) - Kept here or in Integrations, but original design had them separate. Let's keep existing Telegram inputs if they were here, but usually they are in Integrations. */}
-                            {/* Assuming they are in Integrations tab as per structure */}
 
                             <div className="space-y-4">
                                 <h3 className="font-bold text-gray-800 border-b pb-2">دفترچه تلفن هوشمند (گروه‌ها و اشخاص)</h3>
                                 <div className="flex gap-2 items-end bg-gray-50 p-3 rounded-lg border border-gray-200 flex-wrap">
                                     <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">نام مخاطب / گروه</label><input className="w-full border rounded-lg p-2 text-sm" placeholder="نام..." value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
-                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">شماره / شناسه گروه (واتساپ)</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left" placeholder="98912..." value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} /></div>
+                                    <div className="flex-1 min-w-[150px] space-y-1"><label className="text-xs text-gray-500">شماره / شناسه گروه (واتساپ)</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left" placeholder="98912..." value={contactNumber} onChange={e => setContactNumber(e.target.value)} /></div>
                                     <div className="flex-1 min-w-[120px] space-y-1"><label className="text-xs text-gray-500 text-blue-600 font-bold">شناسه بله (Bale ID)</label><input className="w-full border rounded-lg p-2 text-sm dir-ltr text-left border-blue-200" placeholder="12345678" value={contactBaleId} onChange={(e) => setContactBaleId(e.target.value)} /></div>
                                     <div className="flex items-center gap-2 mb-2"><input type="checkbox" checked={isGroupContact} onChange={e => setIsGroupContact(e.target.checked)} className="w-4 h-4 text-blue-600"/><span className="text-sm">گروه است؟</span></div>
-                                    <button type="button" onClick={handleAddContact} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 h-[38px]"><Plus size={20} /></button>
+                                    
+                                    <div className="flex gap-1 h-[38px]">
+                                        {editingContactId && <button type="button" onClick={resetContactForm} className="bg-gray-200 text-gray-700 p-2 rounded-lg hover:bg-gray-300" title="انصراف"><X size={20}/></button>}
+                                        <button type="button" onClick={handleAddOrUpdateContact} className={`${editingContactId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white p-2 rounded-lg`}>
+                                            {editingContactId ? <Save size={20}/> : <Plus size={20}/>}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="space-y-2 max-h-60 overflow-y-auto">
                                     {settings.savedContacts?.map(c => (
-                                        <div key={c.id} className="flex justify-between items-center p-3 bg-white border rounded-lg hover:bg-gray-50">
+                                        <div key={c.id} className={`flex justify-between items-center p-3 bg-white border rounded-lg hover:bg-gray-50 ${editingContactId === c.id ? 'border-amber-400 bg-amber-50' : ''}`}>
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-2 rounded-full ${c.isGroup ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>{c.isGroup ? <Users size={16} /> : <Smartphone size={16} />}</div>
                                                 <div>
                                                     <div className="font-bold text-sm text-gray-800">{c.name}</div>
                                                     <div className="text-xs text-gray-500 font-mono">
-                                                        WA: {c.number} {c.baleId ? `| Bale: ${c.baleId}` : ''}
+                                                        WA: {c.number} {c.baleId ? <span className="text-blue-600 font-bold bg-blue-50 px-1 rounded">| Bale: {c.baleId}</span> : ''}
                                                     </div>
                                                 </div>
                                             </div>
-                                            <button type="button" onClick={() => handleDeleteContact(c.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
+                                            <div className="flex gap-2">
+                                                <button type="button" onClick={() => handleEditContact(c)} className="text-amber-500 hover:text-amber-700 bg-amber-50 p-1.5 rounded"><Pencil size={14} /></button>
+                                                <button type="button" onClick={() => handleDeleteContact(c.id)} className="text-red-400 hover:text-red-600 bg-red-50 p-1.5 rounded"><Trash2 size={14} /></button>
+                                            </div>
                                         </div>
                                     ))}
                                     {(!settings.savedContacts || settings.savedContacts.length === 0) && <div className="text-center text-gray-400 py-4 text-sm">مخاطبی ثبت نشده است.</div>}
@@ -808,9 +561,92 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* DATA TAB */}
+                    {/* ... (Data Tab remains the same) ... */}
+                    
+                    {/* WAREHOUSE TAB UPDATED */}
+                    {activeCategory === 'warehouse' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره گروه واتساپ انبار (پیش‌فرض)</label>
+                                    {/* UPDATED: SELECT INSTEAD OF INPUT */}
+                                    <select 
+                                        className="w-full border rounded-lg p-3 dir-ltr text-left bg-white" 
+                                        value={settings.defaultWarehouseGroup || ''} 
+                                        onChange={e => setSettings({...settings, defaultWarehouseGroup: e.target.value})}
+                                    >
+                                        <option value="">-- انتخاب گروه --</option>
+                                        {settings.savedContacts?.filter(c => c.isGroup).map(c => (
+                                            <option key={c.id} value={c.number}>{c.name} {c.baleId ? '(+Bale)' : ''}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        شناسه گروهی که بیجک‌های تایید شده به آن ارسال می‌شوند. 
+                                        <br/>* برای افزودن گروه جدید، به تب پیام‌رسان‌ها بروید.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
+                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultSalesManager || ''} onChange={e => setSettings({...settings, defaultSalesManager: e.target.value})} placeholder="98912..." />
+                                </div>
+                            </div>
+
+                            <div className="mt-6">
+                                <h4 className="font-bold text-sm text-gray-700 mb-3 border-b pb-1">تنظیمات اختصاصی شرکت‌ها (اختیاری)</h4>
+                                <div className="space-y-3">
+                                    {settings.companies?.filter(c => c.showInWarehouse).map(c => {
+                                        const conf = settings.companyNotifications?.[c.name] || {};
+                                        return (
+                                            <div key={c.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                                <h5 className="font-bold text-sm text-blue-800 mb-2">{c.name}</h5>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-xs block mb-1">شماره مدیر:</label>
+                                                        <input className="w-full border rounded p-2 text-xs dir-ltr" value={conf.salesManager || ''} onChange={e => {
+                                                            const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, salesManager: e.target.value } };
+                                                            setSettings({ ...settings, companyNotifications: newConf });
+                                                        }} placeholder="پیش‌فرض" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs block mb-1">گروه انبار:</label>
+                                                        {/* UPDATED: SELECT HERE TOO */}
+                                                        <select 
+                                                            className="w-full border rounded p-2 text-xs dir-ltr bg-white" 
+                                                            value={conf.warehouseGroup || ''} 
+                                                            onChange={e => {
+                                                                const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, warehouseGroup: e.target.value } };
+                                                                setSettings({ ...settings, companyNotifications: newConf });
+                                                            }}
+                                                        >
+                                                            <option value="">-- پیش‌فرض سیستم --</option>
+                                                            {settings.savedContacts?.filter(c => c.isGroup).map(grp => (
+                                                                <option key={grp.id} value={grp.number}>{grp.name} {grp.baleId ? '(+B)' : ''}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            
+                            {/* Second Group Config for Exit Permits */}
+                            <SecondExitGroupSettings 
+                                settings={settings} 
+                                setSettings={setSettings} 
+                                contacts={[...(settings.savedContacts || []), ...appUsers as Contact[]]} 
+                            />
+                        </div>
+                    )}
+                    
+                    {/* ... (Rest of tabs remain same) ... */}
+                    {/* DATA, TEMPLATES, COMMERCE, INTEGRATIONS, PERMISSIONS tabs are preserved */}
+                    {/* Only showing placeholder for brevity where code didn't change */}
                     {activeCategory === 'data' && (
-                        <div className="space-y-8 animate-fade-in">
+                         <div className="space-y-8 animate-fade-in">
                             <div className="space-y-4">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Building size={20}/> مدیریت شرکت‌ها و بانک‌ها</h3>
                             
@@ -913,7 +749,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* INTEGRATIONS TAB */}
                     {activeCategory === 'integrations' && (
                         <div className="space-y-6 animate-fade-in">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Link size={20}/> تنظیمات اتصالات خارجی</h3>
@@ -948,7 +783,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* TEMPLATES TAB */}
                     {activeCategory === 'templates' && (
                         <div className="space-y-6 animate-fade-in">
                             <div className="flex justify-between items-center border-b pb-2">
@@ -984,63 +818,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* WAREHOUSE TAB */}
-                    {activeCategory === 'warehouse' && (
-                        <div className="space-y-6 animate-fade-in">
-                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار</h3>
-                            
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره گروه واتساپ انبار (پیش‌فرض)</label>
-                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultWarehouseGroup || ''} onChange={e => setSettings({...settings, defaultWarehouseGroup: e.target.value})} placeholder="12036... @g.us" />
-                                    <p className="text-xs text-gray-500 mt-1">شناسه گروهی که بیجک‌های تایید شده به آن ارسال می‌شوند.</p>
-                                </div>
-                                <div>
-                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
-                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultSalesManager || ''} onChange={e => setSettings({...settings, defaultSalesManager: e.target.value})} placeholder="98912..." />
-                                </div>
-                            </div>
-
-                            <div className="mt-6">
-                                <h4 className="font-bold text-sm text-gray-700 mb-3 border-b pb-1">تنظیمات اختصاصی شرکت‌ها (اختیاری)</h4>
-                                <div className="space-y-3">
-                                    {settings.companies?.filter(c => c.showInWarehouse).map(c => {
-                                        const conf = settings.companyNotifications?.[c.name] || {};
-                                        return (
-                                            <div key={c.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                                <h5 className="font-bold text-sm text-blue-800 mb-2">{c.name}</h5>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    <div>
-                                                        <label className="text-xs block mb-1">شماره مدیر:</label>
-                                                        <input className="w-full border rounded p-2 text-xs dir-ltr" value={conf.salesManager || ''} onChange={e => {
-                                                            const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, salesManager: e.target.value } };
-                                                            setSettings({ ...settings, companyNotifications: newConf });
-                                                        }} placeholder="پیش‌فرض" />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-xs block mb-1">گروه انبار:</label>
-                                                        <input className="w-full border rounded p-2 text-xs dir-ltr" value={conf.warehouseGroup || ''} onChange={e => {
-                                                            const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, warehouseGroup: e.target.value } };
-                                                            setSettings({ ...settings, companyNotifications: newConf });
-                                                        }} placeholder="پیش‌فرض" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            
-                            {/* Second Group Config for Exit Permits */}
-                            <SecondExitGroupSettings 
-                                settings={settings} 
-                                setSettings={setSettings} 
-                                contacts={[...(settings.savedContacts || []), ...appUsers as Contact[]]} 
-                            />
-                        </div>
-                    )}
-                    
-                    {/* COMMERCE TAB */}
                     {activeCategory === 'commerce' && (
                         <div className="space-y-6 animate-fade-in">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Container size={20}/> تنظیمات بازرگانی</h3>
@@ -1079,7 +856,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* PERMISSIONS TAB */}
                     {activeCategory === 'permissions' && (
                         <div className="space-y-8 animate-fade-in">
                             {/* ... Permission UI ... */}
