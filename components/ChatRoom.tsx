@@ -178,14 +178,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         };
 
         reader.onerror = () => {
-             alert("خطا در خواندن فایل. ممکن است حافظه مرورگر پر شده باشد.");
+             alert("خطا در خواندن فایل.");
              setIsUploading(false);
         };
 
         try {
             reader.readAsDataURL(file);
         } catch(e) {
-            alert("فایل بسیار حجیم است و مرورگر توانایی پردازش آن را ندارد.");
+            alert("خطا در پردازش فایل.");
             setIsUploading(false);
         }
 
@@ -201,6 +201,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 clearInterval(recordingTimerRef.current);
             }
         } else {
+            // Check for Secure Context
+            if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
+                alert("امکان ضبط صدا فقط در حالت امن (HTTPS) یا لوکال‌هاست وجود دارد. لطفاً از سرور HTTPS استفاده کنید.");
+                return;
+            }
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const mediaRecorder = new MediaRecorder(stream);

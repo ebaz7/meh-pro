@@ -41,13 +41,12 @@ process.on('unhandledRejection', (reason) => {
 
 import { initTelegram, sendDocument as sendTelegramDoc, sendMessage as sendTelegramMsg, notifyNewBijak } from './backend/telegram.js';
 import { initWhatsApp, sendMessage as sendWhatsAppMessage, getStatus as getWhatsAppStatus, logout as logoutWhatsApp, getGroups as getWhatsAppGroups } from './backend/whatsapp.js';
-import { sendBaleMessage, initBaleBot } from './backend/bale.js'; // IMPORT BALE MODULE
+import { sendBaleMessage, initBaleBot } from './backend/bale.js';
 
 const app = express();
 
 // --- PORT CONFIGURATION ---
 const PORT = process.env.PORT || 3000;
-
 const SERVER_BUILD_ID = Date.now().toString();
 
 const DB_FILE = path.join(__dirname, 'database.json');
@@ -58,7 +57,7 @@ const BACKUPS_DIR = path.join(__dirname, 'backups');
 const WAUTH_DIR = path.join(__dirname, 'wauth');
 const SSL_DIR = path.join(__dirname, 'ssl'); 
 
-// Ensure directories exist synchronously
+// Ensure directories exist
 try {
     if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     if (!fs.existsSync(AI_UPLOADS_DIR)) fs.mkdirSync(AI_UPLOADS_DIR, { recursive: true });
@@ -67,15 +66,13 @@ try {
     if (!fs.existsSync(SSL_DIR)) fs.mkdirSync(SSL_DIR, { recursive: true });
 } catch (err) {
     console.error("Directory Creation Error:", err);
-    logToFile(`Dir Creation Error: ${err.message}`);
 }
 
 app.set('trust proxy', 1); 
-
 app.use(cors()); 
 app.use(compression()); 
 
-// *** CRITICAL CHANGE: INCREASED LIMIT TO 1024MB (1GB) ***
+// *** CRITICAL: Increase limits for file uploads ***
 app.use(express.json({ limit: '1024mb' })); 
 app.use(express.urlencoded({ limit: '1024mb', extended: true }));
 
@@ -88,11 +85,9 @@ let vapidKeys = { publicKey: '', privateKey: '' };
 try {
     if (fs.existsSync(VAPID_FILE)) {
         vapidKeys = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
-        console.log(">>> VAPID Keys Loaded from file.");
     } else {
         vapidKeys = webpush.generateVAPIDKeys();
         fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
-        console.log(">>> New VAPID Keys Generated and Saved.");
     }
     webpush.setVapidDetails('mailto:admin@example.com', vapidKeys.publicKey, vapidKeys.privateKey);
 } catch (error) { console.error(">>> VAPID Key Setup Error:", error); }
@@ -130,7 +125,6 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
                 const foundKey = Object.keys(activeYear.companySequences).find(k => k.trim() === safeCompany);
                 if (foundKey) seqConfig = activeYear.companySequences[foundKey];
             }
-
             if (seqConfig) {
                 if (type === 'payment') startNum = seqConfig.startTrackingNumber || 1000;
                 else if (type === 'exit') startNum = seqConfig.startExitPermitNumber || 1000;
@@ -157,31 +151,16 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
     }) : arr;
 
     const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
-    
-    let next = startNum; 
-    
-    if (existing.length > 0) {
-        const maxExisting = existing[existing.length - 1];
-        next = Math.max(maxExisting + 1, startNum);
-    } else {
-        next = startNum;
-    }
-    
+    let next = existing.length > 0 ? Math.max(existing[existing.length - 1] + 1, startNum) : startNum;
     return next;
 };
 
 const db = getDb();
 if (db.settings?.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { console.error("Telegram Error:", e.message); }
-// Initialize Bale Bot
 if (db.settings?.baleBotToken) try { initBaleBot(db.settings.baleBotToken); } catch (e) { console.error("Bale Error:", e.message); }
 
 setTimeout(() => { 
-    try { 
-        initWhatsApp(WAUTH_DIR); 
-    } catch(e) { 
-        console.error("WA Init Error:", e); 
-        logToFile(`WA Init Error: ${e.message}`);
-    } 
+    try { initWhatsApp(WAUTH_DIR); } catch(e) { console.error("WA Init Error:", e); } 
 }, 5000);
 
 const sendNativeFCM = async (token, title, body, url = '/') => {
@@ -199,13 +178,7 @@ const sendNativeFCM = async (token, title, body, url = '/') => {
 const sendWebPush = (title, body, url = '/', targetUsername = null) => {
     const db = getDb();
     const subs = db.pushSubscriptions || [];
-    let relevantSubs = subs;
-    if (targetUsername) {
-        relevantSubs = subs.filter(s => s.username === targetUsername);
-        console.log(`Sending push to '${targetUsername}'. Devices found: ${relevantSubs.length}`);
-    } else {
-        console.log(`Sending broadcast push to ${subs.length} devices.`);
-    }
+    let relevantSubs = targetUsername ? subs.filter(s => s.username === targetUsername) : subs;
     const payload = JSON.stringify({ title, body, url });
     const options = { headers: { 'Urgency': 'high' } };
     let invalidEndpoints = [];
@@ -213,7 +186,6 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
         if (sub.type === 'android' && sub.keys?.auth === 'native') return sendNativeFCM(sub.endpoint, title, body, url);
         if (sub.endpoint && sub.keys && sub.keys.p256dh && sub.keys.p256dh !== 'native') {
             return webpush.sendNotification(sub, payload, options).catch(err => {
-                console.warn(`WebPush Failed (${err.statusCode}):`, err.body || err.message);
                 if (err.statusCode === 410 || err.statusCode === 404) invalidEndpoints.push(sub.endpoint);
             });
         }
@@ -223,14 +195,12 @@ const sendWebPush = (title, body, url = '/', targetUsername = null) => {
             const currentDb = getDb();
             currentDb.pushSubscriptions = currentDb.pushSubscriptions.filter(s => !invalidEndpoints.includes(s.endpoint));
             saveDb(currentDb);
-            console.log(`Cleaned up ${invalidEndpoints.length} invalid subscriptions`);
         }
     });
 };
 
 const sendPushToUsers = (usernames, title, body, url = '/') => {
-    const uniqueUsers = [...new Set(usernames)];
-    uniqueUsers.forEach(u => sendWebPush(title, body, url, u));
+    [...new Set(usernames)].forEach(u => sendWebPush(title, body, url, u));
 };
 
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
@@ -241,23 +211,21 @@ app.post('/api/send-test-push', (req, res) => {
     if (!username) return res.status(400).json({error: 'Username required'});
     const db = getDb();
     const hasSub = db.pushSubscriptions?.some(s => s.username === username);
-    if (!hasSub) return res.status(404).json({ error: 'No subscription found for this user', details: 'مطمئن شوید دکمه فعال‌سازی نوتیفیکیشن را زده‌اید و مجوز مرورگر داده شده است.' });
-    sendWebPush('تست سیستم', 'این یک پیام آزمایشی از سرور است.', '/#settings', username);
-    res.json({ success: true, message: 'Push triggered' });
+    if (!hasSub) return res.status(404).json({ error: 'No subscription found', details: 'لطفا نوتیفیکیشن را فعال کنید.' });
+    sendWebPush('تست سیستم', 'پیام آزمایشی از سرور', '/#settings', username);
+    res.json({ success: true });
 });
 
 app.post('/api/subscribe', (req, res) => { 
     const s = req.body; 
-    if (!s || !s.endpoint) return res.status(400).json({ error: 'Invalid subscription object' });
+    if (!s || !s.endpoint) return res.status(400).json({ error: 'Invalid subscription' });
     const d = getDb(); 
     if(!d.pushSubscriptions) d.pushSubscriptions = [];
     const existingIdx = d.pushSubscriptions.findIndex(x => x.endpoint === s.endpoint);
     if(existingIdx !== -1) { d.pushSubscriptions[existingIdx] = { ...d.pushSubscriptions[existingIdx], ...s }; } 
     else { d.pushSubscriptions.push(s); }
     saveDb(d); 
-    if (s.keys && s.keys.p256dh !== 'native') {
-        webpush.sendNotification(s, JSON.stringify({ title: 'اتصال برقرار شد', body: `دستگاه شما با موفقیت ثبت شد.` })).catch(e => console.error("Welcome Push Failed", e.statusCode));
-    }
+    if (s.keys && s.keys.p256dh !== 'native') webpush.sendNotification(s, JSON.stringify({ title: 'اتصال برقرار شد', body: `دستگاه ثبت شد.` })).catch(() => {});
     res.status(201).json({ success: true }); 
 });
 
@@ -266,76 +234,36 @@ app.post('/api/send-whatsapp', async (req, res) => {
     try {
         const { number, message, mediaData } = req.body;
         const db = getDb();
-        
-        // 1. Send via WhatsApp (Primary)
         let waError = null;
-        try {
-            await sendWhatsAppMessage(number, message, mediaData);
-        } catch (e) {
-            waError = e.message;
-            console.error("WA Send Error:", e);
-        }
+        try { await sendWhatsAppMessage(number, message, mediaData); } catch (e) { waError = e.message; console.error("WA Send Error:", e); }
 
-        // 2. Check for Bale integration (Automatic Parallel Send)
         if (db && db.settings.baleBotToken) {
             let targetBaleId = null;
-
-            // Strategy A: Check User (Direct Mapping)
-            // WhatsApp numbers usually have country code (e.g., 98912...). We normalize for search.
-            const targetPhone = number.replace(/\D/g, '').slice(-10); // Last 10 digits
+            const targetPhone = number.replace(/\D/g, '').slice(-10);
             const targetUser = db.users.find(u => u.phoneNumber && u.phoneNumber.replace(/\D/g, '').includes(targetPhone));
-            if (targetUser && targetUser.baleChatId) {
-                targetBaleId = targetUser.baleChatId;
-            }
-
-            // Strategy B: Check Saved Contacts (Group Mapping)
-            // If the number corresponds to a saved group ID (e.g. 12036... @g.us)
+            if (targetUser && targetUser.baleChatId) targetBaleId = targetUser.baleChatId;
             if (!targetBaleId && db.settings.savedContacts) {
                  const contact = db.settings.savedContacts.find(c => c.number === number);
-                 if (contact && contact.baleId) {
-                     targetBaleId = contact.baleId;
-                 }
+                 if (contact && contact.baleId) targetBaleId = contact.baleId;
             }
-            
-            if (targetBaleId) {
-                console.log(`Sending copy to Bale ID: ${targetBaleId}`);
-                try {
-                    await sendBaleMessage(db.settings.baleBotToken, targetBaleId, message, mediaData);
-                } catch (baleErr) {
-                    console.error("Bale Send Error:", baleErr);
-                    // Don't fail request if secondary channel fails
-                }
-            }
+            if (targetBaleId) try { await sendBaleMessage(db.settings.baleBotToken, targetBaleId, message, mediaData); } catch (e) {}
         }
 
         if (waError) throw new Error(waError);
         res.json({ success: true });
-
-    } catch (e) {
-        logToFile(`WA Send API Error: ${e.message}`);
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- NEW UPLOAD ROUTE ---
+// --- ROBUST FILE UPLOAD ROUTE ---
 app.post('/api/upload', (req, res) => {
     try {
         const { fileName, fileData } = req.body;
         if (!fileData) return res.status(400).json({ error: 'No data provided' });
 
-        // Strip Base64 header if present. Handle any mime type.
-        const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        let buffer;
-
-        if (matches && matches.length === 3) {
-            buffer = Buffer.from(matches[2], 'base64');
-        } else {
-            // Assume raw base64 string if no header or failed regex
-            // Some clients send raw base64, some send with header.
-            // If it contains comma but no data: prefix, might be partial.
-            const raw = fileData.includes(',') ? fileData.split(',')[1] : fileData;
-            buffer = Buffer.from(raw, 'base64');
-        }
+        // Robustly strip Base64 header. Handles complex headers like "data:audio/webm;codecs=opus;base64,"
+        // by stripping everything up to and including the comma.
+        const base64Data = fileData.includes(',') ? fileData.substring(fileData.indexOf(',') + 1) : fileData;
+        const buffer = Buffer.from(base64Data, 'base64');
 
         // Generate unique filename
         const uniqueName = `${Date.now()}_${fileName.replace(/\s/g, '_')}`;
@@ -357,61 +285,23 @@ app.post('/api/render-pdf', async (req, res) => {
     let browser = null;
     try { 
         const { html, landscape, width, height, format } = req.body; 
-        
-        browser = await puppeteer.launch({ 
-            headless: 'new',
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage', // Vital for Docker/Low Memory
-                '--disable-gpu'
-            ] 
-        }); 
-        
+        browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] }); 
         const page = await browser.newPage(); 
-        
-        // Increase timeout to 2 minutes for heavy pages
-        await page.setContent(html, { 
-            waitUntil: ['load', 'networkidle0'],
-            timeout: 120000 
-        }); 
-        
+        await page.setContent(html, { waitUntil: ['load', 'networkidle0'], timeout: 120000 }); 
         await page.emulateMediaType('print');
-
-        const pdfOptions = { 
-            printBackground: true, 
-            landscape: !!landscape,
-            timeout: 120000 
-        };
-
-        if (width && height) {
-            pdfOptions.width = width;
-            pdfOptions.height = height;
-        } else {
-            pdfOptions.format = format || (width || height ? undefined : 'A4');
-        }
-
+        const pdfOptions = { printBackground: true, landscape: !!landscape, timeout: 120000 };
+        if (width && height) { pdfOptions.width = width; pdfOptions.height = height; } else { pdfOptions.format = format || 'A4'; }
         const pdf = await page.pdf(pdfOptions); 
-        
-        res.set({
-            'Content-Type': 'application/pdf',
-            'Content-Length': pdf.length
-        });
+        res.set({ 'Content-Type': 'application/pdf', 'Content-Length': pdf.length });
         res.send(pdf); 
-    } catch (e) { 
-        console.error("PDF Gen Error:", e);
-        res.status(500).json({error: e.message}); 
-    } finally {
-        if (browser) await browser.close();
-    }
+    } catch (e) { console.error("PDF Error:", e); res.status(500).json({error: e.message}); } finally { if (browser) await browser.close(); }
 });
 
-// --- RESTORE API ---
 app.post('/api/full-restore', (req, res) => { try { const { fileData } = req.body; if (!fileData) throw new Error("No data"); const zip = new AdmZip(Buffer.from(fileData.split(',')[1], 'base64')); const dbEntry = zip.getEntry('database.json'); if (dbEntry) { fs.writeFileSync(DB_FILE, zip.readAsText(dbEntry)); } const uploadsEntry = zip.getEntry('uploads/'); if (uploadsEntry) { zip.extractEntryTo('uploads/', UPLOADS_DIR, false, true); } zip.extractAllTo(__dirname, true); res.json({ success: true }); } catch (e) { console.error("Restore Error:", e); res.status(500).json({ error: e.message }); } });
 
 // --- ENTITY ROUTES ---
 app.get('/api/orders', (req, res) => { const db = getDb(); res.json(db.orders); });
-app.post('/api/orders', (req, res) => { const db = getDb(); const order = req.body; order.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; order.fiscalYearId = activeYearId; order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany); db.orders.unshift(order); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber} - مبلغ: ${new Intl.NumberFormat('fa-IR').format(order.totalAmount)} ریال`, '#manage'); res.json(db.orders); });
+app.post('/api/orders', (req, res) => { const db = getDb(); const order = req.body; order.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; order.fiscalYearId = activeYearId; order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', activeYearId, order.payingCompany); db.orders.unshift(order); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'financial' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'دستور پرداخت جدید', `شماره ${order.trackingNumber}`, '#manage'); res.json(db.orders); });
 app.put('/api/orders/:id', (req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.orders[idx].status; db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendPushToUsers([db.orders[idx].requester], 'تغییر وضعیت پرداخت', `شماره ${db.orders[idx].trackingNumber}: ${req.body.status}`, '#manage'); } res.json(db.orders); } else res.sendStatus(404); });
 app.delete('/api/orders/:id', (req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); });
 
@@ -421,7 +311,7 @@ app.put('/api/trade/:id', (req, res) => { const db = getDb(); if (!Array.isArray
 app.delete('/api/trade/:id', (req, res) => { const db = getDb(); if (!Array.isArray(db.tradeRecords)) db.tradeRecords = []; db.tradeRecords = db.tradeRecords.filter(r => r.id !== req.params.id); saveDb(db); res.json(db.tradeRecords); });
 
 app.get('/api/exit-permits', (req, res) => { const db = getDb(); res.json(db.exitPermits); });
-app.post('/api/exit-permits', (req, res) => { const db = getDb(); const permit = req.body; permit.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; permit.fiscalYearId = activeYearId; permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, permit.companyName); db.exitPermits.push(permit); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber} - گیرنده: ${permit.recipientName}`, '#manage-exit'); res.json(db.exitPermits); });
+app.post('/api/exit-permits', (req, res) => { const db = getDb(); const permit = req.body; permit.id = Date.now().toString(); const activeYearId = db.settings.activeFiscalYearId; permit.fiscalYearId = activeYearId; permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', activeYearId, permit.companyName); db.exitPermits.push(permit); saveDb(db); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'مجوز خروج جدید', `شماره ${permit.permitNumber}`, '#manage-exit'); res.json(db.exitPermits); });
 app.put('/api/exit-permits/:id', (req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ const oldStatus = db.exitPermits[idx].status; db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); if (req.body.status && req.body.status !== oldStatus) { sendWebPush('تغییر وضعیت مجوز خروج', `شماره ${db.exitPermits[idx].permitNumber}: ${req.body.status}`, '#manage-exit'); } res.json(db.exitPermits); } else res.sendStatus(404); });
 app.delete('/api/exit-permits/:id', (req, res) => { const db=getDb(); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits); });
 
@@ -430,7 +320,7 @@ app.get('/api/next-exit-permit-number', (req, res) => { const db = getDb(); cons
 app.get('/api/next-bijak-number', (req, res) => { const db = getDb(); const activeYearId = db.settings.activeFiscalYearId; const company = req.query.company; const next = findNextNumberByFiscalYear(db, db.warehouseTransactions.filter(x => x.type === 'OUT'), 'number', 'bijak', activeYearId, company); res.json({ nextNumber: next }); });
 
 app.get('/api/warehouse/transactions', (req, res) => { const db = getDb(); res.json(db.warehouseTransactions); });
-app.post('/api/warehouse/transactions', (req, res) => { const db = getDb(); const t = req.body; const activeYearId = db.settings.activeFiscalYearId; t.fiscalYearId = activeYearId; if(t.type === 'OUT'){ t.number = findNextNumberByFiscalYear(db, db.warehouseTransactions.filter(x => x.type === 'OUT'), 'number', 'bijak', activeYearId, t.company); notifyNewBijak(t); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'بیجک جدید صادر شد', `شماره ${t.number} - شرکت: ${t.company}`, '#warehouse'); } db.warehouseTransactions.unshift(t); saveDb(db); res.json(db.warehouseTransactions); });
+app.post('/api/warehouse/transactions', (req, res) => { const db = getDb(); const t = req.body; const activeYearId = db.settings.activeFiscalYearId; t.fiscalYearId = activeYearId; if(t.type === 'OUT'){ t.number = findNextNumberByFiscalYear(db, db.warehouseTransactions.filter(x => x.type === 'OUT'), 'number', 'bijak', activeYearId, t.company); notifyNewBijak(t); const targetUsers = db.users.filter(u => u.role === 'ceo' || u.role === 'admin').map(u => u.username); sendPushToUsers(targetUsers, 'بیجک جدید صادر شد', `شماره ${t.number}`, '#warehouse'); } db.warehouseTransactions.unshift(t); saveDb(db); res.json(db.warehouseTransactions); });
 app.put('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx],...req.body}; saveDb(db); res.json(db.warehouseTransactions); } else res.sendStatus(404); });
 app.delete('/api/warehouse/transactions/:id', (req, res) => { const db=getDb(); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions); });
 
@@ -474,15 +364,4 @@ app.get('*', (req, res) => { const p = path.join(__dirname, 'dist', 'index.html'
 
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n>>> Server running on port ${PORT}`);
-    logToFile(`Server started on port ${PORT}`);
-});
-
-server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`\n!!! ERROR: Port ${PORT} is busy! !!!`);
-        logToFile(`Error: Port ${PORT} is busy`);
-    } else {
-        console.error(err);
-        logToFile(`Server error: ${err.message}`);
-    }
 });
