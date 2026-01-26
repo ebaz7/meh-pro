@@ -142,14 +142,15 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Size Limit Check (5MB) to prevent mobile browser crash
-        if (file.size > 5 * 1024 * 1024) {
-            alert('حجم فایل نباید بیشتر از ۵ مگابایت باشد.');
+        // UPDATED: Limit set to 1GB
+        if (file.size > 1024 * 1024 * 1024) {
+            alert('حجم فایل نباید بیشتر از ۱ گیگابایت باشد.');
             return;
         }
 
         setIsUploading(true);
         const reader = new FileReader();
+        
         reader.onload = async (ev) => {
             try {
                 const base64 = ev.target?.result as string;
@@ -175,12 +176,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 setIsUploading(false);
             }
         };
-        reader.readAsDataURL(file);
+
+        reader.onerror = () => {
+             alert("خطا در خواندن فایل. ممکن است حافظه مرورگر پر شده باشد.");
+             setIsUploading(false);
+        };
+
+        try {
+            reader.readAsDataURL(file);
+        } catch(e) {
+            alert("فایل بسیار حجیم است و مرورگر توانایی پردازش آن را ندارد.");
+            setIsUploading(false);
+        }
+
         e.target.value = '';
     };
 
     // --- Voice Recording Logic (TOGGLE MODE) ---
-    // Changed from hold-to-record to click-to-start/click-to-send for mobile stability
     const toggleRecording = async () => {
         if (isRecording) {
             // STOP RECORDING
@@ -206,7 +218,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 mediaRecorder.onstop = async () => {
                     const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                     
-                    // Don't send if empty or too short (< 1s)
                     if (audioBlob.size < 1000) {
                         setIsUploading(false);
                         return;
@@ -251,7 +262,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
             } catch (err) {
                 console.error("Mic error:", err);
-                alert("دسترسی به میکروفون امکان‌پذیر نیست. (در نسخه وب موبایل، باید از HTTPS استفاده کنید)");
+                alert("دسترسی به میکروفون امکان‌پذیر نیست.");
                 setIsRecording(false);
             }
         }

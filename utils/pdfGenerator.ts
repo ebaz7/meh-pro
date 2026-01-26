@@ -56,23 +56,22 @@ export const generatePdf = async ({
 
         const htmlContent = clone.outerHTML;
 
-        // 2. Extract Styles (Offline Mode Support)
-        // Instead of linking to CDNs, we grab the styles currently applied to the page
+        // 2. Extract Styles (Robust approach)
         let collectedStyles = '';
         
-        // A. From <style> tags (Vite dev usually puts CSS here)
+        // A. From <style> tags (Vite dev)
         const styleTags = document.querySelectorAll('style');
         styleTags.forEach(tag => {
             collectedStyles += tag.innerHTML + "\n";
         });
 
-        // B. From <link rel="stylesheet"> (Vite production bundles)
-        // We try to access cssRules from the CSSOM. This avoids making new network requests for local files.
+        // B. From <link rel="stylesheet"> (Production)
+        // Accessing cssRules can throw CORS errors for external domains, so we wrap in try-catch
         Array.from(document.styleSheets).forEach(sheet => {
             try {
-                // Skip external sheets if CORS blocks access (like some CDNs), but local app CSS is fine
-                if (sheet.href && !sheet.href.startsWith(window.location.origin)) return;
-                
+                // If it's a local sheet or CORS-allowed, this works.
+                // If blocked, it throws and we catch it (skipping that sheet).
+                // Usually app styles are local/same-origin.
                 const rules = sheet.cssRules;
                 if (rules) {
                     Array.from(rules).forEach(rule => {
@@ -80,7 +79,8 @@ export const generatePdf = async ({
                     });
                 }
             } catch (e) {
-                // Access denied to cross-origin stylesheet
+                // Ignore cross-origin stylesheets (like Google Fonts) to prevent crash
+                // They won't render in PDF unless server has access, which is fine for basic structure
             }
         });
 
@@ -136,6 +136,10 @@ export const generatePdf = async ({
 
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
+            // Provide a more helpful error message if payload was too large
+            if (response.status === 413) {
+                 throw new Error("حجم اطلاعات برای تبدیل به PDF بسیار زیاد است (Payload Too Large).");
+            }
             throw new Error((errData.error || 'Server Error') + (errData.details ? `: ${errData.details}` : ''));
         }
 

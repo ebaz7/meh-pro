@@ -73,9 +73,11 @@ app.set('trust proxy', 1);
 
 app.use(cors()); 
 app.use(compression()); 
-// INCREASED LIMIT FOR PDF GENERATION & FILE UPLOAD
-app.use(express.json({ limit: '50mb' })); 
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// *** CRITICAL CHANGE: INCREASED LIMIT TO 1024MB (1GB) ***
+// This fixes both large file uploads AND the "Payload Too Large" error when sending large HTML strings for PDF generation.
+app.use(express.json({ limit: '1024mb' })); 
+app.use(express.urlencoded({ limit: '1024mb', extended: true }));
 
 const staticOptions = { maxAge: '1y', etag: true, lastModified: true };
 app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
@@ -302,7 +304,7 @@ app.post('/api/upload', (req, res) => {
     }
 });
 
-// --- PDF GENERATION ROUTE (Fixed with robust options) ---
+// --- PDF GENERATION ROUTE (ROBUST) ---
 app.post('/api/render-pdf', async (req, res) => { 
     let browser = null;
     try { 
@@ -320,15 +322,18 @@ app.post('/api/render-pdf', async (req, res) => {
         
         const page = await browser.newPage(); 
         
+        // Increase timeout to 2 minutes for heavy pages
         await page.setContent(html, { 
             waitUntil: ['load', 'networkidle0'],
-            timeout: 60000 
+            timeout: 120000 
         }); 
         
+        await page.emulateMediaType('print');
+
         const pdfOptions = { 
             printBackground: true, 
             landscape: !!landscape,
-            timeout: 60000
+            timeout: 120000 
         };
 
         if (width && height) {
