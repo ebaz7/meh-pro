@@ -67,19 +67,25 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canManageTrade: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.MANAGER),
         canManageSettings: isStandardRole && (userRole === UserRole.ADMIN),
         
-        // --- EXIT PERMIT DEFAULTS ---
-        canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO),
-        canViewExitPermits: true, // Everyone can see the list (filtered by other logic)
+        // --- EXIT PERMIT DEFAULTS (Fixed for Workflow) ---
+        canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.MANAGER),
         
-        // Approval Workflow (Defaults)
+        // Ensure ALL roles involved in the chain can VIEW the permits list
+        canViewExitPermits: isStandardRole && (
+            userRole === UserRole.ADMIN || 
+            userRole === UserRole.CEO || 
+            userRole === UserRole.FACTORY_MANAGER || 
+            userRole === UserRole.WAREHOUSE_KEEPER || 
+            userRole === UserRole.SECURITY_HEAD || 
+            userRole === UserRole.SECURITY_GUARD || 
+            userRole === UserRole.SALES_MANAGER ||
+            userRole === UserRole.MANAGER
+        ),
+        
+        // Approval Workflow (Specific Steps)
         canApproveExitCeo: userRole === UserRole.CEO || userRole === UserRole.ADMIN,
-        
-        // CORRECTED DEFAULTS: Factory Manager gets Factory Approval, NOT Security
-        canApproveExitFactory: userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO,
-        
-        canApproveExitWarehouse: userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN || userRole === UserRole.CEO,
-        
-        // Security Approval Default (Only Security Roles)
+        canApproveExitFactory: userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN,
+        canApproveExitWarehouse: userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN,
         canApproveExitSecurity: userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN,
         
         canViewExitArchive: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.WAREHOUSE_KEEPER),
