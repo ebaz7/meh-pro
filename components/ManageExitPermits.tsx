@@ -39,34 +39,26 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- GUARANTEED APPROVAL CHECK LOGIC ---
-  // This logic says: If you ARE the Factory Manager (Role), you CAN approve Factory Stage.
-  // OR if you have the permission checkbox checked.
+  // --- STRICT APPROVAL CHECK LOGIC ---
   const canApprove = (p: ExitPermit) => {
       // 1. Admin always approves
       if (currentUser.role === UserRole.ADMIN) return true;
 
-      // 2. Stage: Pending CEO
+      // 2. Stage Checks with Role Hard-Check (Fixes missing buttons)
       if (p.status === ExitPermitStatus.PENDING_CEO) {
-          // If user is CEO OR has explicit permission
           return currentUser.role === UserRole.CEO || !!permissions.canApproveExitCeo;
       }
       
-      // 3. Stage: Pending Factory Manager
       if (p.status === ExitPermitStatus.PENDING_FACTORY) {
-          // If user is Factory Manager OR has explicit permission
+          // Explicitly check role string to bypass any permission config errors
           return currentUser.role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitFactory;
       }
       
-      // 4. Stage: Pending Warehouse
       if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          // If user is Warehouse Keeper OR has explicit permission
           return currentUser.role === UserRole.WAREHOUSE_KEEPER || !!permissions.canApproveExitWarehouse;
       }
       
-      // 5. Stage: Pending Security (Final Exit)
       if (p.status === ExitPermitStatus.PENDING_SECURITY) {
-          // If user is Security Head OR has explicit permission
           return currentUser.role === UserRole.SECURITY_HEAD || !!permissions.canApproveExitSecurity;
       }
       
@@ -94,7 +86,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setShowExitTimeInput(permitId);
   };
 
-  // ... (Keeping helpers identical to save space and reduce regression risk) ...
   const generateFullCaption = (permit: ExitPermit, header: string, emphasizeTime: boolean = false) => {
       let c = `${header}\n`;
       if (emphasizeTime && permit.exitTime) c += `\n🕒 *ساعت خروج: ${permit.exitTime}* 🕒\n\n`;

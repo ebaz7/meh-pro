@@ -41,7 +41,7 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
   return false;
 };
 
-// --- CORE PERMISSION LOGIC ---
+// --- CORE PERMISSION LOGIC (FIXED) ---
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     // 1. ADMIN SUPERUSER (Always has full access)
     if (userRole === UserRole.ADMIN) {
@@ -53,17 +53,22 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         };
     }
 
-    // 2. DEFINE BASE PERMISSIONS (Common to all)
+    // 2. Start with empty or saved permissions from settings
     let perms: RolePermissions = {
         canEditOwn: true,
         canDeleteOwn: true,
         canViewPaymentOrders: false,
         canViewExitPermits: false,
-        // ... (Others default to undefined/false)
     };
 
-    // 3. APPLY STRONG DEFAULTS BASED ON ROLE
-    // This ensures that even if settings are empty, the role works as intended.
+    // Apply settings FIRST (so defaults can override/ensure them later)
+    if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
+        const savedPerms = settings.rolePermissions[userRole];
+        perms = { ...perms, ...savedPerms };
+    }
+
+    // 3. ENFORCE HARDCODED DEFAULTS BASED ON ROLE (The Fix)
+    // This ensures that even if settings say 'false', the role ITSELF grants 'true'.
     switch (userRole) {
         case UserRole.CEO:
             perms.canViewAll = true;
@@ -93,17 +98,17 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             break;
         case UserRole.FACTORY_MANAGER:
             perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true; // DEFAULT TRUE
+            perms.canApproveExitFactory = true; // FORCE TRUE
             perms.canViewSecurity = true;
             break;
         case UserRole.WAREHOUSE_KEEPER:
             perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true; // DEFAULT TRUE
+            perms.canApproveExitWarehouse = true; // FORCE TRUE
             perms.canManageWarehouse = true;
             break;
         case UserRole.SECURITY_HEAD:
             perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true; // DEFAULT TRUE
+            perms.canApproveExitSecurity = true; // FORCE TRUE
             perms.canViewSecurity = true;
             perms.canApproveSecuritySupervisor = true;
             break;
@@ -116,15 +121,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             break;
     }
 
-    // 4. APPLY SETTINGS OVERRIDES (Merge)
-    // Only if settings exist for this role, we merge them.
-    // NOTE: If a setting is explicitly false in DB, it will override the true above.
-    if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
-        const savedPerms = settings.rolePermissions[userRole];
-        perms = { ...perms, ...savedPerms };
-    }
-
-    // 5. User Specific Overrides (Extra flags on user object)
+    // 4. User Specific Overrides
     if (userObject?.canManageTrade) {
         perms.canManageTrade = true;
     }
