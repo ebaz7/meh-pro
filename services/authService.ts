@@ -42,76 +42,78 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 };
 
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
-    // 1. Define Defaults (Base Logic)
-    // These defaults apply ONLY if no specific settings (checkboxes) are saved for the role.
+    // 1. Define Boolean Flags for Standard Roles
+    const isAdmin = userRole === UserRole.ADMIN;
+    const isCeo = userRole === UserRole.CEO;
+    const isManager = userRole === UserRole.MANAGER;
+    const isFinancial = userRole === UserRole.FINANCIAL;
+    const isSales = userRole === UserRole.SALES_MANAGER;
+    const isFactory = userRole === UserRole.FACTORY_MANAGER;
+    const isWarehouse = userRole === UserRole.WAREHOUSE_KEEPER;
+    const isSecurityHead = userRole === UserRole.SECURITY_HEAD;
+    const isSecurityGuard = userRole === UserRole.SECURITY_GUARD;
+    const isSecurity = isSecurityHead || isSecurityGuard;
     const isStandardRole = Object.values(UserRole).includes(userRole as UserRole);
 
+    // 2. Define Base Permissions
     let perms: RolePermissions = {
-        // General View
-        canViewAll: isStandardRole && (userRole !== UserRole.USER && userRole !== UserRole.SALES_MANAGER && userRole !== UserRole.WAREHOUSE_KEEPER && userRole !== UserRole.SECURITY_GUARD && userRole !== UserRole.SECURITY_HEAD),
-        
-        // Payment Orders
-        canCreatePaymentOrder: isStandardRole && (userRole !== UserRole.FACTORY_MANAGER && userRole !== UserRole.WAREHOUSE_KEEPER && userRole !== UserRole.SALES_MANAGER && userRole !== UserRole.SECURITY_GUARD && userRole !== UserRole.SECURITY_HEAD), 
-        canViewPaymentOrders: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.MANAGER || userRole === UserRole.FINANCIAL),
-        canApproveFinancial: isStandardRole && (userRole === UserRole.FINANCIAL || userRole === UserRole.ADMIN),
-        canApproveManager: isStandardRole && (userRole === UserRole.MANAGER || userRole === UserRole.ADMIN),
-        canApproveCeo: isStandardRole && (userRole === UserRole.CEO || userRole === UserRole.ADMIN),
-        
-        // CRUD
+        // --- General ---
+        canViewAll: isStandardRole && (isAdmin || isCeo || isManager || isFinancial),
         canEditOwn: true,
-        canEditAll: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO),
         canDeleteOwn: true,
-        canDeleteAll: isStandardRole && (userRole === UserRole.ADMIN),
+        canEditAll: isAdmin || isCeo,
+        canDeleteAll: isAdmin,
         
-        // Modules
-        canManageTrade: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.MANAGER),
-        canManageSettings: isStandardRole && (userRole === UserRole.ADMIN),
+        // --- Payment Module ---
+        canCreatePaymentOrder: isStandardRole && (isAdmin || isCeo || isManager || isFinancial || isSales || userRole === UserRole.USER), 
+        canViewPaymentOrders: isStandardRole && (isAdmin || isCeo || isManager || isFinancial),
+        canApproveFinancial: isAdmin || isFinancial,
+        canApproveManager: isAdmin || isManager,
+        canApproveCeo: isAdmin || isCeo,
         
-        // --- EXIT PERMIT DEFAULTS (Fixed for Workflow) ---
-        canCreateExitPermit: isStandardRole && (userRole === UserRole.SALES_MANAGER || userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.MANAGER),
+        // --- Trade Module ---
+        canManageTrade: isAdmin || isCeo || isManager || (userObject?.canManageTrade === true),
+        canManageSettings: isAdmin,
         
-        // Ensure ALL roles involved in the chain can VIEW the permits list
-        canViewExitPermits: isStandardRole && (
-            userRole === UserRole.ADMIN || 
-            userRole === UserRole.CEO || 
-            userRole === UserRole.FACTORY_MANAGER || 
-            userRole === UserRole.WAREHOUSE_KEEPER || 
-            userRole === UserRole.SECURITY_HEAD || 
-            userRole === UserRole.SECURITY_GUARD || 
-            userRole === UserRole.SALES_MANAGER ||
-            userRole === UserRole.MANAGER
-        ),
+        // --- EXIT PERMIT MODULE (Fixed Logic) ---
+        // Creation: Sales, Admin, CEO, Manager
+        canCreateExitPermit: isAdmin || isCeo || isManager || isSales,
         
-        // Approval Workflow (Specific Steps)
-        canApproveExitCeo: userRole === UserRole.CEO || userRole === UserRole.ADMIN,
-        canApproveExitFactory: userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.ADMIN,
-        canApproveExitWarehouse: userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.ADMIN,
-        canApproveExitSecurity: userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN,
+        // View: Must be visible to EVERYONE in the chain
+        canViewExitPermits: isAdmin || isCeo || isManager || isSales || isFactory || isWarehouse || isSecurity,
         
-        canViewExitArchive: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.WAREHOUSE_KEEPER),
-        canEditExitArchive: isStandardRole && (userRole === UserRole.ADMIN),
+        // Approval Steps (Explicitly linked to Roles)
+        canApproveExitCeo: isAdmin || isCeo,
+        canApproveExitFactory: isAdmin || isFactory,
+        canApproveExitWarehouse: isAdmin || isWarehouse,
+        canApproveExitSecurity: isAdmin || isSecurity,
+        
+        // Archive
+        canViewExitArchive: isAdmin || isCeo || isFactory || isWarehouse || isSecurityHead,
+        canEditExitArchive: isAdmin,
 
-        // Warehouse & Security Modules
-        canManageWarehouse: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.WAREHOUSE_KEEPER), 
-        canViewWarehouseReports: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.WAREHOUSE_KEEPER || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.CEO || userRole === UserRole.SALES_MANAGER),
-        canApproveBijak: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO),
-        canViewSecurity: isStandardRole && (userRole === UserRole.ADMIN || userRole === UserRole.CEO || userRole === UserRole.FACTORY_MANAGER || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.SECURITY_GUARD),
-        canCreateSecurityLog: isStandardRole && (userRole === UserRole.SECURITY_GUARD || userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN),
-        canApproveSecuritySupervisor: isStandardRole && (userRole === UserRole.SECURITY_HEAD || userRole === UserRole.ADMIN)
+        // --- WAREHOUSE MODULE ---
+        canManageWarehouse: isAdmin || isWarehouse, 
+        canViewWarehouseReports: isAdmin || isWarehouse || isFactory || isCeo || isSales || isManager,
+        canApproveBijak: isAdmin || isCeo,
+
+        // --- SECURITY MODULE ---
+        canViewSecurity: isAdmin || isCeo || isFactory || isSecurity,
+        canCreateSecurityLog: isAdmin || isSecurity,
+        canApproveSecuritySupervisor: isAdmin || isSecurityHead
     };
 
-    // 2. Merge with Settings (This allows "Ticks" in Settings to override Defaults)
+    // 3. Merge with Settings (Allow override from UI)
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
+        // We spread settings over defaults, so if a checkbox is unchecked in settings, it stays false.
+        // But if it's undefined in settings, the default above applies.
         perms = { ...perms, ...settings.rolePermissions[userRole] };
     }
 
-    // 3. Safety Net: Ensure Admin always has everything
-    if (userRole === UserRole.ADMIN) {
+    // 4. Admin Override (Always True)
+    if (isAdmin) {
         Object.keys(perms).forEach(k => { (perms as any)[k] = true; });
     }
     
-    // User Object Override (Specific User Permissions)
-    if (userObject && userObject.canManageTrade) perms.canManageTrade = true;
-
     return perms;
 };
