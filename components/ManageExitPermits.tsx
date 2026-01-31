@@ -41,15 +41,30 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- APPROVAL LOGIC BASED ON PERMISSIONS ---
+  // --- APPROVAL LOGIC BASED ON PERMISSIONS & ROLES (FIXED) ---
   const canApprove = (p: ExitPermit) => {
       const status = p.status || '';
+      const role = currentUser.role;
 
-      // Logic: Matches status to the permission required for that step
-      if (status === ExitPermitStatus.PENDING_CEO && permissions.canApproveExitCeo) return true;
-      if (status === ExitPermitStatus.PENDING_FACTORY && permissions.canApproveExitFactory) return true;
-      if (status === ExitPermitStatus.PENDING_WAREHOUSE && permissions.canApproveExitWarehouse) return true;
-      if (status === ExitPermitStatus.PENDING_SECURITY && permissions.canApproveExitSecurity) return true;
+      // CEO / Admin Stage
+      if (status === ExitPermitStatus.PENDING_CEO) {
+          return permissions.canApproveExitCeo || role === UserRole.CEO || role === UserRole.ADMIN;
+      }
+      
+      // Factory Manager Stage
+      if (status === ExitPermitStatus.PENDING_FACTORY) {
+          return permissions.canApproveExitFactory || role === UserRole.FACTORY_MANAGER || role === UserRole.ADMIN;
+      }
+      
+      // Warehouse Stage
+      if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          return permissions.canApproveExitWarehouse || role === UserRole.WAREHOUSE_KEEPER || role === UserRole.ADMIN;
+      }
+      
+      // Security Stage (Final)
+      if (status === ExitPermitStatus.PENDING_SECURITY) {
+          return permissions.canApproveExitSecurity || role === UserRole.SECURITY_HEAD || role === UserRole.SECURITY_GUARD || role === UserRole.ADMIN;
+      }
       
       return false;
   };
