@@ -42,7 +42,7 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 };
 
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
-    // 1. Define Boolean Flags for Standard Roles
+    // 1. Identify Role Flags
     const isAdmin = userRole === UserRole.ADMIN;
     const isCeo = userRole === UserRole.CEO;
     const isManager = userRole === UserRole.MANAGER;
@@ -55,7 +55,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     const isSecurity = isSecurityHead || isSecurityGuard;
     const isStandardRole = Object.values(UserRole).includes(userRole as UserRole);
 
-    // 2. Define Base Permissions
+    // 2. Define Sensible Defaults
+    // These defaults apply if the checkbox in settings has NOT been explicitly set yet.
+    // This solves the issue of "I created a factory manager but they can't see the factory approval button"
     let perms: RolePermissions = {
         // --- General ---
         canViewAll: isStandardRole && (isAdmin || isCeo || isManager || isFinancial),
@@ -75,14 +77,12 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canManageTrade: isAdmin || isCeo || isManager || (userObject?.canManageTrade === true),
         canManageSettings: isAdmin,
         
-        // --- EXIT PERMIT MODULE (Fixed Logic) ---
-        // Creation: Sales, Admin, CEO, Manager
+        // --- EXIT PERMIT MODULE (Approvals) ---
+        // Creation
         canCreateExitPermit: isAdmin || isCeo || isManager || isSales,
-        
-        // View: Must be visible to EVERYONE in the chain
+        // Visibility
         canViewExitPermits: isAdmin || isCeo || isManager || isSales || isFactory || isWarehouse || isSecurity,
-        
-        // Approval Steps (Explicitly linked to Roles)
+        // Approvals (The critical part)
         canApproveExitCeo: isAdmin || isCeo,
         canApproveExitFactory: isAdmin || isFactory,
         canApproveExitWarehouse: isAdmin || isWarehouse,
@@ -103,14 +103,14 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canApproveSecuritySupervisor: isAdmin || isSecurityHead
     };
 
-    // 3. Merge with Settings (Allow override from UI)
+    // 3. Apply Settings Override
+    // If the admin has gone into settings and checked/unchecked a box, that value takes precedence.
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
-        // We spread settings over defaults, so if a checkbox is unchecked in settings, it stays false.
-        // But if it's undefined in settings, the default above applies.
         perms = { ...perms, ...settings.rolePermissions[userRole] };
     }
 
-    // 4. Admin Override (Always True)
+    // 4. Admin Override (God Mode)
+    // Admin always has everything, regardless of settings.
     if (isAdmin) {
         Object.keys(perms).forEach(k => { (perms as any)[k] = true; });
     }
