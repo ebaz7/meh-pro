@@ -4,7 +4,7 @@ import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings, ExitPermi
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit } from '../services/storageService';
 import { getRolePermissions, getUsers } from '../services/authService'; 
 import { formatDate } from '../constants';
-import { Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, RefreshCw, Share2, CheckCheck, AlertTriangle, Clock, Scale } from 'lucide-react';
+import { Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, RefreshCw, Scale } from 'lucide-react';
 import PrintExitPermit from './PrintExitPermit';
 import EditExitPermitModal from './EditExitPermitModal';
 import WarehouseFinalizeModal from './WarehouseFinalizeModal'; 
@@ -29,7 +29,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   
   // For Auto-Send: We render the Permit in a hidden div with Updated Data
   const [permitForAutoSend, setPermitForAutoSend] = useState<ExitPermit | null>(null);
-  const [autoSendWatermark, setAutoSendWatermark] = useState<'DELETED' | 'EDITED' | null>(null);
   
   // Warehouse Modal
   const [warehouseFinalizePermit, setWarehouseFinalizePermit] = useState<ExitPermit | null>(null);
@@ -41,19 +40,28 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- STRICT APPROVAL LOGIC ---
+  // --- STRICT WORKFLOW STATUS CHECK ---
   const canApprove = (p: ExitPermit) => {
-      if (currentUser.role === UserRole.ADMIN) return true; // Admin creates god-mode
-
-      if (p.status === ExitPermitStatus.PENDING_CEO && permissions.canApproveExitCeo) return true;
-      if (p.status === ExitPermitStatus.PENDING_FACTORY && permissions.canApproveExitFactory) return true;
-      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE && permissions.canApproveExitWarehouse) return true;
-      if (p.status === ExitPermitStatus.PENDING_SECURITY && permissions.canApproveExitSecurity) return true;
+      // 1. CEO Approval
+      if (p.status === ExitPermitStatus.PENDING_CEO && (permissions.canApproveExitCeo || currentUser.role === UserRole.ADMIN)) return true;
+      // 2. Factory Manager Approval
+      if (p.status === ExitPermitStatus.PENDING_FACTORY && (permissions.canApproveExitFactory || currentUser.role === UserRole.ADMIN)) return true;
+      // 3. Warehouse Approval (Input Weight)
+      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE && (permissions.canApproveExitWarehouse || currentUser.role === UserRole.ADMIN)) return true;
+      // 4. Security Approval (Exit Time)
+      if (p.status === ExitPermitStatus.PENDING_SECURITY && (permissions.canApproveExitSecurity || currentUser.role === UserRole.ADMIN)) return true;
       
       return false;
   };
 
-  const isSecurityStep = (p: ExitPermit) => p.status === ExitPermitStatus.PENDING_SECURITY && canApprove(p);
+  // Only allow editing "content" (items/dest) if user created it or admin, AND it's not completed
+  const canEditContent = (p: ExitPermit) => {
+      if (p.status === ExitPermitStatus.EXITED) return false;
+      if (currentUser.role === UserRole.ADMIN) return true;
+      if (currentUser.role === UserRole.SALES_MANAGER && p.status === ExitPermitStatus.PENDING_CEO) return true;
+      // Approvers should NOT edit content via the generic edit button, they use their approval flow actions
+      return false;
+  };
 
   const handleSecurityClick = (permitId: string) => {
       const now = new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
@@ -61,157 +69,148 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setShowExitTimeInput(permitId);
   };
 
-  // --- WORKFLOW ACTIONS ---
-
-  // 1. Warehouse Step: Open Modal First
+  // --- ACTION 1: WAREHOUSE STEP (Opens Modal) ---
   const initiateWarehouseApproval = (permit: ExitPermit) => {
       setWarehouseFinalizePermit(permit);
   };
 
-  // 2. Warehouse Confirm: Save Data & Proceed
+  // --- ACTION 2: WAREHOUSE CONFIRM (Called from Modal) ---
   const handleWarehouseConfirm = async (updatedItems: ExitPermitItem[]) => {
       if (!warehouseFinalizePermit) return;
       
       const totalWeight = updatedItems.reduce((acc, i) => acc + (Number(i.deliveredWeight ?? i.weight) || 0), 0);
       const totalCartons = updatedItems.reduce((acc, i) => acc + (Number(i.deliveredCartonCount ?? i.cartonCount) || 0), 0);
       
-      // Update DB with Warehouse Data but KEEP Status PENDING_WAREHOUSE temporarily
-      const updatedPermit = { 
+      // Update the permit object locally with new data
+      const updatedPermitData = { 
           ...warehouseFinalizePermit, 
           items: updatedItems, 
           weight: totalWeight, 
           cartonCount: totalCartons 
       };
       
-      try {
-          // Save changes first
-          await editExitPermit(updatedPermit);
-          setWarehouseFinalizePermit(null);
-          // Then Trigger Approval
-          handleApproveAction(updatedPermit.id, ExitPermitStatus.PENDING_WAREHOUSE, updatedPermit);
-      } catch (e) { 
-          alert('خطا در ثبت اطلاعات انبار'); 
-      }
+      // Save data AND Transition Status in one go via handleApproveAction
+      await handleApproveAction(updatedPermitData.id, ExitPermitStatus.PENDING_WAREHOUSE, updatedPermitData);
+      setWarehouseFinalizePermit(null);
   };
 
-  // 3. MAIN APPROVE HANDLER
+  // --- MAIN APPROVAL LOGIC ---
   const handleApproveAction = async (id: string, currentStatus: ExitPermitStatus, dataOverride?: any) => {
       const permitToApprove = permits.find(p => p.id === id);
       if (!permitToApprove && !dataOverride) return;
+      
+      // Use override data (e.g. from Warehouse Modal) or existing data
       const basePermit = dataOverride || permitToApprove;
 
       let nextStatus = currentStatus;
       let targetGroups: ('GROUP1' | 'GROUP2')[] = [];
       let extraData: any = {};
       let confirmMessage = 'آیا تایید می‌کنید؟';
+      let notificationCaption = '';
 
-      // --- LOGIC MAP ---
+      // --- WORKFLOW STATE MACHINE ---
+      
+      // 1. CEO -> Factory (Send to Group 1)
       if (currentStatus === ExitPermitStatus.PENDING_CEO) {
-          // Step 2: CEO -> Factory
           nextStatus = ExitPermitStatus.PENDING_FACTORY;
-          targetGroups = ['GROUP1']; // Send to Main Group
+          targetGroups = ['GROUP1']; 
           extraData.approverCeo = currentUser.fullName;
+          notificationCaption = `📢 *تایید مدیرعامل انجام شد*\nمجوز شماره ${basePermit.permitNumber} جهت بررسی مدیر کارخانه ارسال شد.`;
       } 
+      // 2. Factory -> Warehouse (Send to Group 2)
       else if (currentStatus === ExitPermitStatus.PENDING_FACTORY) {
-          // Step 3: Factory -> Warehouse
           nextStatus = ExitPermitStatus.PENDING_WAREHOUSE;
-          targetGroups = ['GROUP2']; // Send to Warehouse Group
+          targetGroups = ['GROUP2']; 
           extraData.approverFactory = currentUser.fullName;
+          notificationCaption = `🏭 *تایید مدیر کارخانه انجام شد*\nمجوز شماره ${basePermit.permitNumber} جهت صدور حواله به انبار ارسال شد.`;
       }
+      // 3. Warehouse -> Security (Send to Group 2)
       else if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
-          // Step 4: Warehouse -> Security
-          // (Data already updated via Modal)
+          // Data is already updated via dataOverride from modal
           nextStatus = ExitPermitStatus.PENDING_SECURITY;
-          targetGroups = ['GROUP2']; // Send result to Warehouse Group
+          targetGroups = ['GROUP2']; 
           extraData.approverWarehouse = currentUser.fullName;
+          notificationCaption = `📦 *تایید انبار و توزین انجام شد*\nمجوز شماره ${basePermit.permitNumber} آماده خروج (انتظامات).`;
       }
+      // 4. Security -> Exited (Send to Group 1 AND Group 2)
       else if (currentStatus === ExitPermitStatus.PENDING_SECURITY) {
-          // Step 5: Security -> EXITED
-          confirmMessage = `ثبت خروج نهایی؟ ساعت: ${exitTimeValue || '---'}`;
+          const exitTime = exitTimeValue || new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
+          confirmMessage = `ثبت خروج نهایی؟ ساعت: ${exitTime}`;
           nextStatus = ExitPermitStatus.EXITED;
-          targetGroups = ['GROUP1', 'GROUP2']; // Send to BOTH
+          targetGroups = ['GROUP1', 'GROUP2']; 
           extraData.approverSecurity = currentUser.fullName;
-          extraData.exitTime = exitTimeValue || new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
+          extraData.exitTime = exitTime;
+          notificationCaption = `✅ *خروج نهایی ثبت شد*\nمجوز شماره ${basePermit.permitNumber}\n🕒 ساعت خروج: ${exitTime}`;
       }
 
-      if (window.confirm(confirmMessage)) {
-          setIsProcessingId(id);
-          try {
-              // 1. Update Status in DB
-              await updateExitPermitStatus(id, nextStatus, currentUser, extraData);
+      // Confirm (Skip confirm for Warehouse since they just clicked Save in modal)
+      if (currentStatus !== ExitPermitStatus.PENDING_WAREHOUSE && !window.confirm(confirmMessage)) return;
+
+      setIsProcessingId(id);
+
+      try {
+          // 1. Prepare Full Update Object
+          // If we have dataOverride (Warehouse), merge it.
+          const permitToSave = { ...basePermit, status: nextStatus, ...extraData };
+          
+          // 2. Database Update
+          // We use editExitPermit to save EVERYTHING (items + status + approvers) safely
+          await editExitPermit(permitToSave);
+          
+          // 3. Prepare for Notification Render
+          setPermitForAutoSend(permitToSave);
+
+          // 4. Render & Send Delay
+          setTimeout(async () => {
+              const elementId = `print-permit-${permitToSave.id}`;
+              const element = document.getElementById(elementId);
               
-              // 2. Prepare Mock for Image Generation (Merge all updates)
-              const updatedPermitForImage = { 
-                  ...basePermit, 
-                  status: nextStatus, 
-                  ...extraData 
-              };
+              if (element) {
+                  try {
+                      // @ts-ignore
+                      const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+                      const base64 = canvas.toDataURL('image/png').split(',')[1];
+                      
+                      const group1 = settings?.exitPermitNotificationGroup;
+                      const group2 = settings?.exitPermitSecondGroupConfig?.groupId;
+
+                      const send = async (target: string | undefined, caption: string) => {
+                          if (target) {
+                              await apiCall('/send-whatsapp', 'POST', { 
+                                  number: target, 
+                                  message: caption, 
+                                  mediaData: { data: base64, mimeType: 'image/png', filename: 'permit.png' } 
+                              });
+                          }
+                      };
+
+                      // Send logic
+                      if (targetGroups.includes('GROUP1')) await send(group1, notificationCaption);
+                      if (targetGroups.includes('GROUP2')) await send(group2, notificationCaption);
+
+                      // Special Case: Notify Factory Manager when CEO approves
+                      if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
+                          const users = await getUsers();
+                          const factoryMgr = users.find(u => u.role === UserRole.FACTORY_MANAGER);
+                          if (factoryMgr?.phoneNumber) await send(factoryMgr.phoneNumber, notificationCaption);
+                      }
+
+                  } catch (e) { console.error('Notification Error', e); }
+              }
               
-              setPermitForAutoSend(updatedPermitForImage);
-
-              // 3. Wait for Render & Capture
-              setTimeout(async () => {
-                  const elementId = `print-permit-${updatedPermitForImage.id}`;
-                  const element = document.getElementById(elementId);
-                  
-                  if (element) {
-                      try {
-                          // @ts-ignore
-                          const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-                          const base64 = canvas.toDataURL('image/png').split(',')[1];
-                          
-                          // Determine Groups
-                          const group1 = settings?.exitPermitNotificationGroup;
-                          const group2 = settings?.exitPermitSecondGroupConfig?.groupId;
-
-                          const send = async (target: string | undefined, caption: string) => {
-                              if (target) {
-                                  await apiCall('/send-whatsapp', 'POST', { 
-                                      number: target, 
-                                      message: caption, 
-                                      mediaData: { data: base64, mimeType: 'image/png', filename: 'permit.png' } 
-                                  });
-                              }
-                          };
-
-                          let caption = '';
-                          if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
-                              caption = `📢 *تایید مدیرعامل انجام شد*\nمجوز شماره ${updatedPermitForImage.permitNumber} جهت بررسی مدیر کارخانه ارسال شد.`;
-                          } else if (nextStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
-                              caption = `🏭 *تایید مدیر کارخانه انجام شد*\nمجوز شماره ${updatedPermitForImage.permitNumber} جهت صدور حواله به انبار ارسال شد.`;
-                          } else if (nextStatus === ExitPermitStatus.PENDING_SECURITY) {
-                              caption = `📦 *تایید انبار و توزین انجام شد*\nمجوز شماره ${updatedPermitForImage.permitNumber} آماده خروج (انتظامات).`;
-                          } else if (nextStatus === ExitPermitStatus.EXITED) {
-                              caption = `✅ *خروج نهایی ثبت شد*\nمجوز شماره ${updatedPermitForImage.permitNumber}\n🕒 ساعت خروج: ${extraData.exitTime}`;
-                          }
-
-                          // Send based on Logic Map
-                          if (targetGroups.includes('GROUP1')) await send(group1, caption);
-                          if (targetGroups.includes('GROUP2')) await send(group2, caption);
-
-                          // Also notify Factory Manager personally if moving to Factory
-                          if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
-                              const users = await getUsers();
-                              users.filter(u => u.role === UserRole.FACTORY_MANAGER && u.phoneNumber).forEach(u => send(u.phoneNumber, caption));
-                          }
-
-                      } catch (e) { console.error('Notification Error', e); }
-                  }
-                  
-                  // Cleanup
-                  setPermitForAutoSend(null);
-                  setExitTimeValue('');
-                  setShowExitTimeInput(null);
-                  setIsProcessingId(null);
-                  loadData();
-                  setViewPermit(null);
-
-              }, 2500); // 2.5s Delay
-
-          } catch (e) {
-              alert('خطا در انجام عملیات');
+              // Cleanup
+              setPermitForAutoSend(null);
+              setExitTimeValue('');
+              setShowExitTimeInput(null);
               setIsProcessingId(null);
-          }
+              loadData();
+              setViewPermit(null);
+
+          }, 2500); // 2.5s Delay for rendering
+
+      } catch (e) {
+          alert('خطا در انجام عملیات');
+          setIsProcessingId(null);
       }
   };
 
@@ -220,7 +219,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       if (r) { 
           await updateExitPermitStatus(id, ExitPermitStatus.REJECTED, currentUser, {rejectionReason:r}); 
           loadData(); 
-          setViewPermit(null); 
       } 
   };
 
@@ -250,7 +248,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in relative min-h-[500px]">
-        {isProcessingId && (<div className="absolute inset-0 bg-white/80 z-[50] flex items-center justify-center backdrop-blur-sm"><div className="flex flex-col items-center"><Loader2 size={40} className="text-blue-600 animate-spin" /><span className="mt-2 font-bold text-gray-700">درحال پردازش و ارسال...</span></div></div>)}
+        {isProcessingId && (<div className="absolute inset-0 bg-white/80 z-[50] flex items-center justify-center backdrop-blur-sm"><div className="flex flex-col items-center"><Loader2 size={40} className="text-blue-600 animate-spin" /><span className="mt-2 font-bold text-gray-700">درحال ارسال به مرحله بعد...</span></div></div>)}
         
         {/* Hidden Render Area for Auto-Send */}
         {permitForAutoSend && (
@@ -297,35 +295,37 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                 <div className="flex justify-center gap-2 items-center">
                                     <button onClick={() => setViewPermit(p)} className="bg-blue-50 text-blue-600 p-2 rounded-lg hover:bg-blue-100" title="مشاهده"><Eye size={16}/></button>
                                     
-                                    {/* Action Button Logic */}
+                                    {/* WORKFLOW ACTION BUTTONS */}
                                     {canApprove(p) && (
                                         <>
-                                            {/* Special Case: Warehouse needs Modal */}
+                                            {/* WAREHOUSE: Needs Data Entry */}
                                             {p.status === ExitPermitStatus.PENDING_WAREHOUSE ? (
                                                 <button onClick={() => initiateWarehouseApproval(p)} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-700 font-bold flex items-center gap-1 shadow-sm">
-                                                    <Scale size={16}/> تایید انبار
+                                                    <Scale size={16}/> توزین و تایید
                                                 </button>
                                             ) : 
-                                            /* Special Case: Security needs Time Input */
+                                            /* SECURITY: Needs Time Input */
                                             p.status === ExitPermitStatus.PENDING_SECURITY ? (
                                                 <div className="flex items-center gap-1 bg-amber-50 p-1 rounded-lg border border-amber-200">
                                                     <input className="w-16 border rounded p-1 text-[12px] text-center font-bold font-mono bg-white" placeholder="--:--" value={showExitTimeInput === p.id ? exitTimeValue : ''} onFocus={() => handleSecurityClick(p.id)} onChange={e => setExitTimeValue(e.target.value)} />
-                                                    <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-amber-600 text-white p-1.5 rounded hover:bg-amber-700 shadow-sm"><CheckCircle size={16}/></button>
+                                                    <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-600 text-white p-1.5 rounded hover:bg-green-700 shadow-sm" title="تایید خروج"><CheckCircle size={16}/></button>
                                                 </div>
                                             ) : (
-                                                /* Standard Approval */
+                                                /* CEO / FACTORY: Simple Approve */
                                                 <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-bold flex items-center gap-1 shadow-sm">
-                                                    <CheckCircle size={16}/> تایید
+                                                    <CheckCircle size={16}/> تایید و ارسال
                                                 </button>
                                             )}
                                             
-                                            <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100"><XCircle size={16}/></button>
+                                            <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100" title="رد درخواست"><XCircle size={16}/></button>
                                         </>
                                     )}
 
-                                    {/* Edit / Delete */}
+                                    {/* Edit Content (Only for Creator/Admin if not finalized) */}
+                                    {canEditContent(p) && <button onClick={() => setEditingPermit(p)} className="text-amber-500 hover:bg-amber-50 p-2 rounded"><Edit size={16}/></button>}
+                                    
+                                    {/* Delete (Admin Only) */}
                                     {currentUser.role === UserRole.ADMIN && <button onClick={() => handleDelete(p.id)} className="text-gray-400 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
-                                    {p.status !== ExitPermitStatus.EXITED && <button onClick={() => setEditingPermit(p)} className="text-amber-500 hover:bg-amber-50 p-2 rounded"><Edit size={16}/></button>}
                                 </div>
                             </td>
                         </tr>

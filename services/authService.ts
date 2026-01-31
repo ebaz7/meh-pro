@@ -41,9 +41,9 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
   return false;
 };
 
-// --- FIXED PERMISSION LOGIC ---
+// --- STRICT WORKFLOW PERMISSIONS ---
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
-    // 1. ADMIN SUPERUSER (Full Access)
+    // 1. ADMIN (God Mode)
     if (userRole === UserRole.ADMIN) {
         return {
             canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
@@ -53,7 +53,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         };
     }
 
-    // 2. DEFINE DEFAULTS BASED ON ROLE (Strict Workflow)
+    // 2. ROLE BASED DEFAULTS (Hardcoded for Workflow Stability)
     let perms: RolePermissions = {
         canEditOwn: true,
         canDeleteOwn: true,
@@ -65,9 +65,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         case UserRole.CEO:
             perms.canViewAll = true;
             perms.canViewPaymentOrders = true;
-            perms.canApproveCeo = true; // Payment
+            perms.canApproveCeo = true;
             perms.canViewExitPermits = true;
-            perms.canApproveExitCeo = true; // Exit Step 1
+            perms.canApproveExitCeo = true; // Step 1 Approval
             perms.canManageTrade = true;
             perms.canApproveBijak = true;
             perms.canViewSecurity = true;
@@ -75,27 +75,34 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             
         case UserRole.SALES_MANAGER:
             perms.canCreatePaymentOrder = true;
-            perms.canCreateExitPermit = true; // Exit Step 0 (Create)
+            perms.canCreateExitPermit = true; // Creation
             perms.canViewExitPermits = true;
             break;
 
         case UserRole.FACTORY_MANAGER:
             perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true; // Exit Step 2
+            perms.canApproveExitFactory = true; // Step 2 Approval
             perms.canViewSecurity = true;
             break;
 
         case UserRole.WAREHOUSE_KEEPER:
             perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true; // Exit Step 3
+            perms.canApproveExitWarehouse = true; // Step 3 Approval (Data Entry)
             perms.canManageWarehouse = true;
             break;
 
         case UserRole.SECURITY_HEAD:
             perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true; // Exit Step 4 (Final)
+            perms.canApproveExitSecurity = true; // Step 4 Approval (Final Exit)
             perms.canViewSecurity = true;
             perms.canApproveSecuritySupervisor = true;
+            break;
+
+        case UserRole.SECURITY_GUARD:
+            perms.canViewSecurity = true;
+            perms.canCreateSecurityLog = true;
+            perms.canViewExitPermits = true; // Needs to see permit to check exit
+            perms.canApproveExitSecurity = true; // Guard can exit? Usually Head, but let's allow generic guard for now based on request
             break;
 
         case UserRole.FINANCIAL:
@@ -111,19 +118,17 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canViewExitPermits = true;
             break;
             
-        case UserRole.SECURITY_GUARD:
-            perms.canViewSecurity = true;
-            perms.canCreateSecurityLog = true;
-            break;
-            
         case UserRole.USER:
             perms.canCreatePaymentOrder = true;
             break;
     }
 
-    // 3. APPLY SETTINGS OVERRIDES (Allows Manual Toggles in Settings Page)
+    // 3. APPLY SETTINGS OVERRIDES
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         const savedPerms = settings.rolePermissions[userRole];
+        // We merge, but Hardcoded workflow permissions for System Roles should NOT be easily disabled by accident
+        // So we prioritized the switch case above for critical keys if we wanted strict enforcement.
+        // For now, we allow overrides but the defaults are correct.
         perms = { ...perms, ...savedPerms };
     }
 
