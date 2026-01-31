@@ -229,21 +229,26 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const perms = settings ? getRolePermissions(currentUser.role, settings, currentUser) : null;
-  const canCreatePayment = perms ? perms.canCreatePaymentOrder === true : false;
-  const canCreateExit = perms?.canCreateExitPermit ?? false;
-  const canManageWarehouse = currentUser.role === UserRole.ADMIN || (perms && perms.canManageWarehouse === true);
-  const canSeeTrade = perms?.canManageTrade ?? false;
-  const canSeeSettings = currentUser.role === UserRole.ADMIN || (perms?.canManageSettings ?? false);
-  const canSeeSecurity = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.SECURITY_GUARD || (perms && perms.canViewSecurity !== false);
+  // Calculate Permissions
+  const perms = settings ? getRolePermissions(currentUser.role, settings, currentUser) : { canCreatePaymentOrder: false, canViewPaymentOrders: false };
+  
+  // Specific Access Flags
+  const canCreatePayment = perms.canCreatePaymentOrder === true;
+  const canViewPayment = perms.canViewPaymentOrders === true;
+  const canCreateExit = perms.canCreateExitPermit === true;
+  const canViewExit = perms.canViewExitPermits === true;
+  const canManageWarehouse = currentUser.role === UserRole.ADMIN || perms.canManageWarehouse === true || perms.canApproveBijak === true;
+  const canSeeTrade = perms.canManageTrade === true;
+  const canSeeSettings = currentUser.role === UserRole.ADMIN || perms.canManageSettings === true;
+  const canSeeSecurity = currentUser.role === UserRole.ADMIN || perms.canViewSecurity === true;
 
   const navItems = [
     { id: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
   ];
   if (canCreatePayment) navItems.push({ id: 'create', label: 'ثبت پرداخت', icon: PlusCircle });
-  if (perms?.canViewPaymentOrders) navItems.push({ id: 'manage', label: 'سوابق پرداخت', icon: ListChecks });
+  if (canViewPayment) navItems.push({ id: 'manage', label: 'سوابق پرداخت', icon: ListChecks });
   if (canCreateExit) navItems.push({ id: 'create-exit', label: 'ثبت خروج', icon: Truck });
-  if (perms?.canViewExitPermits) navItems.push({ id: 'manage-exit', label: 'سوابق خروج', icon: ClipboardList });
+  if (canViewExit) navItems.push({ id: 'manage-exit', label: 'سوابق خروج', icon: ClipboardList });
   if (canManageWarehouse) navItems.push({ id: 'warehouse', label: 'مدیریت انبار', icon: Package });
   if (canSeeSecurity) navItems.push({ id: 'security', label: 'انتظامات', icon: Shield });
   navItems.push({ id: 'chat', label: 'گفتگو', icon: MessageSquare });
@@ -255,7 +260,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
   const bottomNavItems = [
       { id: 'dashboard', label: 'خانه', icon: Home },
       { id: 'create', label: 'ثبت', icon: PlusCircle, show: canCreatePayment },
-      { id: 'manage', label: 'کارتابل', icon: ListChecks, show: perms?.canViewPaymentOrders },
+      { id: 'manage', label: 'کارتابل', icon: ListChecks, show: canViewPayment },
       { id: 'chat', label: 'گفتگو', icon: MessageSquare },
   ].filter(i => i.show !== false);
 

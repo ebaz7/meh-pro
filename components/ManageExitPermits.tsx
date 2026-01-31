@@ -39,28 +39,25 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- CRITICAL FIX: APPROVAL LOGIC ---
-  // If the user has the permission flag explicitly set to TRUE in settings, they CAN approve.
-  // We strictly check the status vs the permission flag.
+  // --- APPROVAL CHECK LOGIC ---
+  // Purely checks if the permission bit is true for the current status.
   const canApprove = (p: ExitPermit) => {
-      const status = p.status || '';
-
       if (currentUser.role === UserRole.ADMIN) return true;
 
-      if (status === ExitPermitStatus.PENDING_CEO) {
-          return permissions.canApproveExitCeo === true;
+      if (p.status === ExitPermitStatus.PENDING_CEO) {
+          return !!permissions.canApproveExitCeo;
       }
       
-      if (status === ExitPermitStatus.PENDING_FACTORY) {
-          return permissions.canApproveExitFactory === true;
+      if (p.status === ExitPermitStatus.PENDING_FACTORY) {
+          return !!permissions.canApproveExitFactory;
       }
       
-      if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          return permissions.canApproveExitWarehouse === true;
+      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          return !!permissions.canApproveExitWarehouse;
       }
       
-      if (status === ExitPermitStatus.PENDING_SECURITY) {
-          return permissions.canApproveExitSecurity === true;
+      if (p.status === ExitPermitStatus.PENDING_SECURITY) {
+          return !!permissions.canApproveExitSecurity;
       }
       
       return false;
@@ -91,7 +88,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   // ... (Keep existing helper functions: generateFullCaption, sendWithRetry, handleWarehouseConfirm, handleApproveAction, handleResendToGroup, handleDelete, handleReject, getStatusBadge) ...
   // To save space and focus on the fix, I'm reusing the existing logic for these functions.
-  // Assuming the previous file content for these functions is correct, I will just reference them in the full render.
   
   const generateFullCaption = (permit: ExitPermit, header: string, emphasizeTime: boolean = false) => {
       let c = `${header}\n`;
