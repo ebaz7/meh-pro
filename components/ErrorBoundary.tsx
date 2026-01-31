@@ -12,14 +12,12 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null
-    };
-  }
+  // Use class property for state to avoid constructor issues and ensure type safety
+  state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+    errorInfo: null
+  };
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, error };

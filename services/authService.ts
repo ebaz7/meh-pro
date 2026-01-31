@@ -43,6 +43,7 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     // 1. ADMIN (God Mode - Always Full Access)
+    // IMPORTANT: Return immediately for Admin to prevent any settings override
     if (userRole === UserRole.ADMIN) {
         return {
             canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
@@ -76,8 +77,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         perms = { ...perms, ...savedPerms };
     }
 
-    // 4. *** FORCE CRITICAL WORKFLOW PERMISSIONS ***
-    // This block runs AFTER settings merge to ensure the workflow is NEVER broken by bad settings.
+    // 4. *** FORCE CRITICAL WORKFLOW PERMISSIONS FOR SYSTEM ROLES ***
+    // This block runs AFTER settings merge to ensure key roles always have their critical permissions
     switch (userRole) {
         case UserRole.CEO:
             perms.canViewAll = true;
