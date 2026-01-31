@@ -2,16 +2,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
 import { getUsers, saveUser, updateUser, deleteUser } from '../services/authService';
-import { getSettings, uploadFile } from '../services/storageService'; // Added getSettings
-import { UserPlus, Trash2, Shield, User as UserIcon, Download, CloudOff, Pencil, X, Save, Container, Camera, Send, Phone, BellRing } from 'lucide-react';
+import { getSettings, uploadFile } from '../services/storageService'; 
+import { UserPlus, Trash2, Shield, User as UserIcon, Download, Pencil, X, Save, Container, Camera, Send, Phone, BellRing, Info } from 'lucide-react';
 import { generateUUID } from '../constants';
 import { apiCall } from '../services/apiService';
 
 const ManageUsers: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [settings, setSettings] = useState<SystemSettings | null>(null); // State for settings
+  const [settings, setSettings] = useState<SystemSettings | null>(null); 
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Add baleChatId to state
   const [formData, setFormData] = useState({ username: '', password: '', fullName: '', role: UserRole.USER as string, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', baleChatId: '', phoneNumber: '' });
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -24,8 +23,26 @@ const ManageUsers: React.FC = () => {
 
   useEffect(() => { loadData(); }, []);
   
-  const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (editingId) { const updatedUser: User = { id: editingId, ...formData }; await updateUser(updatedUser); setEditingId(null); } else { const user: User = { id: generateUUID(), ...formData }; await saveUser(user); } await loadData(); setFormData({ username: '', password: '', fullName: '', role: UserRole.USER, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', baleChatId: '', phoneNumber: '' }); };
-  const handleEditClick = (user: User) => { setEditingId(user.id); setFormData({ username: user.username, password: user.password, fullName: user.fullName, role: user.role, canManageTrade: user.canManageTrade || false, receiveNotifications: user.receiveNotifications !== false, avatar: user.avatar || '', telegramChatId: user.telegramChatId || '', baleChatId: user.baleChatId || '', phoneNumber: user.phoneNumber || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const handleSubmit = async (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      if (editingId) { 
+          const updatedUser: User = { id: editingId, ...formData }; 
+          await updateUser(updatedUser); 
+          setEditingId(null); 
+      } else { 
+          const user: User = { id: generateUUID(), ...formData }; 
+          await saveUser(user); 
+      } 
+      await loadData(); 
+      setFormData({ username: '', password: '', fullName: '', role: UserRole.USER, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', baleChatId: '', phoneNumber: '' }); 
+  };
+  
+  const handleEditClick = (user: User) => { 
+      setEditingId(user.id); 
+      setFormData({ username: user.username, password: user.password, fullName: user.fullName, role: user.role, canManageTrade: user.canManageTrade || false, receiveNotifications: user.receiveNotifications !== false, avatar: user.avatar || '', telegramChatId: user.telegramChatId || '', baleChatId: user.baleChatId || '', phoneNumber: user.phoneNumber || '' }); 
+      window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  };
+  
   const handleCancelEdit = () => { setEditingId(null); setFormData({ username: '', password: '', fullName: '', role: UserRole.USER, canManageTrade: false, receiveNotifications: true, avatar: '', telegramChatId: '', baleChatId: '', phoneNumber: '' }); };
   const handleDeleteUser = async (id: string) => { if (window.confirm('آیا از حذف این کاربر اطمینان دارید؟')) { await deleteUser(id); await loadData(); } };
   const handleBackup = async () => { try { const backupData = await apiCall<any>('/backup'); const jsonString = JSON.stringify(backupData, null, 2); const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `backup_payment_system_${new Date().toISOString().split('T')[0]}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { alert('خطا در دریافت فایل پشتیبان'); } };
@@ -36,10 +53,7 @@ const ManageUsers: React.FC = () => {
       const reader = new FileReader();
       reader.onload = async (ev) => {
           const base64 = ev.target?.result as string;
-          try {
-              const result = await uploadFile(file.name, base64);
-              setFormData({ ...formData, avatar: result.url });
-          } catch (error) { alert('خطا در آپلود تصویر'); } finally { setUploadingAvatar(false); }
+          try { const result = await uploadFile(file.name, base64); setFormData({ ...formData, avatar: result.url }); } catch (error) { alert('خطا در آپلود تصویر'); } finally { setUploadingAvatar(false); }
       };
       reader.readAsDataURL(file);
   };
@@ -66,6 +80,17 @@ const ManageUsers: React.FC = () => {
     <div className="space-y-8 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${editingId ? 'bg-amber-100 text-amber-600' : 'bg-purple-100 text-purple-600'}`}>{editingId ? <Pencil size={24} /> : <UserPlus size={24} />}</div><h2 className="text-xl font-bold text-gray-800">{editingId ? 'ویرایش اطلاعات کاربر' : 'تعریف کاربر جدید'}</h2></div><button onClick={handleBackup} className="flex items-center gap-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors"><Download size={16} />دانلود نسخه پشتیبان</button></div>
+        
+        {/* Warning about Role Selection */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6 flex items-start gap-2">
+            <Info size={18} className="text-blue-600 shrink-0 mt-0.5"/>
+            <div className="text-xs text-blue-800 leading-relaxed">
+                <strong>توجه مهم در انتخاب نقش:</strong><br/>
+                اگر برای کاربرانی مانند "مدیر کارخانه" یا "سرپرست انبار" حساب می‌سازید، حتماً از لیست <strong>«نقش‌های سیستمی (پیش‌فرض)»</strong> استفاده کنید. این نقش‌ها به صورت خودکار به دکمه‌های تایید متصل هستند.<br/>
+                اگر از "نقش‌های سفارشی" استفاده می‌کنید، حتماً در بخش <strong>تنظیمات > دسترسی‌ها</strong>، تیک‌های مربوط به تایید را برای آن نقش فعال کنید.
+            </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
           {/* Avatar Upload */}
           <div className="flex flex-col items-center justify-center row-span-2">
@@ -82,23 +107,23 @@ const ManageUsers: React.FC = () => {
           <div className="space-y-1 lg:col-span-2"><label className="text-sm text-gray-600">نام و نام خانوادگی</label><input required type="text" value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="مثال: محمد احمدی" /></div>
           <div className="space-y-1 lg:col-span-3"><label className="text-sm text-gray-600">نام کاربری</label><input required type="text" value={formData.username} onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm text-left dir-ltr" placeholder="username" /></div>
           <div className="space-y-1 lg:col-span-2"><label className="text-sm text-gray-600">رمز عبور</label><input required type="text" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm text-left dir-ltr" placeholder="password" /></div>
-          <div className="space-y-1 lg:col-span-2"><label className="text-sm text-gray-600">نقش کاربری</label>
-            <select value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+          <div className="space-y-1 lg:col-span-2"><label className="text-sm text-gray-600 font-bold">نقش کاربری (مهم)</label>
+            <select value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})} className="w-full border-2 border-blue-100 rounded-lg px-3 py-2 text-sm bg-white focus:border-blue-500 transition-colors">
                 <option disabled value="">انتخاب کنید...</option>
-                <optgroup label="نقش‌های پیش‌فرض">
-                    <option value={UserRole.USER}>کاربر عادی (فقط ثبت)</option>
-                    <option value={UserRole.MANAGER}>مدیر (تایید درخواست)</option>
-                    <option value={UserRole.FINANCIAL}>مدیر مالی</option>
-                    <option value={UserRole.CEO}>مدیر عامل</option>
-                    <option value={UserRole.SALES_MANAGER}>مدیر فروش</option>
-                    <option value={UserRole.FACTORY_MANAGER}>مدیر کارخانه</option>
-                    <option value={UserRole.WAREHOUSE_KEEPER}>انبار واردات</option> 
-                    <option value={UserRole.SECURITY_HEAD}>سرپرست انتظامات</option>
-                    <option value={UserRole.SECURITY_GUARD}>نگهبان</option>
+                <optgroup label="✅ نقش‌های سیستمی (پیش‌فرض)">
                     <option value={UserRole.ADMIN}>مدیر سیستم (دسترسی کامل)</option>
+                    <option value={UserRole.CEO}>مدیر عامل</option>
+                    <option value={UserRole.FACTORY_MANAGER}>مدیر کارخانه (تایید خروج)</option>
+                    <option value={UserRole.WAREHOUSE_KEEPER}>سرپرست انبار (تایید توزین)</option>
+                    <option value={UserRole.SECURITY_HEAD}>سرپرست انتظامات (تایید نهایی)</option>
+                    <option value={UserRole.SECURITY_GUARD}>نگهبان</option>
+                    <option value={UserRole.MANAGER}>مدیر داخلی</option>
+                    <option value={UserRole.FINANCIAL}>مدیر مالی</option>
+                    <option value={UserRole.SALES_MANAGER}>مدیر فروش</option>
+                    <option value={UserRole.USER}>کاربر عادی</option>
                 </optgroup>
                 {settings?.customRoles && settings.customRoles.length > 0 && (
-                    <optgroup label="نقش‌های سفارشی">
+                    <optgroup label="✏️ نقش‌های سفارشی (نیاز به تنظیم دسترسی)">
                         {settings.customRoles.map(role => (
                             <option key={role.id} value={role.id}>{role.label}</option>
                         ))}
