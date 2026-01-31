@@ -39,27 +39,27 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- STRICT APPROVAL CHECK LOGIC ---
+  // --- APPROVAL CHECK LOGIC ---
+  // Rely strictly on permissions (which now respect settings)
   const canApprove = (p: ExitPermit) => {
       // 1. Admin always approves
       if (currentUser.role === UserRole.ADMIN) return true;
 
-      // 2. Stage Checks with Role Hard-Check (Fixes missing buttons)
+      // 2. Stage Checks based on PERMISSIONS ONLY
       if (p.status === ExitPermitStatus.PENDING_CEO) {
-          return currentUser.role === UserRole.CEO || !!permissions.canApproveExitCeo;
+          return !!permissions.canApproveExitCeo;
       }
       
       if (p.status === ExitPermitStatus.PENDING_FACTORY) {
-          // Explicitly check role string to bypass any permission config errors
-          return currentUser.role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitFactory;
+          return !!permissions.canApproveExitFactory;
       }
       
       if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
-          return currentUser.role === UserRole.WAREHOUSE_KEEPER || !!permissions.canApproveExitWarehouse;
+          return !!permissions.canApproveExitWarehouse;
       }
       
       if (p.status === ExitPermitStatus.PENDING_SECURITY) {
-          return currentUser.role === UserRole.SECURITY_HEAD || !!permissions.canApproveExitSecurity;
+          return !!permissions.canApproveExitSecurity;
       }
       
       return false;
