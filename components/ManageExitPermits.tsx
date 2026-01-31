@@ -48,21 +48,25 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
       // 2. Stage: Pending CEO
       if (p.status === ExitPermitStatus.PENDING_CEO) {
+          // If user is CEO OR has explicit permission
           return currentUser.role === UserRole.CEO || !!permissions.canApproveExitCeo;
       }
       
       // 3. Stage: Pending Factory Manager
       if (p.status === ExitPermitStatus.PENDING_FACTORY) {
+          // If user is Factory Manager OR has explicit permission
           return currentUser.role === UserRole.FACTORY_MANAGER || !!permissions.canApproveExitFactory;
       }
       
       // 4. Stage: Pending Warehouse
       if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          // If user is Warehouse Keeper OR has explicit permission
           return currentUser.role === UserRole.WAREHOUSE_KEEPER || !!permissions.canApproveExitWarehouse;
       }
       
       // 5. Stage: Pending Security (Final Exit)
       if (p.status === ExitPermitStatus.PENDING_SECURITY) {
+          // If user is Security Head OR has explicit permission
           return currentUser.role === UserRole.SECURITY_HEAD || !!permissions.canApproveExitSecurity;
       }
       
