@@ -41,9 +41,9 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
   return false;
 };
 
-// --- CORE PERMISSION LOGIC (CORRECTED PRIORITY) ---
+// --- FIXED PERMISSION LOGIC ---
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
-    // 1. ADMIN SUPERUSER (Always has full access - Hardcoded override)
+    // 1. ADMIN SUPERUSER (Full Access)
     if (userRole === UserRole.ADMIN) {
         return {
             canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
@@ -53,7 +53,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         };
     }
 
-    // 2. DEFINE DEFAULTS BASED ON ROLE (Base Layer)
+    // 2. DEFINE DEFAULTS BASED ON ROLE (Strict Workflow)
     let perms: RolePermissions = {
         canEditOwn: true,
         canDeleteOwn: true,
@@ -65,62 +65,69 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         case UserRole.CEO:
             perms.canViewAll = true;
             perms.canViewPaymentOrders = true;
-            perms.canApproveCeo = true;
+            perms.canApproveCeo = true; // Payment
             perms.canViewExitPermits = true;
-            perms.canApproveExitCeo = true;
+            perms.canApproveExitCeo = true; // Exit Step 1
             perms.canManageTrade = true;
             perms.canApproveBijak = true;
             perms.canViewSecurity = true;
             break;
+            
+        case UserRole.SALES_MANAGER:
+            perms.canCreatePaymentOrder = true;
+            perms.canCreateExitPermit = true; // Exit Step 0 (Create)
+            perms.canViewExitPermits = true;
+            break;
+
+        case UserRole.FACTORY_MANAGER:
+            perms.canViewExitPermits = true;
+            perms.canApproveExitFactory = true; // Exit Step 2
+            perms.canViewSecurity = true;
+            break;
+
+        case UserRole.WAREHOUSE_KEEPER:
+            perms.canViewExitPermits = true;
+            perms.canApproveExitWarehouse = true; // Exit Step 3
+            perms.canManageWarehouse = true;
+            break;
+
+        case UserRole.SECURITY_HEAD:
+            perms.canViewExitPermits = true;
+            perms.canApproveExitSecurity = true; // Exit Step 4 (Final)
+            perms.canViewSecurity = true;
+            perms.canApproveSecuritySupervisor = true;
+            break;
+
         case UserRole.FINANCIAL:
             perms.canCreatePaymentOrder = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveFinancial = true;
             break;
+
         case UserRole.MANAGER:
             perms.canCreatePaymentOrder = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveManager = true;
             perms.canViewExitPermits = true;
             break;
-        case UserRole.SALES_MANAGER:
-            perms.canCreatePaymentOrder = true;
-            perms.canCreateExitPermit = true;
-            perms.canViewExitPermits = true;
-            break;
-        case UserRole.FACTORY_MANAGER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true; // Default TRUE
-            perms.canViewSecurity = true;
-            break;
-        case UserRole.WAREHOUSE_KEEPER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true; // Default TRUE
-            perms.canManageWarehouse = true;
-            break;
-        case UserRole.SECURITY_HEAD:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true; // Default TRUE
-            perms.canViewSecurity = true;
-            perms.canApproveSecuritySupervisor = true;
-            break;
+            
         case UserRole.SECURITY_GUARD:
             perms.canViewSecurity = true;
             perms.canCreateSecurityLog = true;
             break;
+            
         case UserRole.USER:
             perms.canCreatePaymentOrder = true;
             break;
     }
 
-    // 3. APPLY SETTINGS OVERRIDES (Top Layer)
-    // IMPORTANT: This allows settings to DISABLE a default permission (e.g., setting false overwrites true)
+    // 3. APPLY SETTINGS OVERRIDES (Allows Manual Toggles in Settings Page)
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         const savedPerms = settings.rolePermissions[userRole];
         perms = { ...perms, ...savedPerms };
     }
 
-    // 4. User Specific Overrides (Extra flags on user object)
+    // 4. User Specific Overrides
     if (userObject?.canManageTrade) {
         perms.canManageTrade = true;
     }
