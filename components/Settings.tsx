@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
-import { SystemSettings, UserRole, RolePermissions, Company, Contact, CompanyBank, User, CustomRole, PrintTemplate } from '../types';
-import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, ChevronDown, ChevronUp, WifiOff, Info, Lock } from 'lucide-react';
+import { SystemSettings, Company, Contact, CompanyBank, User, PrintTemplate } from '../types';
+import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, WifiOff, Info } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp } from '../services/notificationService';
 import { getUsers } from '../services/authService';
@@ -10,6 +10,7 @@ import { generateUUID } from '../constants';
 import PrintTemplateDesigner from './PrintTemplateDesigner';
 import { FiscalYearManager } from './FiscalModule'; 
 import SecondExitGroupSettings from './settings/SecondExitGroupSettings';
+import RolePermissionsEditor from './settings/RolePermissionsEditor'; // Import New Component
 
 // Internal QRCode Component with Error Handling
 const QRCode = ({ value, size }: { value: string, size: number }) => { 
@@ -109,9 +110,6 @@ const Settings: React.FC = () => {
   // Commerce Local States
   const [newInsuranceCompany, setNewInsuranceCompany] = useState('');
 
-  // Custom Role Local State
-  const [newRoleName, setNewRoleName] = useState('');
-
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingLetterhead, setIsUploadingLetterhead] = useState(false);
   const companyLogoInputRef = useRef<HTMLInputElement>(null);
@@ -125,7 +123,7 @@ const Settings: React.FC = () => {
   const [contactNumber, setContactNumber] = useState('');
   const [contactBaleId, setContactBaleId] = useState('');
   const [isGroupContact, setIsGroupContact] = useState(false);
-  const [editingContactId, setEditingContactId] = useState<string | null>(null); // NEW: To track editing contact
+  const [editingContactId, setEditingContactId] = useState<string | null>(null); 
   
   const [fetchingGroups, setFetchingGroups] = useState(false);
   const [newOperatingBank, setNewOperatingBank] = useState('');
@@ -138,9 +136,6 @@ const Settings: React.FC = () => {
   
   // App Users to merge into contacts list
   const [appUsers, setAppUsers] = useState<(Contact | User)[]>([]);
-  
-  // Collapsed state for permission groups
-  const [expandedPermGroups, setExpandedPermGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => { 
       loadSettings(); 
@@ -166,11 +161,7 @@ const Settings: React.FC = () => {
           if(!safeData.customRoles) safeData.customRoles = [];
           if(!safeData.printTemplates) safeData.printTemplates = [];
           if(!safeData.fiscalYears) safeData.fiscalYears = [];
-          
-          const allRoles = [...defaultRoles, ...(safeData.customRoles || [])];
-          const initialExpanded = {};
-          allRoles.forEach(r => initialExpanded[r.id] = false);
-          setExpandedPermGroups(initialExpanded);
+          if(!safeData.rolePermissions) safeData.rolePermissions = {}; // Ensure defined
 
           setSettings(safeData); 
       } catch (e) { console.error("Failed to load settings"); } 
@@ -333,11 +324,9 @@ const Settings: React.FC = () => {
       setEditingContactId(null);
   };
   
-  // ... (Upload handlers remain same)
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLogo(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLogo(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLogo(false); } }; reader.readAsDataURL(file); };
   const handleLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setIsUploadingLetterhead(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const result = await uploadFile(file.name, ev.target?.result as string); setNewCompanyLetterhead(result.url); } catch (error) { alert('خطا در آپلود'); } finally { setIsUploadingLetterhead(false); } }; reader.readAsDataURL(file); };
 
-  // ... (Company handlers remain same)
   const handleSaveCompany = () => { if (!newCompanyName.trim()) return; let updatedCompanies = settings.companies || []; const companyData = { id: editingCompanyId || generateUUID(), name: newCompanyName.trim(), logo: newCompanyLogo, showInWarehouse: newCompanyShowInWarehouse, banks: newCompanyBanks, letterhead: newCompanyLetterhead, registrationNumber: newCompanyRegNum, nationalId: newCompanyNatId, address: newCompanyAddress, phone: newCompanyPhone, fax: newCompanyFax, postalCode: newCompanyPostalCode, economicCode: newCompanyEcoCode }; if (editingCompanyId) { updatedCompanies = updatedCompanies.map(c => c.id === editingCompanyId ? companyData : c); } else { updatedCompanies = [...updatedCompanies, companyData]; } setSettings({ ...settings, companies: updatedCompanies, companyNames: updatedCompanies.map(c => c.name) }); resetCompanyForm(); };
   const handleEditCompany = (c: Company) => { setNewCompanyName(c.name); setNewCompanyLogo(c.logo || ''); setNewCompanyShowInWarehouse(c.showInWarehouse !== false); setNewCompanyBanks(c.banks || []); setNewCompanyLetterhead(c.letterhead || ''); setNewCompanyRegNum(c.registrationNumber || ''); setNewCompanyNatId(c.nationalId || ''); setNewCompanyAddress(c.address || ''); setNewCompanyPhone(c.phone || ''); setNewCompanyFax(c.fax || ''); setNewCompanyPostalCode(c.postalCode || ''); setNewCompanyEcoCode(c.economicCode || ''); setEditingCompanyId(c.id); };
   const resetCompanyForm = () => { setNewCompanyName(''); setNewCompanyLogo(''); setNewCompanyShowInWarehouse(true); setNewCompanyBanks([]); setNewCompanyLetterhead(''); setNewCompanyRegNum(''); setNewCompanyNatId(''); setNewCompanyAddress(''); setNewCompanyPhone(''); setNewCompanyFax(''); setNewCompanyPostalCode(''); setNewCompanyEcoCode(''); setEditingCompanyId(null); resetBankForm(); };
@@ -347,16 +336,13 @@ const Settings: React.FC = () => {
   const editCompanyBank = (bank: CompanyBank) => { setTempBankName(bank.bankName); setTempAccountNum(bank.accountNumber); setTempBankSheba(bank.sheba || ''); setTempBankLayout(bank.formLayoutId || ''); setTempInternalLayout(bank.internalTransferTemplateId || ''); setTempDualPrint(bank.enableDualPrint || false); setTempInternalWithdrawalLayout(bank.internalWithdrawalTemplateId || ''); setTempInternalDepositLayout(bank.internalDepositTemplateId || ''); setEditingBankId(bank.id); };
   const removeCompanyBank = (id: string) => { setNewCompanyBanks(newCompanyBanks.filter(b => b.id !== id)); if (editingBankId === id) resetBankForm(); };
 
-  // ... (Other handlers remain same)
   const handleAddOperatingBank = () => { if (newOperatingBank.trim() && !(settings.operatingBankNames || []).includes(newOperatingBank.trim())) { setSettings({ ...settings, operatingBankNames: [...(settings.operatingBankNames || []), newOperatingBank.trim()] }); setNewOperatingBank(''); } };
   const handleRemoveOperatingBank = (name: string) => { setSettings({ ...settings, operatingBankNames: (settings.operatingBankNames || []).filter(b => b !== name) }); };
   const handleAddCommodity = () => { if (newCommodity.trim() && !settings.commodityGroups.includes(newCommodity.trim())) { setSettings({ ...settings, commodityGroups: [...settings.commodityGroups, newCommodity.trim()] }); setNewCommodity(''); } };
   const handleRemoveCommodity = (name: string) => { setSettings({ ...settings, commodityGroups: settings.commodityGroups.filter(c => c !== name) }); };
   const handleAddInsuranceCompany = () => { if (newInsuranceCompany.trim() && !(settings.insuranceCompanies || []).includes(newInsuranceCompany.trim())) { setSettings({ ...settings, insuranceCompanies: [...(settings.insuranceCompanies || []), newInsuranceCompany.trim()] }); setNewInsuranceCompany(''); } };
   const handleRemoveInsuranceCompany = (name: string) => { setSettings({ ...settings, insuranceCompanies: (settings.insuranceCompanies || []).filter(c => c !== name) }); };
-  const handleAddRole = () => { if (!newRoleName.trim()) return; const roleId = `role_${Date.now()}`; const newRole: CustomRole = { id: roleId, label: newRoleName.trim() }; setSettings({ ...settings, customRoles: [...(settings.customRoles || []), newRole] }); setNewRoleName(''); };
-  const handleRemoveRole = (roleId: string) => { if (!confirm("آیا از حذف این نقش اطمینان دارید؟")) return; const updatedRoles = (settings.customRoles || []).filter(r => r.id !== roleId); const updatedPermissions = { ...settings.rolePermissions }; delete updatedPermissions[roleId]; setSettings({ ...settings, customRoles: updatedRoles, rolePermissions: updatedPermissions }); };
-  const handlePermissionChange = (role: string, field: keyof RolePermissions, value: boolean) => { const currentRolePerms = settings.rolePermissions[role] || ({} as RolePermissions); const newRolePerms = { ...currentRolePerms, [field]: value }; setSettings({ ...settings, rolePermissions: { ...settings.rolePermissions, [role]: newRolePerms as RolePermissions } }); };
+  
   const handleIconChange = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingIcon(true); const reader = new FileReader(); reader.onload = async (ev) => { try { const res = await uploadFile(file.name, ev.target?.result as string); setSettings({ ...settings, pwaIcon: res.url }); } catch (error) { alert('خطا'); } finally { setUploadingIcon(false); } }; reader.readAsDataURL(file); };
   const handleToggleNotifications = async () => { if (!isSecure && window.location.hostname !== 'localhost') { alert("برای فعال‌سازی نوتیفیکیشن نیاز به HTTPS است."); return; } const granted = await requestNotificationPermission(); if (granted) { setNotificationPreference(true); setNotificationsEnabled(true); alert("نوتیفیکیشن فعال شد. اتصال به سرور بروزرسانی شد."); } else { alert("دسترسی به نوتیفیکیشن مسدود است یا پشتیبانی نمی‌شود."); } };
   const handleTestNotification = async () => { try { const userStr = localStorage.getItem('app_current_user'); const username = userStr ? JSON.parse(userStr).username : 'test'; await apiCall('/send-test-push', 'POST', { username }); alert("درخواست تست ارسال شد."); } catch (e: any) { let msg = "خطا در ارسال تست"; if (e.message && e.message.includes('404')) { if (confirm("اشتراک نوتیفیکیشن شما در سرور یافت نشد. آیا می‌خواهید مجدداً فعال‌سازی کنید؟")) { handleToggleNotifications(); return; } msg = "اشتراک یافت نشد."; } else if (e.message) { msg += `: ${e.message}`; } alert(msg); } };
@@ -367,13 +353,10 @@ const Settings: React.FC = () => {
   const handleEditTemplate = (t: PrintTemplate) => { setEditingTemplate(t); setShowDesigner(true); };
   const handleDeleteTemplate = (id: string) => { if(!confirm('حذف قالب؟')) return; const updated = (settings.printTemplates || []).filter(t => t.id !== id); setSettings({ ...settings, printTemplates: updated }); };
 
-  // ... (Permission groups and toggle logic remain same)
-  const defaultRoles = [ { id: UserRole.USER, label: 'کاربر عادی' }, { id: UserRole.FINANCIAL, label: 'مدیر مالی' }, { id: UserRole.MANAGER, label: 'مدیر داخلی' }, { id: UserRole.CEO, label: 'مدیر عامل' }, { id: UserRole.SALES_MANAGER, label: 'مدیر فروش' }, { id: UserRole.FACTORY_MANAGER, label: 'مدیر کارخانه' }, { id: UserRole.WAREHOUSE_KEEPER, label: 'انبار واردات' }, { id: UserRole.SECURITY_HEAD, label: 'سرپرست انتظامات' }, { id: UserRole.SECURITY_GUARD, label: 'نگهبان' }, { id: UserRole.ADMIN, label: 'مدیر سیستم' }, ];
-  const allRoles = [...defaultRoles, ...(settings.customRoles || [])];
-  const PERMISSION_GROUPS = [ { id: 'payment', title: 'ماژول پرداخت', icon: Landmark, color: 'blue', items: [ { id: 'canCreatePaymentOrder', label: 'ثبت دستور پرداخت جدید' }, { id: 'canViewPaymentOrders', label: 'مشاهده کارتابل پرداخت' }, { id: 'canApproveFinancial', label: 'تایید مرحله مالی' }, { id: 'canApproveManager', label: 'تایید مرحله مدیریت' }, { id: 'canApproveCeo', label: 'تایید مرحله نهایی (مدیرعامل)' } ] }, { id: 'exit', title: 'ماژول خروج کارخانه', icon: Truck, color: 'orange', items: [ { id: 'canCreateExitPermit', label: 'ثبت درخواست خروج بار' }, { id: 'canViewExitPermits', label: 'مشاهده کارتابل خروج' }, { id: 'canApproveExitCeo', label: 'تایید خروج (مدیرعامل)' }, { id: 'canApproveExitFactory', label: 'تایید خروج (مدیر کارخانه)' }, { id: 'canApproveExitWarehouse', label: 'تایید خروج (سرپرست انبار)' }, { id: 'canApproveExitSecurity', label: 'تایید خروج (انتظامات - نهایی)' }, { id: 'canViewExitArchive', label: 'مشاهده بایگانی خروج' }, { id: 'canEditExitArchive', label: 'اصلاح اسناد بایگانی (Admin)' } ] }, { id: 'warehouse', title: 'ماژول انبار', icon: Warehouse, color: 'green', items: [ { id: 'canManageWarehouse', label: 'مدیریت انبار (ورود/خروج)' }, { id: 'canViewWarehouseReports', label: 'مشاهده گزارشات انبار' }, { id: 'canApproveBijak', label: 'تایید نهایی بیجک (مدیریت)' } ] }, { id: 'security', title: 'ماژول انتظامات', icon: ShieldCheck, color: 'purple', items: [ { id: 'canViewSecurity', label: 'مشاهده ماژول انتظامات' }, { id: 'canCreateSecurityLog', label: 'ثبت گزارشات (نگهبان)' }, { id: 'canApproveSecuritySupervisor', label: 'تایید گزارشات (سرپرست)' } ] }, { id: 'general', title: 'عمومی و مدیریتی', icon: Lock, color: 'gray', items: [ { id: 'canViewAll', label: 'مشاهده تمام دستورات (همه کاربران)' }, { id: 'canEditOwn', label: 'ویرایش دستور خود' }, { id: 'canDeleteOwn', label: 'حذف دستور خود' }, { id: 'canEditAll', label: 'ویرایش تمام دستورات' }, { id: 'canDeleteAll', label: 'حذف تمام دستورات' }, { id: 'canManageTrade', label: 'دسترسی به بخش بازرگانی' }, { id: 'canManageSettings', label: 'دسترسی به تنظیمات سیستم' } ] } ];
-  const togglePermissionGroup = (roleId: string, groupItems: {id: string}[], isChecked: boolean) => { const newPermissions: any = { ...settings.rolePermissions?.[roleId] || {} }; groupItems.forEach(item => { newPermissions[item.id] = isChecked; }); setSettings({ ...settings, rolePermissions: { ...settings.rolePermissions, [roleId]: newPermissions as RolePermissions } }); };
-  const toggleGroupExpand = (key: string) => { setExpandedPermGroups(prev => ({ ...prev, [key]: !prev[key] })); };
-  const getMergedContactOptions = () => { return [...(settings.savedContacts || []), ...appUsers as Contact[]]; };
+  // New handler for role permissions
+  const handleUpdateSettings = (newSettings: SystemSettings) => {
+      setSettings(newSettings);
+  };
 
   if (showDesigner) {
       return <PrintTemplateDesigner onSave={handleSaveTemplate} onCancel={() => setShowDesigner(false)} initialTemplate={editingTemplate} />;
@@ -561,9 +544,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* ... (Data Tab remains the same) ... */}
-                    
-                    {/* WAREHOUSE TAB UPDATED */}
                     {activeCategory === 'warehouse' && (
                         <div className="space-y-6 animate-fade-in">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار</h3>
@@ -571,7 +551,6 @@ const Settings: React.FC = () => {
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-sm font-bold text-gray-700 block mb-1">شماره گروه واتساپ انبار (پیش‌فرض)</label>
-                                    {/* UPDATED: SELECT INSTEAD OF INPUT */}
                                     <select 
                                         className="w-full border rounded-lg p-3 dir-ltr text-left bg-white" 
                                         value={settings.defaultWarehouseGroup || ''} 
@@ -582,10 +561,6 @@ const Settings: React.FC = () => {
                                             <option key={c.id} value={c.number}>{c.name} {c.baleId ? '(+Bale)' : ''}</option>
                                         ))}
                                     </select>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        شناسه گروهی که بیجک‌های تایید شده به آن ارسال می‌شوند. 
-                                        <br/>* برای افزودن گروه جدید، به تب پیام‌رسان‌ها بروید.
-                                    </p>
                                 </div>
                                 <div>
                                     <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
@@ -611,7 +586,6 @@ const Settings: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <label className="text-xs block mb-1">گروه انبار:</label>
-                                                        {/* UPDATED: SELECT HERE TOO */}
                                                         <select 
                                                             className="w-full border rounded p-2 text-xs dir-ltr bg-white" 
                                                             value={conf.warehouseGroup || ''} 
@@ -633,7 +607,6 @@ const Settings: React.FC = () => {
                                 </div>
                             </div>
                             
-                            {/* Second Group Config for Exit Permits */}
                             <SecondExitGroupSettings 
                                 settings={settings} 
                                 setSettings={setSettings} 
@@ -642,9 +615,6 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
-                    {/* ... (Rest of tabs remain same) ... */}
-                    {/* DATA, TEMPLATES, COMMERCE, INTEGRATIONS, PERMISSIONS tabs are preserved */}
-                    {/* Only showing placeholder for brevity where code didn't change */}
                     {activeCategory === 'data' && (
                          <div className="space-y-8 animate-fade-in">
                             <div className="space-y-4">
@@ -858,93 +828,13 @@ const Settings: React.FC = () => {
                     
                     {activeCategory === 'permissions' && (
                         <div className="space-y-8 animate-fade-in">
-                            {/* ... Permission UI ... */}
-                            <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col md:flex-row gap-4 items-end">
-                                <div className="flex-1 w-full space-y-1">
-                                    <label className="text-xs font-bold text-gray-500">افزودن نقش سفارشی</label>
-                                    <input className="w-full border rounded-lg p-2 text-sm" placeholder="نام نقش (مثال: حسابدار)" value={newRoleName} onChange={e => setNewRoleName(e.target.value)} />
-                                </div>
-                                <button type="button" onClick={handleAddRole} className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 h-[38px] flex items-center gap-2"><Plus size={16}/> افزودن</button>
-                            </div>
-
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><ShieldCheck size={20}/> مدیریت دسترسی نقش‌ها</h3>
-                                {allRoles.map(role => (
-                                    <div key={role.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden transition-all shadow-sm hover:shadow-md">
-                                        <div 
-                                            className="p-4 bg-gray-50 flex justify-between items-center cursor-pointer select-none"
-                                            onClick={() => toggleGroupExpand(role.id)}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2 rounded-lg ${role.id === UserRole.ADMIN ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                    <ShieldCheck size={20}/>
-                                                </div>
-                                                <span className="font-bold text-gray-800">{role.label}</span>
-                                                <span className="text-xs text-gray-500 font-mono">({role.id})</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {!Object.values(UserRole).includes(role.id as any) && (
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleRemoveRole(role.id); }}
-                                                        className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors"
-                                                    >
-                                                        <Trash2 size={16}/>
-                                                    </button>
-                                                )}
-                                                {expandedPermGroups[role.id] ? <ChevronUp size={20} className="text-gray-400"/> : <ChevronDown size={20} className="text-gray-400"/>}
-                                            </div>
-                                        </div>
-                                        
-                                        {expandedPermGroups[role.id] && (
-                                            <div className="p-4 bg-white border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-                                                {role.id === UserRole.ADMIN ? (
-                                                    <div className="col-span-full p-4 bg-red-50 text-red-700 rounded-lg text-sm font-bold text-center border border-red-100">
-                                                        مدیر سیستم دسترسی کامل به تمامی بخش‌ها دارد و قابل تغییر نیست.
-                                                    </div>
-                                                ) : (
-                                                    PERMISSION_GROUPS.map(group => {
-                                                        const GroupIcon = group.icon;
-                                                        const isGroupAllChecked = group.items.every(item => settings.rolePermissions?.[role.id]?.[item.id]);
-
-                                                        return (
-                                                            <div key={group.id} className="border rounded-xl overflow-hidden">
-                                                                <div className={`px-4 py-2 bg-${group.color}-50 border-b border-${group.color}-100 flex justify-between items-center`}>
-                                                                    <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                                                                        <GroupIcon size={16} className={`text-${group.color}-600`}/>
-                                                                        {group.title}
-                                                                    </div>
-                                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                                        <input 
-                                                                            type="checkbox" 
-                                                                            className={`w-4 h-4 text-${group.color}-600 rounded`}
-                                                                            checked={isGroupAllChecked}
-                                                                            onChange={(e) => togglePermissionGroup(role.id, group.items, e.target.checked)}
-                                                                        />
-                                                                        <span className="text-[10px] text-gray-500">انتخاب همه</span>
-                                                                    </label>
-                                                                </div>
-                                                                <div className="p-3 grid grid-cols-1 gap-2">
-                                                                    {group.items.map(perm => (
-                                                                        <label key={perm.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors">
-                                                                            <input 
-                                                                                type="checkbox" 
-                                                                                className={`w-4 h-4 text-${group.color}-600 rounded border-gray-300 focus:ring-${group.color}-500`}
-                                                                                checked={settings.rolePermissions?.[role.id]?.[perm.id] || false}
-                                                                                onChange={(e) => handlePermissionChange(role.id, perm.id as keyof RolePermissions, e.target.checked)}
-                                                                            />
-                                                                            <span className="text-sm text-gray-700 select-none">{perm.label}</span>
-                                                                        </label>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
+                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><ShieldCheck size={20}/> مدیریت دسترسی نقش‌ها</h3>
+                            
+                            {/* USE NEW COMPONENT HERE */}
+                            <RolePermissionsEditor 
+                                settings={settings} 
+                                onUpdateSettings={handleUpdateSettings} 
+                            />
                         </div>
                     )}
 
