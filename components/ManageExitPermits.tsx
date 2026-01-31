@@ -27,7 +27,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const [exitTimeValue, setExitTimeValue] = useState('');
   const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
   
-  // For Auto-Send: We render the Permit in a hidden div with Updated Data
+  // For Auto-Send
   const [permitForAutoSend, setPermitForAutoSend] = useState<ExitPermit | null>(null);
   
   // Warehouse Modal
@@ -40,26 +40,32 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- STRICT WORKFLOW STATUS CHECK ---
-  const canApprove = (p: ExitPermit) => {
-      // 1. CEO Approval
-      if (p.status === ExitPermitStatus.PENDING_CEO && (permissions.canApproveExitCeo || currentUser.role === UserRole.ADMIN)) return true;
-      // 2. Factory Manager Approval
-      if (p.status === ExitPermitStatus.PENDING_FACTORY && (permissions.canApproveExitFactory || currentUser.role === UserRole.ADMIN)) return true;
-      // 3. Warehouse Approval (Input Weight)
-      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE && (permissions.canApproveExitWarehouse || currentUser.role === UserRole.ADMIN)) return true;
-      // 4. Security Approval (Exit Time)
-      if (p.status === ExitPermitStatus.PENDING_SECURITY && (permissions.canApproveExitSecurity || currentUser.role === UserRole.ADMIN)) return true;
+  // --- APPROVAL ELIGIBILITY ---
+  const checkCanApprove = (p: ExitPermit) => {
+      // Admin Override
+      if (currentUser.role === UserRole.ADMIN) return true;
+
+      // Role-Based Checks (Forced by authService now)
+      if (p.status === ExitPermitStatus.PENDING_CEO && permissions.canApproveExitCeo) return true;
+      if (p.status === ExitPermitStatus.PENDING_FACTORY && permissions.canApproveExitFactory) return true;
+      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE && permissions.canApproveExitWarehouse) return true;
+      if (p.status === ExitPermitStatus.PENDING_SECURITY && permissions.canApproveExitSecurity) return true;
       
       return false;
   };
 
-  // Only allow editing "content" (items/dest) if user created it or admin, AND it's not completed
-  const canEditContent = (p: ExitPermit) => {
+  // Only allow editing "content" if user created it AND it's not finalized
+  // AND the user is NOT currently the approver (Approvers should Approve/Reject, not Edit directly here)
+  const checkCanEdit = (p: ExitPermit) => {
       if (p.status === ExitPermitStatus.EXITED) return false;
       if (currentUser.role === UserRole.ADMIN) return true;
+      
+      // If it's your turn to approve, HIDE the edit button to avoid confusion
+      if (checkCanApprove(p)) return false; 
+
+      // If you are Sales Manager and it's still with CEO, you can edit
       if (currentUser.role === UserRole.SALES_MANAGER && p.status === ExitPermitStatus.PENDING_CEO) return true;
-      // Approvers should NOT edit content via the generic edit button, they use their approval flow actions
+      
       return false;
   };
 
@@ -69,19 +75,18 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setShowExitTimeInput(permitId);
   };
 
-  // --- ACTION 1: WAREHOUSE STEP (Opens Modal) ---
+  // --- WAREHOUSE FLOW ---
   const initiateWarehouseApproval = (permit: ExitPermit) => {
       setWarehouseFinalizePermit(permit);
   };
 
-  // --- ACTION 2: WAREHOUSE CONFIRM (Called from Modal) ---
   const handleWarehouseConfirm = async (updatedItems: ExitPermitItem[]) => {
       if (!warehouseFinalizePermit) return;
       
       const totalWeight = updatedItems.reduce((acc, i) => acc + (Number(i.deliveredWeight ?? i.weight) || 0), 0);
       const totalCartons = updatedItems.reduce((acc, i) => acc + (Number(i.deliveredCartonCount ?? i.cartonCount) || 0), 0);
       
-      // Update the permit object locally with new data
+      // We update the permit data AND move status forward in one go
       const updatedPermitData = { 
           ...warehouseFinalizePermit, 
           items: updatedItems, 
@@ -89,17 +94,15 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           cartonCount: totalCartons 
       };
       
-      // Save data AND Transition Status in one go via handleApproveAction
       await handleApproveAction(updatedPermitData.id, ExitPermitStatus.PENDING_WAREHOUSE, updatedPermitData);
       setWarehouseFinalizePermit(null);
   };
 
-  // --- MAIN APPROVAL LOGIC ---
+  // --- GENERAL APPROVE FLOW ---
   const handleApproveAction = async (id: string, currentStatus: ExitPermitStatus, dataOverride?: any) => {
       const permitToApprove = permits.find(p => p.id === id);
       if (!permitToApprove && !dataOverride) return;
       
-      // Use override data (e.g. from Warehouse Modal) or existing data
       const basePermit = dataOverride || permitToApprove;
 
       let nextStatus = currentStatus;
@@ -108,31 +111,25 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       let confirmMessage = 'آیا تایید می‌کنید؟';
       let notificationCaption = '';
 
-      // --- WORKFLOW STATE MACHINE ---
-      
-      // 1. CEO -> Factory (Send to Group 1)
+      // --- LOGIC ---
       if (currentStatus === ExitPermitStatus.PENDING_CEO) {
           nextStatus = ExitPermitStatus.PENDING_FACTORY;
           targetGroups = ['GROUP1']; 
           extraData.approverCeo = currentUser.fullName;
           notificationCaption = `📢 *تایید مدیرعامل انجام شد*\nمجوز شماره ${basePermit.permitNumber} جهت بررسی مدیر کارخانه ارسال شد.`;
       } 
-      // 2. Factory -> Warehouse (Send to Group 2)
       else if (currentStatus === ExitPermitStatus.PENDING_FACTORY) {
           nextStatus = ExitPermitStatus.PENDING_WAREHOUSE;
           targetGroups = ['GROUP2']; 
           extraData.approverFactory = currentUser.fullName;
           notificationCaption = `🏭 *تایید مدیر کارخانه انجام شد*\nمجوز شماره ${basePermit.permitNumber} جهت صدور حواله به انبار ارسال شد.`;
       }
-      // 3. Warehouse -> Security (Send to Group 2)
       else if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
-          // Data is already updated via dataOverride from modal
           nextStatus = ExitPermitStatus.PENDING_SECURITY;
           targetGroups = ['GROUP2']; 
           extraData.approverWarehouse = currentUser.fullName;
           notificationCaption = `📦 *تایید انبار و توزین انجام شد*\nمجوز شماره ${basePermit.permitNumber} آماده خروج (انتظامات).`;
       }
-      // 4. Security -> Exited (Send to Group 1 AND Group 2)
       else if (currentStatus === ExitPermitStatus.PENDING_SECURITY) {
           const exitTime = exitTimeValue || new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
           confirmMessage = `ثبت خروج نهایی؟ ساعت: ${exitTime}`;
@@ -143,24 +140,18 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           notificationCaption = `✅ *خروج نهایی ثبت شد*\nمجوز شماره ${basePermit.permitNumber}\n🕒 ساعت خروج: ${exitTime}`;
       }
 
-      // Confirm (Skip confirm for Warehouse since they just clicked Save in modal)
       if (currentStatus !== ExitPermitStatus.PENDING_WAREHOUSE && !window.confirm(confirmMessage)) return;
 
       setIsProcessingId(id);
 
       try {
-          // 1. Prepare Full Update Object
-          // If we have dataOverride (Warehouse), merge it.
+          // Update DB (Merged Logic)
           const permitToSave = { ...basePermit, status: nextStatus, ...extraData };
-          
-          // 2. Database Update
-          // We use editExitPermit to save EVERYTHING (items + status + approvers) safely
           await editExitPermit(permitToSave);
           
-          // 3. Prepare for Notification Render
+          // Render & Send
           setPermitForAutoSend(permitToSave);
 
-          // 4. Render & Send Delay
           setTimeout(async () => {
               const elementId = `print-permit-${permitToSave.id}`;
               const element = document.getElementById(elementId);
@@ -184,11 +175,10 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                           }
                       };
 
-                      // Send logic
                       if (targetGroups.includes('GROUP1')) await send(group1, notificationCaption);
                       if (targetGroups.includes('GROUP2')) await send(group2, notificationCaption);
 
-                      // Special Case: Notify Factory Manager when CEO approves
+                      // Notify Factory Manager on CEO Approval
                       if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
                           const users = await getUsers();
                           const factoryMgr = users.find(u => u.role === UserRole.FACTORY_MANAGER);
@@ -198,7 +188,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                   } catch (e) { console.error('Notification Error', e); }
               }
               
-              // Cleanup
               setPermitForAutoSend(null);
               setExitTimeValue('');
               setShowExitTimeInput(null);
@@ -206,7 +195,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               loadData();
               setViewPermit(null);
 
-          }, 2500); // 2.5s Delay for rendering
+          }, 2500);
 
       } catch (e) {
           alert('خطا در انجام عملیات');
@@ -250,7 +239,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in relative min-h-[500px]">
         {isProcessingId && (<div className="absolute inset-0 bg-white/80 z-[50] flex items-center justify-center backdrop-blur-sm"><div className="flex flex-col items-center"><Loader2 size={40} className="text-blue-600 animate-spin" /><span className="mt-2 font-bold text-gray-700">درحال ارسال به مرحله بعد...</span></div></div>)}
         
-        {/* Hidden Render Area for Auto-Send */}
         {permitForAutoSend && (
             <div className="hidden-print-export" style={{ position: 'fixed', top: -9999, left: -9999, width: '210mm' }}>
                 <div id={`print-permit-${permitForAutoSend.id}`}>
@@ -259,7 +247,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
             </div>
         )}
 
-        {/* Warehouse Modal */}
         {warehouseFinalizePermit && (
             <WarehouseFinalizeModal 
                 permit={warehouseFinalizePermit} 
@@ -295,23 +282,22 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                 <div className="flex justify-center gap-2 items-center">
                                     <button onClick={() => setViewPermit(p)} className="bg-blue-50 text-blue-600 p-2 rounded-lg hover:bg-blue-100" title="مشاهده"><Eye size={16}/></button>
                                     
-                                    {/* WORKFLOW ACTION BUTTONS */}
-                                    {canApprove(p) && (
+                                    {checkCanApprove(p) && (
                                         <>
-                                            {/* WAREHOUSE: Needs Data Entry */}
+                                            {/* WAREHOUSE BUTTON */}
                                             {p.status === ExitPermitStatus.PENDING_WAREHOUSE ? (
                                                 <button onClick={() => initiateWarehouseApproval(p)} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-700 font-bold flex items-center gap-1 shadow-sm">
                                                     <Scale size={16}/> توزین و تایید
                                                 </button>
                                             ) : 
-                                            /* SECURITY: Needs Time Input */
+                                            /* SECURITY BUTTON */
                                             p.status === ExitPermitStatus.PENDING_SECURITY ? (
                                                 <div className="flex items-center gap-1 bg-amber-50 p-1 rounded-lg border border-amber-200">
                                                     <input className="w-16 border rounded p-1 text-[12px] text-center font-bold font-mono bg-white" placeholder="--:--" value={showExitTimeInput === p.id ? exitTimeValue : ''} onFocus={() => handleSecurityClick(p.id)} onChange={e => setExitTimeValue(e.target.value)} />
                                                     <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-600 text-white p-1.5 rounded hover:bg-green-700 shadow-sm" title="تایید خروج"><CheckCircle size={16}/></button>
                                                 </div>
                                             ) : (
-                                                /* CEO / FACTORY: Simple Approve */
+                                                /* CEO / FACTORY BUTTON */
                                                 <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-bold flex items-center gap-1 shadow-sm">
                                                     <CheckCircle size={16}/> تایید و ارسال
                                                 </button>
@@ -321,10 +307,8 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                         </>
                                     )}
 
-                                    {/* Edit Content (Only for Creator/Admin if not finalized) */}
-                                    {canEditContent(p) && <button onClick={() => setEditingPermit(p)} className="text-amber-500 hover:bg-amber-50 p-2 rounded"><Edit size={16}/></button>}
+                                    {checkCanEdit(p) && <button onClick={() => setEditingPermit(p)} className="text-amber-500 hover:bg-amber-50 p-2 rounded"><Edit size={16}/></button>}
                                     
-                                    {/* Delete (Admin Only) */}
                                     {currentUser.role === UserRole.ADMIN && <button onClick={() => handleDelete(p.id)} className="text-gray-400 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                                 </div>
                             </td>
@@ -335,7 +319,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
             </table>
         </div>
         
-        {/* Modals */}
         {viewPermit && (<PrintExitPermit permit={viewPermit} onClose={() => setViewPermit(null)} settings={settings} />)}
         {editingPermit && <EditExitPermitModal permit={editingPermit} onClose={() => setEditingPermit(null)} onSave={loadData} />}
     </div>
