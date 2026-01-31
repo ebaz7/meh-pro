@@ -42,7 +42,7 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 };
 
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
-    // 1. Define Boolean Flags for Standard Roles
+    // 1. Check Standard Roles flags
     const isAdmin = userRole === UserRole.ADMIN;
     const isCeo = userRole === UserRole.CEO;
     const isManager = userRole === UserRole.MANAGER;
@@ -55,7 +55,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     const isSecurity = isSecurityHead || isSecurityGuard;
     const isStandardRole = Object.values(UserRole).includes(userRole as UserRole);
 
-    // 2. Define Base Permissions
+    // 2. Define Principles/Defaults
+    // These are the logical defaults. If settings are empty, these apply.
     let perms: RolePermissions = {
         // --- General ---
         canViewAll: isStandardRole && (isAdmin || isCeo || isManager || isFinancial),
@@ -75,14 +76,14 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canManageTrade: isAdmin || isCeo || isManager || (userObject?.canManageTrade === true),
         canManageSettings: isAdmin,
         
-        // --- EXIT PERMIT MODULE (Fixed Logic) ---
+        // --- EXIT PERMIT MODULE (Correct Defaults) ---
         // Creation: Sales, Admin, CEO, Manager
         canCreateExitPermit: isAdmin || isCeo || isManager || isSales,
         
-        // View: Must be visible to EVERYONE in the chain
+        // View: Visible to chain participants
         canViewExitPermits: isAdmin || isCeo || isManager || isSales || isFactory || isWarehouse || isSecurity,
         
-        // Approval Steps (Explicitly linked to Roles)
+        // Approvals (The critical part)
         canApproveExitCeo: isAdmin || isCeo,
         canApproveExitFactory: isAdmin || isFactory,
         canApproveExitWarehouse: isAdmin || isWarehouse,
@@ -103,14 +104,14 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canApproveSecuritySupervisor: isAdmin || isSecurityHead
     };
 
-    // 3. Merge with Settings (Allow override from UI)
+    // 3. Merge Settings (THE OVERRIDE)
+    // If a permission is explicitly defined in settings (true or false), it overwrites the default.
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
-        // We spread settings over defaults, so if a checkbox is unchecked in settings, it stays false.
-        // But if it's undefined in settings, the default above applies.
         perms = { ...perms, ...settings.rolePermissions[userRole] };
     }
 
-    // 4. Admin Override (Always True)
+    // 4. Admin Override (God Mode)
+    // Admin permissions cannot be revoked via settings UI to prevent lockout.
     if (isAdmin) {
         Object.keys(perms).forEach(k => { (perms as any)[k] = true; });
     }
