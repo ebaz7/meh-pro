@@ -41,9 +41,9 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
   return false;
 };
 
-// --- REWRITTEN PERMISSION LOGIC (STRICT MODE) ---
+// --- CORE PERMISSION LOGIC ---
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
-    // 1. ADMIN GETS EVERYTHING
+    // 1. ADMIN SUPERUSER (Always has full access)
     if (userRole === UserRole.ADMIN) {
         return {
             canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
@@ -53,13 +53,12 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         };
     }
 
-    // 2. START WITH EVERYTHING FALSE (Zero Trust)
+    // 2. DEFINE DEFAULTS (Baseline access if nothing is configured in settings)
+    // This serves as the "starting point" before applying settings overrides.
     let perms: RolePermissions = {
         canViewAll: false,
-        canEditOwn: true, // Allow users to edit their own pending drafts by default
+        canEditOwn: true,
         canDeleteOwn: true,
-        
-        // Payment Defaults: FALSE
         canCreatePaymentOrder: false,
         canViewPaymentOrders: false,
         canApproveFinancial: false,
@@ -67,12 +66,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canApproveCeo: false,
         canEditAll: false,
         canDeleteAll: false,
-        
-        // Trade/Settings Defaults: FALSE
         canManageTrade: false,
         canManageSettings: false,
-        
-        // Exit Permit Defaults: FALSE
+        // Exit Defaults
         canCreateExitPermit: false,
         canViewExitPermits: false,
         canApproveExitCeo: false,
@@ -81,35 +77,17 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canApproveExitSecurity: false,
         canViewExitArchive: false,
         canEditExitArchive: false,
-
-        // Warehouse Defaults: FALSE
+        // Warehouse Defaults
         canManageWarehouse: false,
         canViewWarehouseReports: false,
         canApproveBijak: false,
-
-        // Security Defaults: FALSE
+        // Security Defaults
         canViewSecurity: false,
         canCreateSecurityLog: false,
         canApproveSecuritySupervisor: false
     };
 
-    // 3. APPLY SETTINGS (Database Overrides) - Highest Priority for Custom Roles
-    // If settings exist for this specific role ID, we merge them.
-    // This solves the issue where you check a box in settings but it doesn't apply.
-    if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
-        const savedPerms = settings.rolePermissions[userRole];
-        perms = { ...perms, ...savedPerms };
-        
-        // User Specific Override (e.g. Trade Access Checkbox on User Edit)
-        if (userObject?.canManageTrade) {
-            perms.canManageTrade = true;
-        }
-        
-        return perms;
-    }
-
-    // 4. HARDCODED DEFAULTS (ONLY if no settings exist for this role)
-    // This ensures backward compatibility for system roles if settings are empty.
+    // Apply Hardcoded Defaults based on Role (Only if no settings override them later)
     switch (userRole) {
         case UserRole.CEO:
             perms.canViewAll = true;
@@ -121,61 +99,56 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canApproveBijak = true;
             perms.canViewSecurity = true;
             break;
-
         case UserRole.FINANCIAL:
             perms.canCreatePaymentOrder = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveFinancial = true;
             break;
-
         case UserRole.MANAGER:
             perms.canCreatePaymentOrder = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveManager = true;
-            perms.canViewExitPermits = true; // Usually Manager can view exits
+            perms.canViewExitPermits = true;
             break;
-
         case UserRole.SALES_MANAGER:
-            perms.canCreatePaymentOrder = true; // Can request payment
-            perms.canCreateExitPermit = true; // Can request exit
+            perms.canCreatePaymentOrder = true;
+            perms.canCreateExitPermit = true; // Request exit
             perms.canViewExitPermits = true;
             break;
-
         case UserRole.FACTORY_MANAGER:
-            // STRICTLY FACTORY STUFF
             perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true;
+            perms.canApproveExitFactory = true; // Default Allow
             perms.canViewSecurity = true;
-            // NO PAYMENT ACCESS BY DEFAULT
             break;
-
         case UserRole.WAREHOUSE_KEEPER:
-            // STRICTLY WAREHOUSE STUFF
             perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true;
+            perms.canApproveExitWarehouse = true; // Default Allow
             perms.canManageWarehouse = true;
-            // NO PAYMENT ACCESS BY DEFAULT
             break;
-
         case UserRole.SECURITY_HEAD:
             perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true;
+            perms.canApproveExitSecurity = true; // Default Allow
             perms.canViewSecurity = true;
             perms.canApproveSecuritySupervisor = true;
             break;
-            
         case UserRole.SECURITY_GUARD:
             perms.canViewSecurity = true;
             perms.canCreateSecurityLog = true;
             break;
-            
         case UserRole.USER:
-            // Minimal access
             perms.canCreatePaymentOrder = true;
             break;
     }
 
-    // User Specific Override (Trade)
+    // 3. APPLY SETTINGS OVERRIDES (The Critical Part)
+    // If specific permissions are saved in settings for this role, they MUST overwrite defaults.
+    if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
+        const savedPerms = settings.rolePermissions[userRole];
+        // Merge: Defaults first, then Saved Perms overwrite them.
+        perms = { ...perms, ...savedPerms };
+    }
+
+    // 4. User Specific Overrides (Extra flags on user object)
     if (userObject?.canManageTrade) {
         perms.canManageTrade = true;
     }

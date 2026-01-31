@@ -1,14 +1,32 @@
 
 import React, { useState } from 'react';
-import { SystemSettings, UserRole, RolePermissions, CustomRole } from '../../types';
-import { ShieldCheck, Truck, Warehouse, Lock, ChevronDown, ChevronUp, Landmark, Trash2, CheckSquare, Square, Info } from 'lucide-react';
+import { SystemSettings, UserRole, CustomRole } from '../../types';
+import { ShieldCheck, Truck, Warehouse, Lock, ChevronDown, ChevronUp, Landmark, Trash2, CheckSquare, Square, Info, AlertTriangle } from 'lucide-react';
 
 interface Props {
     settings: SystemSettings;
     onUpdateSettings: (newSettings: SystemSettings) => void;
 }
 
+// DEFINITION OF ALL PERMISSION KEYS
+// These keys MUST match the interface RolePermissions in types.ts
 const PERMISSION_GROUPS = [
+    { 
+        id: 'exit', 
+        title: 'ماژول خروج کارخانه (مهم)', 
+        icon: Truck, 
+        color: 'orange', 
+        description: 'تنظیم دقیق اینکه چه کسی می‌تواند مراحل خروج بار را تایید کند.',
+        items: [
+            { id: 'canCreateExitPermit', label: 'ثبت درخواست خروج بار (فروش)' },
+            { id: 'canViewExitPermits', label: 'مشاهده کارتابل خروج (دسترسی خواندن)' },
+            { id: 'canApproveExitCeo', label: 'تایید مرحله ۱: مدیرعامل' },
+            { id: 'canApproveExitFactory', label: 'تایید مرحله ۲: مدیر کارخانه' },
+            { id: 'canApproveExitWarehouse', label: 'تایید مرحله ۳: سرپرست انبار/توزین' },
+            { id: 'canApproveExitSecurity', label: 'تایید مرحله ۴: انتظامات (خروج نهایی)' },
+            { id: 'canViewExitArchive', label: 'مشاهده بایگانی خروج' },
+        ] 
+    }, 
     { 
         id: 'payment', 
         title: 'ماژول پرداخت', 
@@ -23,24 +41,8 @@ const PERMISSION_GROUPS = [
         ] 
     }, 
     { 
-        id: 'exit', 
-        title: 'ماژول خروج کارخانه', 
-        icon: Truck, 
-        color: 'orange', 
-        items: [
-            { id: 'canCreateExitPermit', label: 'ثبت درخواست خروج بار (فروش)' },
-            { id: 'canViewExitPermits', label: 'مشاهده کارتابل خروج' },
-            { id: 'canApproveExitCeo', label: 'تایید خروج (مدیرعامل)' },
-            { id: 'canApproveExitFactory', label: 'تایید خروج (مدیر کارخانه)' },
-            { id: 'canApproveExitWarehouse', label: 'تایید خروج (سرپرست انبار/توزین)' },
-            { id: 'canApproveExitSecurity', label: 'تایید خروج (انتظامات - نهایی)' },
-            { id: 'canViewExitArchive', label: 'مشاهده بایگانی خروج' },
-            { id: 'canEditExitArchive', label: 'اصلاح اسناد بایگانی (Admin)' }
-        ] 
-    }, 
-    { 
         id: 'warehouse', 
-        title: 'ماژول انبار', 
+        title: 'ماژول انبار (بیجک)', 
         icon: Warehouse, 
         color: 'green', 
         items: [
@@ -67,8 +69,6 @@ const PERMISSION_GROUPS = [
         color: 'gray', 
         items: [
             { id: 'canViewAll', label: 'مشاهده تمام دستورات (همه کاربران)' },
-            { id: 'canEditOwn', label: 'ویرایش دستور خود' },
-            { id: 'canDeleteOwn', label: 'حذف دستور خود' },
             { id: 'canEditAll', label: 'ویرایش تمام دستورات' },
             { id: 'canDeleteAll', label: 'حذف تمام دستورات' },
             { id: 'canManageTrade', label: 'دسترسی به بخش بازرگانی' },
@@ -78,60 +78,34 @@ const PERMISSION_GROUPS = [
 ];
 
 const DEFAULT_ROLES = [
-    { id: UserRole.USER, label: 'کاربر عادی' },
-    { id: UserRole.FINANCIAL, label: 'مدیر مالی' },
-    { id: UserRole.MANAGER, label: 'مدیر داخلی' },
-    { id: UserRole.CEO, label: 'مدیر عامل' },
-    { id: UserRole.SALES_MANAGER, label: 'مدیر فروش' },
-    { id: UserRole.FACTORY_MANAGER, label: 'مدیر کارخانه' },
-    { id: UserRole.WAREHOUSE_KEEPER, label: 'انبار واردات' },
-    { id: UserRole.SECURITY_HEAD, label: 'سرپرست انتظامات' },
-    { id: UserRole.SECURITY_GUARD, label: 'نگهبان' },
-    { id: UserRole.ADMIN, label: 'مدیر سیستم' },
+    { id: UserRole.USER, label: 'کاربر عادی (User)' },
+    { id: UserRole.FINANCIAL, label: 'مدیر مالی (Financial)' },
+    { id: UserRole.MANAGER, label: 'مدیر داخلی (Manager)' },
+    { id: UserRole.CEO, label: 'مدیر عامل (CEO)' },
+    { id: UserRole.SALES_MANAGER, label: 'مدیر فروش (Sales)' },
+    { id: UserRole.FACTORY_MANAGER, label: 'مدیر کارخانه (Factory Manager)' },
+    { id: UserRole.WAREHOUSE_KEEPER, label: 'انبار (Warehouse Keeper)' },
+    { id: UserRole.SECURITY_HEAD, label: 'سرپرست انتظامات (Security Head)' },
+    { id: UserRole.SECURITY_GUARD, label: 'نگهبان (Guard)' },
+    { id: UserRole.ADMIN, label: 'مدیر سیستم (Admin)' },
 ];
 
 const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) => {
-    // State to track which role accordion is open
     const [expandedRole, setExpandedRole] = useState<string | null>(null);
     const [newRoleName, setNewRoleName] = useState('');
 
     const allRoles = [...DEFAULT_ROLES, ...(settings.customRoles || [])];
 
-    const toggleExpand = (roleId: string) => {
-        setExpandedRole(prev => prev === roleId ? null : roleId);
-    };
-
-    // --- CORE PERMISSION UPDATE LOGIC ---
-    const handlePermissionChange = (roleId: string, permKey: string, value: boolean) => {
-        // 1. Get current permissions for this role (or empty object)
+    // Toggle a single permission
+    const togglePermission = (roleId: string, permKey: string) => {
         const currentRolePerms = settings.rolePermissions?.[roleId] || {};
+        // Toggle the value (if undefined, treat as false -> true)
+        const newValue = !currentRolePerms[permKey];
         
-        // 2. Create updated permissions object
         const updatedRolePerms = {
             ...currentRolePerms,
-            [permKey]: value
+            [permKey]: newValue
         };
-
-        // 3. Update Global Settings
-        const newSettings = {
-            ...settings,
-            rolePermissions: {
-                ...settings.rolePermissions,
-                [roleId]: updatedRolePerms
-            }
-        };
-
-        onUpdateSettings(newSettings);
-    };
-
-    const toggleGroup = (roleId: string, groupItems: {id: string}[], isChecked: boolean) => {
-        const currentRolePerms = settings.rolePermissions?.[roleId] || {};
-        const updatedRolePerms = { ...currentRolePerms };
-        
-        groupItems.forEach(item => {
-            // @ts-ignore
-            updatedRolePerms[item.id] = isChecked;
-        });
 
         const newSettings = {
             ...settings,
@@ -160,140 +134,98 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) 
         const updatedRoles = (settings.customRoles || []).filter(r => r.id !== roleId);
         const updatedPermissions = { ...settings.rolePermissions };
         delete updatedPermissions[roleId];
-        
-        onUpdateSettings({ 
-            ...settings, 
-            customRoles: updatedRoles, 
-            rolePermissions: updatedPermissions 
-        });
+        onUpdateSettings({ ...settings, customRoles: updatedRoles, rolePermissions: updatedPermissions });
     };
 
     return (
         <div className="space-y-6">
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3">
-                <Info className="text-blue-600 shrink-0 mt-1" size={20}/>
-                <div className="text-sm text-blue-800">
-                    <p className="font-bold mb-1">راهنمای سطح دسترسی:</p>
-                    <p>در این بخش می‌توانید مشخص کنید هر نقش کاربری دقیقاً به چه امکاناتی دسترسی داشته باشد. برای مثال، برای فعال شدن دکمه تایید خروج برای مدیر کارخانه، حتماً باید تیک <strong>«تایید خروج (مدیر کارخانه)»</strong> برای نقش <strong>Factory Manager</strong> روشن باشد.</p>
+            <div className="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-lg flex gap-3 shadow-sm">
+                <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={24}/>
+                <div className="text-sm text-amber-900">
+                    <p className="font-bold mb-1 text-lg">راهنمای مهم تنظیمات دسترسی:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                        <li>در این بخش شما دقیقاً مشخص می‌کنید هر نقش چه دکمه‌هایی را ببیند.</li>
+                        <li><strong>مثال:</strong> اگر می‌خواهید مدیر کارخانه بتواند خروج را تایید کند، حتما نقش <strong>مدیر کارخانه (Factory Manager)</strong> را باز کنید و تیک <strong>«تایید مرحله ۲: مدیر کارخانه»</strong> را روشن کنید.</li>
+                        <li>حتما تیک <strong>«مشاهده کارتابل خروج»</strong> را نیز بزنید تا بتواند لیست را ببیند.</li>
+                    </ul>
                 </div>
             </div>
 
             {/* Custom Role Input */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-col md:flex-row gap-4 items-end shadow-sm">
-                <div className="flex-1 w-full space-y-1">
-                    <label className="text-xs font-bold text-gray-500">افزودن نقش سفارشی جدید</label>
-                    <input 
-                        className="w-full border rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors" 
-                        placeholder="نام نقش (مثال: حسابدار ارشد)" 
-                        value={newRoleName} 
-                        onChange={e => setNewRoleName(e.target.value)} 
-                    />
-                </div>
-                <button 
-                    type="button" 
-                    onClick={handleAddRole} 
-                    className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 h-[38px] w-full md:w-auto"
-                >
-                    افزودن نقش
-                </button>
+            <div className="flex gap-2">
+                <input 
+                    className="flex-1 border rounded-lg p-2 text-sm" 
+                    placeholder="نام نقش سفارشی (مثال: حسابدار ارشد)" 
+                    value={newRoleName} 
+                    onChange={e => setNewRoleName(e.target.value)} 
+                />
+                <button onClick={handleAddRole} className="bg-blue-600 text-white px-4 rounded-lg text-sm font-bold">افزودن نقش</button>
             </div>
 
             {/* Roles List */}
-            <div className="space-y-3">
-                {allRoles.map(role => (
-                    <div key={role.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+            <div className="space-y-4">
+                {allRoles.map(role => {
+                    const isSystemRole = Object.values(UserRole).includes(role.id as any);
+                    
+                    return (
+                    <div key={role.id} className={`bg-white border-2 rounded-xl overflow-hidden transition-all ${expandedRole === role.id ? 'border-blue-500 shadow-lg' : 'border-gray-200'}`}>
                         {/* Header */}
                         <div 
-                            className={`p-4 flex justify-between items-center cursor-pointer select-none transition-colors ${expandedRole === role.id ? 'bg-blue-50' : 'bg-gray-50 hover:bg-gray-100'}`}
-                            onClick={() => toggleExpand(role.id)}
+                            className={`p-4 flex justify-between items-center cursor-pointer ${expandedRole === role.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                            onClick={() => setExpandedRole(expandedRole === role.id ? null : role.id)}
                         >
                             <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${role.id === UserRole.ADMIN ? 'bg-red-100 text-red-600' : 'bg-white border text-gray-600'}`}>
+                                <div className={`p-2 rounded-lg ${role.id === UserRole.ADMIN ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
                                     <ShieldCheck size={20}/>
                                 </div>
                                 <div>
-                                    <span className="font-bold text-gray-800 block">{role.label}</span>
-                                    <span className="text-[10px] text-gray-500 font-mono">{role.id}</span>
+                                    <span className="font-bold text-gray-800 text-lg">{role.label}</span>
+                                    <span className="text-xs text-gray-500 font-mono block">{role.id}</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                {!Object.values(UserRole).includes(role.id as any) && (
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleRemoveRole(role.id); }}
-                                        className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors"
-                                        title="حذف نقش"
-                                    >
-                                        <Trash2 size={16}/>
-                                    </button>
-                                )}
+                                {!isSystemRole && <button onClick={(e) => { e.stopPropagation(); handleRemoveRole(role.id); }} className="text-red-500 p-2 hover:bg-red-100 rounded"><Trash2 size={18}/></button>}
                                 {expandedRole === role.id ? <ChevronUp size={20} className="text-blue-600"/> : <ChevronDown size={20} className="text-gray-400"/>}
                             </div>
                         </div>
                         
-                        {/* Body (Permissions) */}
+                        {/* Permissions Body */}
                         {expandedRole === role.id && (
-                            <div className="p-4 bg-white border-t border-gray-100 animate-fade-in">
+                            <div className="p-6 bg-white border-t border-blue-100">
                                 {role.id === UserRole.ADMIN ? (
-                                    <div className="p-4 bg-red-50 text-red-700 rounded-lg text-sm font-bold text-center border border-red-100 flex items-center justify-center gap-2">
-                                        <Lock size={16}/>
-                                        مدیر سیستم دسترسی کامل به تمامی بخش‌ها دارد و قابل تغییر نیست.
-                                    </div>
+                                    <div className="text-center text-red-600 font-bold bg-red-50 p-4 rounded">مدیر سیستم به همه چیز دسترسی دارد.</div>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {PERMISSION_GROUPS.map(group => {
-                                            const GroupIcon = group.icon;
-                                            // Check if ALL items in this group are checked
-                                            const rolePerms = settings.rolePermissions?.[role.id] || {};
-                                            // @ts-ignore
-                                            const isGroupAllChecked = group.items.every(item => rolePerms[item.id]);
-
-                                            return (
-                                                <div key={group.id} className="border border-gray-200 rounded-xl overflow-hidden">
-                                                    <div className={`px-4 py-2 bg-${group.color}-50 border-b border-${group.color}-100 flex justify-between items-center`}>
-                                                        <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                                                            <GroupIcon size={16} className={`text-${group.color}-600`}/>
-                                                            {group.title}
-                                                        </div>
-                                                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="hidden"
-                                                                checked={isGroupAllChecked}
-                                                                onChange={(e) => toggleGroup(role.id, group.items, e.target.checked)}
-                                                            />
-                                                            <span className="text-[10px] text-blue-600 hover:underline">
-                                                                {isGroupAllChecked ? 'لغو همه' : 'انتخاب همه'}
-                                                            </span>
-                                                        </label>
-                                                    </div>
-                                                    <div className="p-2 space-y-1">
-                                                        {group.items.map(perm => {
-                                                            // @ts-ignore
-                                                            const isChecked = !!rolePerms[perm.id];
-                                                            
-                                                            return (
-                                                                <div 
-                                                                    key={perm.id} 
-                                                                    className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? 'bg-green-50' : 'hover:bg-gray-50'}`}
-                                                                    onClick={() => handlePermissionChange(role.id, perm.id, !isChecked)}
-                                                                >
-                                                                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isChecked ? 'bg-green-500 border-green-500' : 'bg-white border-gray-300'}`}>
-                                                                        {isChecked && <CheckSquare size={14} className="text-white"/>}
-                                                                    </div>
-                                                                    <span className={`text-xs select-none ${isChecked ? 'text-gray-800 font-bold' : 'text-gray-600'}`}>{perm.label}</span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
+                                        {PERMISSION_GROUPS.map(group => (
+                                            <div key={group.id} className={`border rounded-xl overflow-hidden ${group.id === 'exit' ? 'border-orange-300 shadow-sm' : 'border-gray-200'}`}>
+                                                <div className={`px-4 py-3 border-b flex items-center gap-2 font-bold ${group.id === 'exit' ? 'bg-orange-100 text-orange-800' : `bg-${group.color}-50 text-${group.color}-800`}`}>
+                                                    <group.icon size={18}/> {group.title}
                                                 </div>
-                                            );
-                                        })}
+                                                <div className="p-3 space-y-2">
+                                                    {group.items.map(perm => {
+                                                        const isChecked = !!settings.rolePermissions?.[role.id]?.[perm.id];
+                                                        return (
+                                                            <div 
+                                                                key={perm.id} 
+                                                                className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? 'bg-green-100 border border-green-300' : 'hover:bg-gray-50 border border-transparent'}`}
+                                                                onClick={() => togglePermission(role.id, perm.id)}
+                                                            >
+                                                                <div className={`w-5 h-5 rounded border flex items-center justify-center ${isChecked ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-400'}`}>
+                                                                    {isChecked && <CheckSquare size={14}/>}
+                                                                </div>
+                                                                <span className={`text-sm select-none ${isChecked ? 'text-green-900 font-bold' : 'text-gray-600'}`}>{perm.label}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
                         )}
                     </div>
-                ))}
+                )})}
             </div>
         </div>
     );
