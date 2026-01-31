@@ -90,17 +90,17 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             break;
         case UserRole.FACTORY_MANAGER:
             perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true;
+            perms.canApproveExitFactory = true; // Default TRUE
             perms.canViewSecurity = true;
             break;
         case UserRole.WAREHOUSE_KEEPER:
             perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true;
+            perms.canApproveExitWarehouse = true; // Default TRUE
             perms.canManageWarehouse = true;
             break;
         case UserRole.SECURITY_HEAD:
             perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true;
+            perms.canApproveExitSecurity = true; // Default TRUE
             perms.canViewSecurity = true;
             perms.canApproveSecuritySupervisor = true;
             break;

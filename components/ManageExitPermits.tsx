@@ -40,12 +40,11 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const loadData = async () => { setPermits(await getExitPermits()); };
 
   // --- APPROVAL CHECK LOGIC ---
-  // Rely strictly on permissions (which now respect settings)
   const canApprove = (p: ExitPermit) => {
       // 1. Admin always approves
       if (currentUser.role === UserRole.ADMIN) return true;
 
-      // 2. Stage Checks based on PERMISSIONS ONLY
+      // 2. Stage Checks based on PERMISSIONS ONLY (Respecting Settings)
       if (p.status === ExitPermitStatus.PENDING_CEO) {
           return !!permissions.canApproveExitCeo;
       }
