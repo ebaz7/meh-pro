@@ -46,7 +46,17 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     if (userRole === UserRole.ADMIN) {
         return {
             canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
-            canCreateExitPermit: true, canViewExitPermits: true, canApproveExitCeo: true, canApproveExitFactory: true, canApproveExitWarehouse: true, canApproveExitSecurity: true, canViewExitArchive: true, canEditExitArchive: true,
+            
+            // FORCE ALL EXIT PERMIT APPROVALS FOR ADMIN
+            canCreateExitPermit: true, 
+            canViewExitPermits: true, 
+            canApproveExitCeo: true, 
+            canApproveExitFactory: true, 
+            canApproveExitWarehouse: true, 
+            canApproveExitSecurity: true, 
+            canViewExitArchive: true, 
+            canEditExitArchive: true,
+
             canManageWarehouse: true, canViewWarehouseReports: true, canApproveBijak: true,
             canViewSecurity: true, canCreateSecurityLog: true, canApproveSecuritySupervisor: true
         };
@@ -109,8 +119,6 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canViewSecurity = true;
             perms.canCreateSecurityLog = true;
             perms.canViewExitPermits = true; 
-            // Optional: Allow guard to finalize exit if Head is absent? 
-            // perms.canApproveExitSecurity = true; 
             break;
 
         case UserRole.FINANCIAL:
