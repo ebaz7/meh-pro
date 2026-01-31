@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings, ExitPermitItem } from '../types';
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit } from '../services/storageService';
-import { getRolePermissions, getUsers } from '../services/authService'; 
+import { getUsers } from '../services/authService'; 
 import { formatDate } from '../constants';
 import { Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, RefreshCw, Scale } from 'lucide-react';
 import PrintExitPermit from './PrintExitPermit';
@@ -27,46 +27,85 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const [exitTimeValue, setExitTimeValue] = useState('');
   const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
   
-  // For Auto-Send
   const [permitForAutoSend, setPermitForAutoSend] = useState<ExitPermit | null>(null);
-  
-  // Warehouse Modal
   const [warehouseFinalizePermit, setWarehouseFinalizePermit] = useState<ExitPermit | null>(null);
-  
-  // Permissions
-  const permissions = getRolePermissions(currentUser.role, settings || null, currentUser);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // --- APPROVAL ELIGIBILITY ---
-  const checkCanApprove = (p: ExitPermit) => {
-      // Admin Override
-      if (currentUser.role === UserRole.ADMIN) return true;
+  // --- STRICT ACTION RENDERER (NO COMPLEX LOGIC) ---
+  const renderActionButtons = (p: ExitPermit) => {
+      const role = currentUser.role;
+      const status = p.status;
+      const isAdmin = role === UserRole.ADMIN;
 
-      // Role-Based Checks (Forced by authService now)
-      if (p.status === ExitPermitStatus.PENDING_CEO && permissions.canApproveExitCeo) return true;
-      if (p.status === ExitPermitStatus.PENDING_FACTORY && permissions.canApproveExitFactory) return true;
-      if (p.status === ExitPermitStatus.PENDING_WAREHOUSE && permissions.canApproveExitWarehouse) return true;
-      if (p.status === ExitPermitStatus.PENDING_SECURITY && permissions.canApproveExitSecurity) return true;
-      
-      return false;
-  };
+      // 1. CEO APPROVAL
+      if (status === ExitPermitStatus.PENDING_CEO) {
+          if (isAdmin || role === UserRole.CEO) {
+              return (
+                  <>
+                      <button onClick={() => handleApproveAction(p.id, status)} className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 font-bold flex items-center gap-1 shadow-sm text-xs">
+                          <CheckCircle size={16}/> تایید مدیرعامل
+                      </button>
+                      <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100"><XCircle size={16}/></button>
+                  </>
+              );
+          }
+      }
 
-  // Only allow editing "content" if user created it AND it's not finalized
-  // AND the user is NOT currently the approver (Approvers should Approve/Reject, not Edit directly here)
-  const checkCanEdit = (p: ExitPermit) => {
-      if (p.status === ExitPermitStatus.EXITED) return false;
-      if (currentUser.role === UserRole.ADMIN) return true;
-      
-      // If it's your turn to approve, HIDE the edit button to avoid confusion
-      if (checkCanApprove(p)) return false; 
+      // 2. FACTORY MANAGER APPROVAL
+      if (status === ExitPermitStatus.PENDING_FACTORY) {
+          if (isAdmin || role === UserRole.FACTORY_MANAGER) {
+              return (
+                  <>
+                      <button onClick={() => handleApproveAction(p.id, status)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-bold flex items-center gap-1 shadow-sm text-xs">
+                          <CheckCircle size={16}/> تایید مدیر کارخانه
+                      </button>
+                      <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100"><XCircle size={16}/></button>
+                  </>
+              );
+          }
+      }
 
-      // If you are Sales Manager and it's still with CEO, you can edit
-      if (currentUser.role === UserRole.SALES_MANAGER && p.status === ExitPermitStatus.PENDING_CEO) return true;
-      
-      return false;
+      // 3. WAREHOUSE APPROVAL (Needs Weighing)
+      if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          if (isAdmin || role === UserRole.WAREHOUSE_KEEPER) {
+              return (
+                  <>
+                      <button onClick={() => initiateWarehouseApproval(p)} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-700 font-bold flex items-center gap-1 shadow-sm text-xs">
+                          <Scale size={16}/> تایید وزن و تحویل
+                      </button>
+                      <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100"><XCircle size={16}/></button>
+                  </>
+              );
+          }
+      }
+
+      // 4. SECURITY APPROVAL (Final Exit)
+      if (status === ExitPermitStatus.PENDING_SECURITY) {
+          if (isAdmin || role === UserRole.SECURITY_HEAD || role === UserRole.SECURITY_GUARD) {
+              return (
+                  <>
+                      <div className="flex items-center gap-1 bg-amber-50 p-1 rounded-lg border border-amber-200">
+                          <input className="w-16 border rounded p-1 text-[12px] text-center font-bold font-mono bg-white" placeholder="--:--" value={showExitTimeInput === p.id ? exitTimeValue : ''} onFocus={() => handleSecurityClick(p.id)} onChange={e => setExitTimeValue(e.target.value)} />
+                          <button onClick={() => handleApproveAction(p.id, status)} className="bg-green-600 text-white p-1.5 rounded hover:bg-green-700 shadow-sm" title="تایید خروج"><CheckCircle size={16}/></button>
+                      </div>
+                      <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100"><XCircle size={16}/></button>
+                  </>
+              );
+          }
+      }
+
+      // 5. GENERIC EDIT (Only show if NOT in approval mode for this user)
+      // Allow Admin always. Allow Sales Manager if PENDING_CEO.
+      if (status !== ExitPermitStatus.EXITED) {
+          if (isAdmin || (role === UserRole.SALES_MANAGER && status === ExitPermitStatus.PENDING_CEO)) {
+              return <button onClick={() => setEditingPermit(p)} className="text-amber-500 hover:bg-amber-50 p-2 rounded"><Edit size={16}/></button>;
+          }
+      }
+
+      return null;
   };
 
   const handleSecurityClick = (permitId: string) => {
@@ -75,7 +114,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setShowExitTimeInput(permitId);
   };
 
-  // --- WAREHOUSE FLOW ---
   const initiateWarehouseApproval = (permit: ExitPermit) => {
       setWarehouseFinalizePermit(permit);
   };
@@ -86,7 +124,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       const totalWeight = updatedItems.reduce((acc, i) => acc + (Number(i.deliveredWeight ?? i.weight) || 0), 0);
       const totalCartons = updatedItems.reduce((acc, i) => acc + (Number(i.deliveredCartonCount ?? i.cartonCount) || 0), 0);
       
-      // We update the permit data AND move status forward in one go
       const updatedPermitData = { 
           ...warehouseFinalizePermit, 
           items: updatedItems, 
@@ -98,7 +135,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setWarehouseFinalizePermit(null);
   };
 
-  // --- GENERAL APPROVE FLOW ---
   const handleApproveAction = async (id: string, currentStatus: ExitPermitStatus, dataOverride?: any) => {
       const permitToApprove = permits.find(p => p.id === id);
       if (!permitToApprove && !dataOverride) return;
@@ -111,7 +147,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       let confirmMessage = 'آیا تایید می‌کنید؟';
       let notificationCaption = '';
 
-      // --- LOGIC ---
+      // --- WORKFLOW STATE MACHINE ---
       if (currentStatus === ExitPermitStatus.PENDING_CEO) {
           nextStatus = ExitPermitStatus.PENDING_FACTORY;
           targetGroups = ['GROUP1']; 
@@ -145,11 +181,9 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setIsProcessingId(id);
 
       try {
-          // Update DB (Merged Logic)
           const permitToSave = { ...basePermit, status: nextStatus, ...extraData };
           await editExitPermit(permitToSave);
           
-          // Render & Send
           setPermitForAutoSend(permitToSave);
 
           setTimeout(async () => {
@@ -178,7 +212,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                       if (targetGroups.includes('GROUP1')) await send(group1, notificationCaption);
                       if (targetGroups.includes('GROUP2')) await send(group2, notificationCaption);
 
-                      // Notify Factory Manager on CEO Approval
                       if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
                           const users = await getUsers();
                           const factoryMgr = users.find(u => u.role === UserRole.FACTORY_MANAGER);
@@ -282,32 +315,8 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                 <div className="flex justify-center gap-2 items-center">
                                     <button onClick={() => setViewPermit(p)} className="bg-blue-50 text-blue-600 p-2 rounded-lg hover:bg-blue-100" title="مشاهده"><Eye size={16}/></button>
                                     
-                                    {checkCanApprove(p) && (
-                                        <>
-                                            {/* WAREHOUSE BUTTON */}
-                                            {p.status === ExitPermitStatus.PENDING_WAREHOUSE ? (
-                                                <button onClick={() => initiateWarehouseApproval(p)} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-700 font-bold flex items-center gap-1 shadow-sm">
-                                                    <Scale size={16}/> توزین و تایید
-                                                </button>
-                                            ) : 
-                                            /* SECURITY BUTTON */
-                                            p.status === ExitPermitStatus.PENDING_SECURITY ? (
-                                                <div className="flex items-center gap-1 bg-amber-50 p-1 rounded-lg border border-amber-200">
-                                                    <input className="w-16 border rounded p-1 text-[12px] text-center font-bold font-mono bg-white" placeholder="--:--" value={showExitTimeInput === p.id ? exitTimeValue : ''} onFocus={() => handleSecurityClick(p.id)} onChange={e => setExitTimeValue(e.target.value)} />
-                                                    <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-600 text-white p-1.5 rounded hover:bg-green-700 shadow-sm" title="تایید خروج"><CheckCircle size={16}/></button>
-                                                </div>
-                                            ) : (
-                                                /* CEO / FACTORY BUTTON */
-                                                <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-bold flex items-center gap-1 shadow-sm">
-                                                    <CheckCircle size={16}/> تایید و ارسال
-                                                </button>
-                                            )}
-                                            
-                                            <button onClick={() => handleReject(p.id)} className="bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100" title="رد درخواست"><XCircle size={16}/></button>
-                                        </>
-                                    )}
-
-                                    {checkCanEdit(p) && <button onClick={() => setEditingPermit(p)} className="text-amber-500 hover:bg-amber-50 p-2 rounded"><Edit size={16}/></button>}
+                                    {/* --- MAIN RENDER LOGIC --- */}
+                                    {renderActionButtons(p)}
                                     
                                     {currentUser.role === UserRole.ADMIN && <button onClick={() => handleDelete(p.id)} className="text-gray-400 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                                 </div>
