@@ -149,24 +149,28 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
       // --- WORKFLOW STATE MACHINE ---
       if (currentStatus === ExitPermitStatus.PENDING_CEO) {
+          // 1. Request -> CEO Approved -> Send to Group 1 & Factory
           nextStatus = ExitPermitStatus.PENDING_FACTORY;
           targetGroups = ['GROUP1']; 
           extraData.approverCeo = currentUser.fullName;
           notificationCaption = `📢 *تایید مدیرعامل انجام شد*\nمجوز شماره ${basePermit.permitNumber} جهت بررسی مدیر کارخانه ارسال شد.`;
       } 
       else if (currentStatus === ExitPermitStatus.PENDING_FACTORY) {
+          // 2. Factory Approved -> Send to Group 2 & Warehouse
           nextStatus = ExitPermitStatus.PENDING_WAREHOUSE;
           targetGroups = ['GROUP2']; 
           extraData.approverFactory = currentUser.fullName;
           notificationCaption = `🏭 *تایید مدیر کارخانه انجام شد*\nمجوز شماره ${basePermit.permitNumber} جهت صدور حواله به انبار ارسال شد.`;
       }
       else if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
+          // 3. Warehouse Approved (Weighing done) -> Send to Group 2 & Security
           nextStatus = ExitPermitStatus.PENDING_SECURITY;
           targetGroups = ['GROUP2']; 
           extraData.approverWarehouse = currentUser.fullName;
           notificationCaption = `📦 *تایید انبار و توزین انجام شد*\nمجوز شماره ${basePermit.permitNumber} آماده خروج (انتظامات).`;
       }
       else if (currentStatus === ExitPermitStatus.PENDING_SECURITY) {
+          // 4. Security Approved (Exit Time) -> Send to Group 1 & Group 2
           const exitTime = exitTimeValue || new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
           confirmMessage = `ثبت خروج نهایی؟ ساعت: ${exitTime}`;
           nextStatus = ExitPermitStatus.EXITED;
@@ -181,11 +185,14 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setIsProcessingId(id);
 
       try {
+          // A. Update DB
           const permitToSave = { ...basePermit, status: nextStatus, ...extraData };
           await editExitPermit(permitToSave);
           
+          // B. Trigger Auto Send (Hidden Render)
           setPermitForAutoSend(permitToSave);
 
+          // C. Wait for Render & Capture
           setTimeout(async () => {
               const elementId = `print-permit-${permitToSave.id}`;
               const element = document.getElementById(elementId);
@@ -209,18 +216,22 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                           }
                       };
 
+                      // Send to Groups
                       if (targetGroups.includes('GROUP1')) await send(group1, notificationCaption);
                       if (targetGroups.includes('GROUP2')) await send(group2, notificationCaption);
 
+                      // Send to Specific Roles (Next Stage)
                       if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
                           const users = await getUsers();
                           const factoryMgr = users.find(u => u.role === UserRole.FACTORY_MANAGER);
                           if (factoryMgr?.phoneNumber) await send(factoryMgr.phoneNumber, notificationCaption);
                       }
+                      // Note: Other roles (Warehouse/Security) usually monitor Group 2, but could be added here if they have dedicated numbers
 
                   } catch (e) { console.error('Notification Error', e); }
               }
               
+              // Cleanup
               setPermitForAutoSend(null);
               setExitTimeValue('');
               setShowExitTimeInput(null);
@@ -228,7 +239,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               loadData();
               setViewPermit(null);
 
-          }, 2500);
+          }, 2500); // 2.5s wait for React render
 
       } catch (e) {
           alert('خطا در انجام عملیات');
@@ -270,8 +281,10 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in relative min-h-[500px]">
+        {/* Loading Overlay */}
         {isProcessingId && (<div className="absolute inset-0 bg-white/80 z-[50] flex items-center justify-center backdrop-blur-sm"><div className="flex flex-col items-center"><Loader2 size={40} className="text-blue-600 animate-spin" /><span className="mt-2 font-bold text-gray-700">درحال ارسال به مرحله بعد...</span></div></div>)}
         
+        {/* Hidden Auto-Send Component */}
         {permitForAutoSend && (
             <div className="hidden-print-export" style={{ position: 'fixed', top: -9999, left: -9999, width: '210mm' }}>
                 <div id={`print-permit-${permitForAutoSend.id}`}>
@@ -280,6 +293,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
             </div>
         )}
 
+        {/* Modal for Warehouse Finalization */}
         {warehouseFinalizePermit && (
             <WarehouseFinalizeModal 
                 permit={warehouseFinalizePermit} 
@@ -288,6 +302,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
             />
         )}
 
+        {/* Header */}
         <div className="p-6 border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Truck size={24} className="text-orange-600"/> کارتابل خروج بار</h2>
             <div className="flex gap-2">
@@ -300,6 +315,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
             <div className="relative w-full md:w-64"><Search className="absolute right-3 top-2.5 text-gray-400" size={18}/><input className="w-full pl-4 pr-10 py-2 border rounded-xl text-sm" placeholder="جستجو..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
         </div>
         
+        {/* Table */}
         <div className="overflow-x-auto">
             <table className="w-full text-sm text-right">
                 <thead className="bg-gray-50 text-gray-600"><tr><th className="p-4">شماره</th><th className="p-4">تاریخ</th><th className="p-4">کالا</th><th className="p-4">گیرنده</th><th className="p-4">وضعیت</th><th className="p-4 text-center">عملیات</th></tr></thead>
@@ -328,6 +344,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
             </table>
         </div>
         
+        {/* Modals */}
         {viewPermit && (<PrintExitPermit permit={viewPermit} onClose={() => setViewPermit(null)} settings={settings} />)}
         {editingPermit && <EditExitPermitModal permit={editingPermit} onClose={() => setEditingPermit(null)} onSave={loadData} />}
     </div>
