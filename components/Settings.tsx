@@ -10,7 +10,7 @@ import { generateUUID } from '../constants';
 import PrintTemplateDesigner from './PrintTemplateDesigner';
 import { FiscalYearManager } from './FiscalModule'; 
 import SecondExitGroupSettings from './settings/SecondExitGroupSettings';
-import RolePermissionsEditor from './settings/RolePermissionsEditor'; 
+import RolePermissionsEditor from './settings/RolePermissionsEditor'; // Import New Component
 
 // Internal QRCode Component with Error Handling
 const QRCode = ({ value, size }: { value: string, size: number }) => { 
@@ -278,6 +278,7 @@ const Settings: React.FC = () => {
       } catch (e) { setMessage('خطا ❌'); } finally { setLoading(false); } 
   };
 
+  // --- CONTACTS LOGIC UPDATED ---
   const handleAddOrUpdateContact = () => { 
       if (!contactName.trim() || !contactNumber.trim()) return; 
       
@@ -548,36 +549,25 @@ const Settings: React.FC = () => {
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار</h3>
                             
                             <div className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-sm font-bold text-gray-700 block mb-1">گروه اعلان (1) - مدیریت/فروش (Group 1)</label>
-                                        <select 
-                                            className="w-full border rounded-lg p-3 dir-ltr text-left bg-white" 
-                                            value={settings.exitPermitNotificationGroup || ''} 
-                                            onChange={e => setSettings({...settings, exitPermitNotificationGroup: e.target.value})}
-                                        >
-                                            <option value="">-- انتخاب گروه 1 --</option>
-                                            {settings.savedContacts?.filter(c => c.isGroup).map(c => (
-                                                <option key={c.id} value={c.number}>{c.name}</option>
-                                            ))}
-                                        </select>
-                                        <p className="text-[10px] text-gray-500 mt-1">این گروه پیام‌های تایید مدیرعامل و خروج نهایی را دریافت می‌کند.</p>
-                                    </div>
-                                    
-                                    <div>
-                                        <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
-                                        <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultSalesManager || ''} onChange={e => setSettings({...settings, defaultSalesManager: e.target.value})} placeholder="98912..." />
-                                    </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره گروه واتساپ انبار (پیش‌فرض)</label>
+                                    <select 
+                                        className="w-full border rounded-lg p-3 dir-ltr text-left bg-white" 
+                                        value={settings.defaultWarehouseGroup || ''} 
+                                        onChange={e => setSettings({...settings, defaultWarehouseGroup: e.target.value})}
+                                    >
+                                        <option value="">-- انتخاب گروه --</option>
+                                        {settings.savedContacts?.filter(c => c.isGroup).map(c => (
+                                            <option key={c.id} value={c.number}>{c.name} {c.baleId ? '(+Bale)' : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
+                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultSalesManager || ''} onChange={e => setSettings({...settings, defaultSalesManager: e.target.value})} placeholder="98912..." />
                                 </div>
                             </div>
 
-                            <SecondExitGroupSettings 
-                                settings={settings} 
-                                setSettings={setSettings} 
-                                contacts={[...(settings.savedContacts || []), ...appUsers as Contact[]]} 
-                            />
-
-                            {/* Legacy Warehouse Settings (Optional Per Company) */}
                             <div className="mt-6">
                                 <h4 className="font-bold text-sm text-gray-700 mb-3 border-b pb-1">تنظیمات اختصاصی شرکت‌ها (اختیاری)</h4>
                                 <div className="space-y-3">
@@ -616,6 +606,12 @@ const Settings: React.FC = () => {
                                     })}
                                 </div>
                             </div>
+                            
+                            <SecondExitGroupSettings 
+                                settings={settings} 
+                                setSettings={setSettings} 
+                                contacts={[...(settings.savedContacts || []), ...appUsers as Contact[]]} 
+                            />
                         </div>
                     )}
                     
@@ -834,6 +830,7 @@ const Settings: React.FC = () => {
                         <div className="space-y-8 animate-fade-in">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><ShieldCheck size={20}/> مدیریت دسترسی نقش‌ها</h3>
                             
+                            {/* USE NEW COMPONENT HERE */}
                             <RolePermissionsEditor 
                                 settings={settings} 
                                 onUpdateSettings={handleUpdateSettings} 

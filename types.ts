@@ -797,10 +797,10 @@ export interface SystemSettings {
     geminiApiKey?: string; 
     insuranceCompanies?: string[]; 
     warehouseSequences?: Record<string, number>; 
+    exitPermitNotificationGroup?: string; 
     
-    // NOTIFICATION CONFIG GROUPS
-    exitPermitNotificationGroup?: string; // Group 1 (Management)
-    exitPermitSecondGroupConfig?: SecondGroupConfig; // Group 2 (Operations)
+    // NEW: Configuration for the second group with filters
+    exitPermitSecondGroupConfig?: SecondGroupConfig;
 
     companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
     defaultWarehouseGroup?: string; 

@@ -12,7 +12,6 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Use class property for state to avoid constructor issues and ensure type safety
   state: ErrorBoundaryState = {
     hasError: false,
     error: null,
