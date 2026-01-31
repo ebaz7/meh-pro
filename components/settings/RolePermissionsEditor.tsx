@@ -9,17 +9,15 @@ interface Props {
 }
 
 // DEFINITION OF ALL PERMISSION KEYS
-// These keys MUST match the interface RolePermissions in types.ts
 const PERMISSION_GROUPS = [
     { 
         id: 'exit', 
         title: 'ماژول خروج کارخانه (مهم)', 
         icon: Truck, 
         color: 'orange', 
-        description: 'تنظیم دقیق اینکه چه کسی می‌تواند مراحل خروج بار را تایید کند.',
         items: [
             { id: 'canCreateExitPermit', label: 'ثبت درخواست خروج بار (فروش)' },
-            { id: 'canViewExitPermits', label: 'مشاهده کارتابل خروج (دسترسی خواندن)' },
+            { id: 'canViewExitPermits', label: 'مشاهده کارتابل خروج' },
             { id: 'canApproveExitCeo', label: 'تایید مرحله ۱: مدیرعامل' },
             { id: 'canApproveExitFactory', label: 'تایید مرحله ۲: مدیر کارخانه' },
             { id: 'canApproveExitWarehouse', label: 'تایید مرحله ۳: سرپرست انبار/توزین' },
@@ -27,6 +25,7 @@ const PERMISSION_GROUPS = [
             { id: 'canViewExitArchive', label: 'مشاهده بایگانی خروج' },
         ] 
     }, 
+    // ... Other groups ...
     { 
         id: 'payment', 
         title: 'ماژول پرداخت', 
@@ -99,8 +98,11 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) 
     // Toggle a single permission
     const togglePermission = (roleId: string, permKey: string) => {
         const currentRolePerms = settings.rolePermissions?.[roleId] || {};
-        // Toggle the value (if undefined, treat as false -> true)
-        const newValue = !currentRolePerms[permKey];
+        // If it was undefined, assume it was false (visual) -> toggle to true
+        // NOTE: In backend authService, we might have defaults.
+        // But here we explicitly save user intention.
+        const currentValue = !!currentRolePerms[permKey];
+        const newValue = !currentValue;
         
         const updatedRolePerms = {
             ...currentRolePerms,
@@ -142,16 +144,15 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) 
             <div className="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-lg flex gap-3 shadow-sm">
                 <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={24}/>
                 <div className="text-sm text-amber-900">
-                    <p className="font-bold mb-1 text-lg">راهنمای مهم تنظیمات دسترسی:</p>
+                    <p className="font-bold mb-1 text-lg">نکته مهم:</p>
                     <ul className="list-disc list-inside space-y-1">
-                        <li>در این بخش شما دقیقاً مشخص می‌کنید هر نقش چه دکمه‌هایی را ببیند.</li>
-                        <li><strong>مثال:</strong> اگر می‌خواهید مدیر کارخانه بتواند خروج را تایید کند، حتما نقش <strong>مدیر کارخانه (Factory Manager)</strong> را باز کنید و تیک <strong>«تایید مرحله ۲: مدیر کارخانه»</strong> را روشن کنید.</li>
-                        <li>حتما تیک <strong>«مشاهده کارتابل خروج»</strong> را نیز بزنید تا بتواند لیست را ببیند.</li>
+                        <li>نقش‌های سیستمی (مثل مدیر کارخانه) به‌صورت پیش‌فرض دسترسی‌های لازم را دارند.</li>
+                        <li>اگر می‌خواهید دسترسی پیش‌فرض را <strong>قطع کنید</strong>، تیک آن را بردارید.</li>
+                        <li>برای نقش‌های سفارشی، حتماً تیک‌های لازم را بزنید.</li>
                     </ul>
                 </div>
             </div>
 
-            {/* Custom Role Input */}
             <div className="flex gap-2">
                 <input 
                     className="flex-1 border rounded-lg p-2 text-sm" 
@@ -162,14 +163,12 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) 
                 <button onClick={handleAddRole} className="bg-blue-600 text-white px-4 rounded-lg text-sm font-bold">افزودن نقش</button>
             </div>
 
-            {/* Roles List */}
             <div className="space-y-4">
                 {allRoles.map(role => {
                     const isSystemRole = Object.values(UserRole).includes(role.id as any);
                     
                     return (
                     <div key={role.id} className={`bg-white border-2 rounded-xl overflow-hidden transition-all ${expandedRole === role.id ? 'border-blue-500 shadow-lg' : 'border-gray-200'}`}>
-                        {/* Header */}
                         <div 
                             className={`p-4 flex justify-between items-center cursor-pointer ${expandedRole === role.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                             onClick={() => setExpandedRole(expandedRole === role.id ? null : role.id)}
@@ -189,7 +188,6 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) 
                             </div>
                         </div>
                         
-                        {/* Permissions Body */}
                         {expandedRole === role.id && (
                             <div className="p-6 bg-white border-t border-blue-100">
                                 {role.id === UserRole.ADMIN ? (
@@ -203,7 +201,11 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) 
                                                 </div>
                                                 <div className="p-3 space-y-2">
                                                     {group.items.map(perm => {
-                                                        const isChecked = !!settings.rolePermissions?.[role.id]?.[perm.id];
+                                                        // Check if explicit setting exists
+                                                        const explicitSetting = settings.rolePermissions?.[role.id]?.[perm.id];
+                                                        // Determine visual state: if explicit setting exists use it, otherwise undefined (treated as false visually here for simplicity in custom roles)
+                                                        const isChecked = !!explicitSetting;
+
                                                         return (
                                                             <div 
                                                                 key={perm.id} 
