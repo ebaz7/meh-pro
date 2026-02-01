@@ -4,7 +4,7 @@ import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings, ExitPermi
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit } from '../services/storageService';
 import { getRolePermissions, getUsers } from '../services/authService'; 
 import { formatDate } from '../constants';
-import { Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, RefreshCw } from 'lucide-react';
+import { Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import PrintExitPermit from './PrintExitPermit';
 import EditExitPermitModal from './EditExitPermitModal';
 import WarehouseFinalizeModal from './WarehouseFinalizeModal'; 
@@ -30,7 +30,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const [permitForAutoSend, setPermitForAutoSend] = useState<ExitPermit | null>(null);
   const [warehouseFinalizePermit, setWarehouseFinalizePermit] = useState<ExitPermit | null>(null);
   
-  // 1. GET PERMISSIONS (Logic is now fixed in authService)
   const permissions = getRolePermissions(currentUser.role, settings || null, currentUser);
 
   useEffect(() => { loadData(); }, []);
@@ -41,25 +40,30 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   const loadData = async () => { setPermits(await getExitPermits()); };
 
-  // 2. CHECK APPROVAL RIGHTS (Simplified)
+  // --- 1. SUPER ROBUST ACCESS CONTROL ---
+  // This function now explicitly checks the ROLE + STATUS match.
+  // It effectively ignores the permissions settings if the Role matches the Status directly.
   const canApprove = (p: ExitPermit) => {
-      // Admin always can
+      // 1. Admin always can
       if (currentUser.role === UserRole.ADMIN) return true;
 
-      // Check based on status and the now-guaranteed permissions
+      // 2. Role-Based Hard Overrides (The Fix)
+      // If I am the Factory Manager AND the status is Pending Factory -> I MUST see the button.
+      if (currentUser.role === UserRole.FACTORY_MANAGER && p.status === ExitPermitStatus.PENDING_FACTORY) return true;
+      if (currentUser.role === UserRole.WAREHOUSE_KEEPER && p.status === ExitPermitStatus.PENDING_WAREHOUSE) return true;
+      if (currentUser.role === UserRole.SECURITY_HEAD && p.status === ExitPermitStatus.PENDING_SECURITY) return true;
+      if (currentUser.role === UserRole.CEO && p.status === ExitPermitStatus.PENDING_CEO) return true;
+
+      // 3. Fallback to Permissions (for custom roles or delegates)
       switch (p.status) {
           case ExitPermitStatus.PENDING_CEO:
               return !!permissions.canApproveExitCeo;
-              
           case ExitPermitStatus.PENDING_FACTORY:
               return !!permissions.canApproveExitFactory;
-              
           case ExitPermitStatus.PENDING_WAREHOUSE:
               return !!permissions.canApproveExitWarehouse;
-              
           case ExitPermitStatus.PENDING_SECURITY:
               return !!permissions.canApproveExitSecurity;
-              
           default:
               return false;
       }
@@ -78,6 +82,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       return p.status === ExitPermitStatus.PENDING_SECURITY && canApprove(p);
   };
 
+  // --- HELPERS ---
   const generateCaption = (permit: ExitPermit, title: string) => {
       let c = `${title}\n`;
       c += `🔢 شماره: ${permit.permitNumber}\n`;
@@ -91,7 +96,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   };
 
   const handleApproveAction = async (id: string, currentStatus: ExitPermitStatus, dataOverride?: any) => {
-      // Warehouse Special Logic: Open modal if not already confirming data
       if (currentStatus === ExitPermitStatus.PENDING_WAREHOUSE && !dataOverride) {
           const p = permits.find(x => x.id === id);
           if (p) setWarehouseFinalizePermit(p);
@@ -159,7 +163,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                       if(settings?.exitPermitNotificationGroup) send(settings.exitPermitNotificationGroup, caption);
                   }
 
-                  // Second Group Notification Logic
                   const secondGroupConfig = settings?.exitPermitSecondGroupConfig;
                   if (secondGroupConfig && secondGroupConfig.groupId && secondGroupConfig.activeStatuses) {
                       if (secondGroupConfig.activeStatuses.includes(nextStatus)) {
@@ -279,7 +282,10 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
             <table className="w-full text-sm text-right">
                 <thead className="bg-gray-50 text-gray-600"><tr><th className="p-4">شماره</th><th className="p-4">تاریخ</th><th className="p-4">کالا</th><th className="p-4">گیرنده</th><th className="p-4">وضعیت</th><th className="p-4 text-center">عملیات</th></tr></thead>
                 <tbody>
-                    {filteredPermits.map(p => (
+                    {filteredPermits.map(p => {
+                        const showApprove = canApprove(p) && !isSecurityStep(p);
+                        
+                        return (
                         <tr key={p.id} className="border-b hover:bg-gray-50">
                             <td className="p-4 font-bold text-orange-600">#{p.permitNumber}</td>
                             <td className="p-4 text-xs">{formatDate(p.date)}</td>
@@ -290,12 +296,12 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                 <div className="flex justify-center gap-2">
                                     <button onClick={() => setViewPermit(p)} className="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200"><Eye size={16}/></button>
                                     
-                                    {/* Action Buttons Logic */}
-                                    {canApprove(p) && !isSecurityStep(p) && (
+                                    {/* Normal Approval Button */}
+                                    {showApprove && (
                                         <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-100 text-green-600 p-2 rounded-lg hover:bg-green-200" title="تایید"><CheckCircle size={16}/></button>
                                     )}
 
-                                    {/* Security Step Logic (Input Time) */}
+                                    {/* Security Step (Input Time) */}
                                     {isSecurityStep(p) && (
                                         <div className="flex items-center gap-1 bg-amber-50 p-1 rounded-lg border border-amber-200">
                                             <input 
@@ -315,7 +321,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                 </div>
                             </td>
                         </tr>
-                    ))}
+                    )})}
                     {filteredPermits.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">موردی یافت نشد.</td></tr>}
                 </tbody>
             </table>
