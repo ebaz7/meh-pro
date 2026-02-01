@@ -9,7 +9,8 @@ import { getUsers } from '../services/authService';
 import { generateUUID } from '../constants';
 import PrintTemplateDesigner from './PrintTemplateDesigner';
 import { FiscalYearManager } from './FiscalModule'; 
-import RolePermissionsEditor from './settings/RolePermissionsEditor'; 
+import SecondExitGroupSettings from './settings/SecondExitGroupSettings';
+import RolePermissionsEditor from './settings/RolePermissionsEditor'; // Import New Component
 
 // Internal QRCode Component with Error Handling
 const QRCode = ({ value, size }: { value: string, size: number }) => { 
@@ -66,9 +67,7 @@ const Settings: React.FC = () => {
       insuranceCompanies: [],
       exitPermitNotificationGroup: '',
       printTemplates: [],
-      fiscalYears: [],
-      exitPermitGroup1: '',
-      exitPermitGroup2: ''
+      fiscalYears: []
   });
 
   const [loading, setLoading] = useState(false);
@@ -135,6 +134,7 @@ const Settings: React.FC = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const isSecure = window.isSecureContext;
   
+  // App Users to merge into contacts list
   const [appUsers, setAppUsers] = useState<(Contact | User)[]>([]);
 
   useEffect(() => { 
@@ -278,7 +278,7 @@ const Settings: React.FC = () => {
       } catch (e) { setMessage('خطا ❌'); } finally { setLoading(false); } 
   };
 
-  // --- CONTACTS LOGIC ---
+  // --- CONTACTS LOGIC UPDATED ---
   const handleAddOrUpdateContact = () => { 
       if (!contactName.trim() || !contactNumber.trim()) return; 
       
@@ -353,6 +353,7 @@ const Settings: React.FC = () => {
   const handleEditTemplate = (t: PrintTemplate) => { setEditingTemplate(t); setShowDesigner(true); };
   const handleDeleteTemplate = (id: string) => { if(!confirm('حذف قالب؟')) return; const updated = (settings.printTemplates || []).filter(t => t.id !== id); setSettings({ ...settings, printTemplates: updated }); };
 
+  // New handler for role permissions
   const handleUpdateSettings = (newSettings: SystemSettings) => {
       setSettings(newSettings);
   };
@@ -373,7 +374,7 @@ const Settings: React.FC = () => {
                 <button onClick={() => setActiveCategory('data')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'data' ? 'bg-white shadow text-indigo-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Database size={18}/> اطلاعات پایه</button>
                 <button onClick={() => setActiveCategory('templates')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'templates' ? 'bg-white shadow text-teal-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><LayoutTemplate size={18}/> قالب‌های چاپ</button>
                 <button onClick={() => setActiveCategory('commerce')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'commerce' ? 'bg-white shadow text-rose-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Container size={18}/> تنظیمات بازرگانی</button>
-                <button onClick={() => setActiveCategory('warehouse')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'warehouse' ? 'bg-white shadow text-orange-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Warehouse size={18}/> انبار و لجستیک</button>
+                <button onClick={() => setActiveCategory('warehouse')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'warehouse' ? 'bg-white shadow text-orange-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Warehouse size={18}/> انبار</button>
                 <button onClick={() => setActiveCategory('integrations')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'integrations' ? 'bg-white shadow text-purple-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><Link size={18}/> اتصالات (API)</button>
                 <button onClick={() => setActiveCategory('whatsapp')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'whatsapp' ? 'bg-white shadow text-green-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><MessageCircle size={18}/> پیام‌رسان‌ها</button>
                 <button onClick={() => setActiveCategory('permissions')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeCategory === 'permissions' ? 'bg-white shadow text-amber-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}`}><ShieldCheck size={18}/> دسترسی‌ها و نقش‌ها</button>
@@ -432,57 +433,7 @@ const Settings: React.FC = () => {
                         </div>
                     )}
 
-                    {/* WAREHOUSE SETTINGS (Updated for Exit Flow) */}
-                    {activeCategory === 'warehouse' && (
-                        <div className="space-y-6 animate-fade-in">
-                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار و لجستیک</h3>
-                            
-                            <div className="space-y-4">
-                                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
-                                    <h4 className="font-bold text-orange-900 mb-3 text-sm flex items-center gap-2"><Truck size={18}/> پیکربندی گروه‌های ارسال پیام (مجوز خروج)</h4>
-                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-xs font-bold text-gray-700 block mb-1">گروه اول (مدیریت/فروش):</label>
-                                            <select 
-                                                className="w-full border rounded-lg p-2 text-sm bg-white" 
-                                                value={settings.exitPermitGroup1 || ''} 
-                                                onChange={e => setSettings({...settings, exitPermitGroup1: e.target.value})}
-                                            >
-                                                <option value="">-- انتخاب کنید --</option>
-                                                {settings.savedContacts?.filter(c => c.isGroup).map(c => (
-                                                    <option key={c.id} value={c.number}>{c.name} {c.baleId ? '(+Bale)' : ''}</option>
-                                                ))}
-                                            </select>
-                                            <p className="text-[10px] text-gray-500 mt-1">دریافت پیام در مراحل: تایید مدیرعامل، خروج نهایی</p>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-xs font-bold text-gray-700 block mb-1">گروه دوم (عملیات/انبار/انتظامات):</label>
-                                            <select 
-                                                className="w-full border rounded-lg p-2 text-sm bg-white" 
-                                                value={settings.exitPermitGroup2 || ''} 
-                                                onChange={e => setSettings({...settings, exitPermitGroup2: e.target.value})}
-                                            >
-                                                <option value="">-- انتخاب کنید --</option>
-                                                {settings.savedContacts?.filter(c => c.isGroup).map(c => (
-                                                    <option key={c.id} value={c.number}>{c.name} {c.baleId ? '(+Bale)' : ''}</option>
-                                                ))}
-                                            </select>
-                                            <p className="text-[10px] text-gray-500 mt-1">دریافت پیام در مراحل: تایید مدیر کارخانه، تایید انبار، خروج نهایی</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
-                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultSalesManager || ''} onChange={e => setSettings({...settings, defaultSalesManager: e.target.value})} placeholder="98912..." />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* ... other categories (whatsapp, templates, data, commerce) kept as is ... */}
+                    {/* WHATSAPP & MESSENGERS TAB */}
                     {activeCategory === 'whatsapp' && (
                         <div className="space-y-6 animate-fade-in">
                             <div className="flex justify-between items-center border-b pb-2">
@@ -541,6 +492,16 @@ const Settings: React.FC = () => {
                                         value={settings.baleBotToken || ''} 
                                         onChange={(e) => setSettings({...settings, baleBotToken: e.target.value})} 
                                     />
+                                    <div className="text-xs text-gray-500 leading-relaxed bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                        <div className="flex items-center gap-1 font-bold text-blue-800 mb-1"><Info size={14}/> راهنما:</div>
+                                        برای ارسال پیام به یک گروه در بله (هنگام تایید اسناد):
+                                        <ol className="list-decimal list-inside mt-1 space-y-1">
+                                            <li>یک ربات در بله بسازید (@BotFather) و توکن را در بالا وارد کنید.</li>
+                                            <li>ربات را در گروه بله خود عضو کنید و دسترسی ادمین بدهید.</li>
+                                            <li>شناسه عددی گروه بله را پیدا کنید.</li>
+                                            <li>در پایین (دفترچه تلفن)، گروه واتساپی مربوطه را <strong>ویرایش</strong> کنید و <strong>شناسه بله</strong> را وارد نمایید.</li>
+                                        </ol>
+                                    </div>
                                 </div>
                             </div>
 
@@ -582,7 +543,78 @@ const Settings: React.FC = () => {
                             </div>
                         </div>
                     )}
+                    
+                    {activeCategory === 'warehouse' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره گروه واتساپ انبار (پیش‌فرض)</label>
+                                    <select 
+                                        className="w-full border rounded-lg p-3 dir-ltr text-left bg-white" 
+                                        value={settings.defaultWarehouseGroup || ''} 
+                                        onChange={e => setSettings({...settings, defaultWarehouseGroup: e.target.value})}
+                                    >
+                                        <option value="">-- انتخاب گروه --</option>
+                                        {settings.savedContacts?.filter(c => c.isGroup).map(c => (
+                                            <option key={c.id} value={c.number}>{c.name} {c.baleId ? '(+Bale)' : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-1">شماره مدیر فروش (پیش‌فرض)</label>
+                                    <input className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.defaultSalesManager || ''} onChange={e => setSettings({...settings, defaultSalesManager: e.target.value})} placeholder="98912..." />
+                                </div>
+                            </div>
 
+                            <div className="mt-6">
+                                <h4 className="font-bold text-sm text-gray-700 mb-3 border-b pb-1">تنظیمات اختصاصی شرکت‌ها (اختیاری)</h4>
+                                <div className="space-y-3">
+                                    {settings.companies?.filter(c => c.showInWarehouse !== false).map(c => {
+                                        const conf = settings.companyNotifications?.[c.name] || {};
+                                        return (
+                                            <div key={c.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                                <h5 className="font-bold text-sm text-blue-800 mb-2">{c.name}</h5>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-xs block mb-1">شماره مدیر:</label>
+                                                        <input className="w-full border rounded p-2 text-xs dir-ltr" value={conf.salesManager || ''} onChange={e => {
+                                                            const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, salesManager: e.target.value } };
+                                                            setSettings({ ...settings, companyNotifications: newConf });
+                                                        }} placeholder="پیش‌فرض" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs block mb-1">گروه انبار:</label>
+                                                        <select 
+                                                            className="w-full border rounded p-2 text-xs dir-ltr bg-white" 
+                                                            value={conf.warehouseGroup || ''} 
+                                                            onChange={e => {
+                                                                const newConf = { ...settings.companyNotifications, [c.name]: { ...conf, warehouseGroup: e.target.value } };
+                                                                setSettings({ ...settings, companyNotifications: newConf });
+                                                            }}
+                                                        >
+                                                            <option value="">-- پیش‌فرض سیستم --</option>
+                                                            {settings.savedContacts?.filter(c => c.isGroup).map(grp => (
+                                                                <option key={grp.id} value={grp.number}>{grp.name} {grp.baleId ? '(+B)' : ''}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            
+                            <SecondExitGroupSettings 
+                                settings={settings} 
+                                setSettings={setSettings} 
+                                contacts={[...(settings.savedContacts || []), ...appUsers as Contact[]]} 
+                            />
+                        </div>
+                    )}
+                    
                     {activeCategory === 'data' && (
                          <div className="space-y-8 animate-fade-in">
                             <div className="space-y-4">
@@ -600,7 +632,6 @@ const Settings: React.FC = () => {
                                         <input type="file" ref={companyLetterheadInputRef} className="hidden" accept="image/*" onChange={handleLetterheadUpload}/>
                                     </div>
                                 </div>
-                                {/* ... Rest of Company Form ... */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">شماره ثبت</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyRegNum} onChange={e => setNewCompanyRegNum(e.target.value)} /></div>
                                     <div><label className="text-xs font-bold block mb-1 text-gray-500">شناسه ملی</label><input className="w-full border rounded-lg p-2 text-sm" value={newCompanyNatId} onChange={e => setNewCompanyNatId(e.target.value)} /></div>
@@ -693,7 +724,6 @@ const Settings: React.FC = () => {
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Link size={20}/> تنظیمات اتصالات خارجی</h3>
                             
                             <div className="space-y-4">
-                                {/* ... API Keys ... */}
                                 <div>
                                     <label className="text-sm font-bold text-gray-700 block mb-1">کلید پنل پیامک (API Key)</label>
                                     <input type="password" className="w-full border rounded-lg p-3 dir-ltr text-left" value={settings.smsApiKey} onChange={e => setSettings({...settings, smsApiKey: e.target.value})} placeholder="KaveNegar / SMS.ir API Key..." />
@@ -800,14 +830,7 @@ const Settings: React.FC = () => {
                         <div className="space-y-8 animate-fade-in">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><ShieldCheck size={20}/> مدیریت دسترسی نقش‌ها</h3>
                             
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 flex items-start gap-2">
-                                <Info size={18} className="shrink-0 mt-0.5"/>
-                                <div>
-                                    <p className="font-bold mb-1">نکته مهم:</p>
-                                    <p>دسترسی‌ها به صورت پیش‌فرض غیرفعال هستند. برای فعال‌سازی هر قابلیت برای هر نقش، تیک مربوطه را بزنید.</p>
-                                </div>
-                            </div>
-
+                            {/* USE NEW COMPONENT HERE */}
                             <RolePermissionsEditor 
                                 settings={settings} 
                                 onUpdateSettings={handleUpdateSettings} 

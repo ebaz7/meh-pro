@@ -30,6 +30,7 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
   const getIsoDate = () => { 
       try { 
           const date = jalaliToGregorian(shamsiDate.year, shamsiDate.month, shamsiDate.day);
+          // Set to Noon to avoid Timezone shift issues
           date.setHours(12, 0, 0, 0); 
           return date.toISOString().split('T')[0]; 
       } catch (e) { 
@@ -72,7 +73,7 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
               plateNumber: driverInfo.plateNumber,
               driverName: driverInfo.driverName,
               description: driverInfo.description,
-              status: ExitPermitStatus.PENDING_CEO,
+              status: ExitPermitStatus.PENDING_CEO, // Stage 1: CEO Approval
               createdAt: Date.now()
           };
           await saveExitPermit(permit);
@@ -83,20 +84,20 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
               const element = document.getElementById(`print-permit-${permit.id}`);
               if (element) {
                   try {
-                      // 1. Capture Image
-                      // @ts-ignore
-                      const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
-                      const base64 = canvas.toDataURL('image/png').split(',')[1];
-                      
                       const users = await getUsers();
-                      
-                      // 2. Notify CEO
+                      // Notify CEO
                       const ceoUser = users.find(u => u.role === UserRole.CEO && u.phoneNumber);
                       if (ceoUser) {
+                          // @ts-ignore
+                          const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
+                          const base64 = canvas.toDataURL('image/png').split(',')[1];
+                          
                           let caption = `🚛 *درخواست مجوز خروج جدید*\n`;
                           caption += `🔢 شماره: ${permit.permitNumber}\n`;
                           caption += `📅 تاریخ: ${formatDate(permit.date)}\n`;
+                          caption += `📦 کالا: ${goodsSummary}\n`;
                           caption += `👤 گیرنده: ${recipientSummary}\n`;
+                          caption += `🔢 تعداد: ${totalCartons} کارتن\n`;
                           caption += `👤 درخواست کننده: ${permit.requester}\n\n`;
                           caption += `لطفا جهت بررسی و تایید اقدام نمایید.`;
 
@@ -135,7 +136,7 @@ const CreateExitPermit: React.FC<Props> = ({ onSuccess, currentUser }) => {
                 <div><label className="text-sm font-bold block mb-1 flex items-center gap-1"><Hash size={16}/> شماره مجوز</label><input type="number" className="w-full border rounded-xl p-3 bg-white text-left dir-ltr font-bold text-orange-600" value={permitNumber} onChange={e => setPermitNumber(e.target.value)} required /></div>
                 <div><label className="text-sm font-bold block mb-1">تاریخ خروج</label><div className="flex gap-2"><select className="border rounded-xl p-2 bg-white flex-1" value={shamsiDate.day} onChange={e => setShamsiDate({...shamsiDate, day: Number(e.target.value)})}>{days.map(d => <option key={d} value={d}>{d}</option>)}</select><select className="border rounded-xl p-2 bg-white flex-1" value={shamsiDate.month} onChange={e => setShamsiDate({...shamsiDate, month: Number(e.target.value)})}>{months.map((m, i) => <option key={i} value={i+1}>{m}</option>)}</select><select className="border rounded-xl p-2 bg-white flex-1" value={shamsiDate.year} onChange={e => setShamsiDate({...shamsiDate, year: Number(e.target.value)})}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div></div>
             </div>
-            
+            {/* ... rest of form same ... */}
             <div className="space-y-4">
                 <div className="flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center gap-2"><Package size={20} className="text-blue-600"/> مشخصات اقلام و کالاها</h3><button type="button" onClick={handleAddItem} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-blue-100 font-bold"><Plus size={14}/> افزودن کالا</button></div>
                 <div className="bg-blue-50/50 rounded-xl border border-blue-100 overflow-hidden"><table className="w-full text-sm text-right"><thead className="bg-blue-100 text-blue-800"><tr><th className="p-3 w-10 text-center">#</th><th className="p-3">نام کالا / محصول</th><th className="p-3 w-32">تعداد کارتن</th><th className="p-3 w-32">وزن (KG)</th><th className="p-3 w-10"></th></tr></thead><tbody className="divide-y divide-blue-100">{items.map((item, index) => (<tr key={item.id}><td className="p-2 text-center text-gray-500 font-bold">{index + 1}</td><td className="p-2"><input className="w-full border border-blue-200 rounded p-2" placeholder="شرح کالا..." value={item.goodsName} onChange={e => handleUpdateItem(item.id, 'goodsName', e.target.value)} required /></td><td className="p-2"><input type="number" className="w-full border border-blue-200 rounded p-2 dir-ltr text-center" placeholder="0" value={item.cartonCount || ''} onChange={e => handleUpdateItem(item.id, 'cartonCount', Number(e.target.value))} /></td><td className="p-2"><input type="number" className="w-full border border-blue-200 rounded p-2 dir-ltr text-center" placeholder="0" value={item.weight || ''} onChange={e => handleUpdateItem(item.id, 'weight', Number(e.target.value))} /></td><td className="p-2 text-center"><button type="button" onClick={() => handleRemoveItem(item.id)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={16}/></button></td></tr>))}<tr className="bg-blue-100/50 font-bold text-blue-900"><td colSpan={2} className="p-3 text-left pl-4">جمع کل:</td><td className="p-3 text-center dir-ltr">{totalCartons} کارتن</td><td className="p-3 text-center dir-ltr">{totalWeight} کیلوگرم</td><td></td></tr></tbody></table></div>
