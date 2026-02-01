@@ -33,9 +33,11 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
 
   useEffect(() => { 
       loadData(); 
-      // If user is Admin/CEO, default to ALL, otherwise ACTION (My Tasks)
+      // Admin/CEO usually want to see ALL active flow, others usually just their Tasks
       if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO) {
           setFilterMode('ALL');
+      } else {
+          setFilterMode('ACTION');
       }
   }, []);
 
@@ -60,17 +62,20 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       }
       
       // 3. Factory Manager Step (Status: PENDING_FACTORY)
+      // Checks if status contains "کارخانه" OR is exactly PENDING_FACTORY
       if (s === ExitPermitStatus.PENDING_FACTORY || s.includes('کارخانه')) {
           if (role === UserRole.FACTORY_MANAGER || permissions.canApproveExitFactory) return 'APPROVE_FACTORY';
       }
       
       // 4. Warehouse Step (Status: PENDING_WAREHOUSE)
-      if (s === ExitPermitStatus.PENDING_WAREHOUSE || s.includes('انبار')) {
+      // Checks if status contains "انبار" (Anbar) OR is exactly PENDING_WAREHOUSE
+      if (s === ExitPermitStatus.PENDING_WAREHOUSE || s.includes('انبار') || s.includes('Warehouse')) {
           if (role === UserRole.WAREHOUSE_KEEPER || permissions.canApproveExitWarehouse) return 'APPROVE_WAREHOUSE';
       }
       
       // 5. Security Step (Status: PENDING_SECURITY)
-      if (s === ExitPermitStatus.PENDING_SECURITY || s.includes('انتظامات')) {
+      // Checks if status contains "انتظامات" OR is exactly PENDING_SECURITY
+      if (s === ExitPermitStatus.PENDING_SECURITY || s.includes('انتظامات') || s.includes('Security')) {
           if (role === UserRole.SECURITY_HEAD || role === UserRole.SECURITY_GUARD || permissions.canApproveExitSecurity) return 'APPROVE_SECURITY';
       }
       
@@ -95,11 +100,11 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       if (filterMode === 'ARCHIVE') return isArchivedStatus;
       
       if (filterMode === 'ACTION') {
-          // Show if I can approve it 
-          const canIApprove = getActionForUser(p.status) !== null;
-          // OR if I created it and it's active (so I can track it) - optional, can remove if user wants PURE inbox
-          // const isMyPending = isMyRequest(p) && !isArchivedStatus; 
-          return canIApprove; // Strict Cartable: Only things I need to act on
+          // Show if I can approve it (IT IS MY TURN)
+          const action = getActionForUser(p.status);
+          if (action) return true;
+          
+          return false;
       }
       
       if (filterMode === 'ALL') return !isArchivedStatus; // Show all active flow
@@ -139,10 +144,16 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               let nextStatus = p.status;
               let extraData: any = {};
 
-              // Calculate Next Status
-              if (p.status === ExitPermitStatus.PENDING_CEO || p.status.includes('مدیرعامل')) nextStatus = ExitPermitStatus.PENDING_FACTORY;
-              else if (p.status === ExitPermitStatus.PENDING_FACTORY || p.status.includes('کارخانه')) nextStatus = ExitPermitStatus.PENDING_WAREHOUSE;
-              else if (p.status === ExitPermitStatus.PENDING_WAREHOUSE || p.status.includes('انبار')) nextStatus = ExitPermitStatus.PENDING_SECURITY;
+              // Calculate Next Status based on Current
+              if (p.status === ExitPermitStatus.PENDING_CEO || p.status.includes('مدیرعامل')) {
+                  nextStatus = ExitPermitStatus.PENDING_FACTORY;
+              }
+              else if (p.status === ExitPermitStatus.PENDING_FACTORY || p.status.includes('کارخانه')) {
+                  nextStatus = ExitPermitStatus.PENDING_WAREHOUSE;
+              }
+              else if (p.status === ExitPermitStatus.PENDING_WAREHOUSE || p.status.includes('انبار')) {
+                  nextStatus = ExitPermitStatus.PENDING_SECURITY;
+              }
               else if (p.status === ExitPermitStatus.PENDING_SECURITY || p.status.includes('انتظامات')) {
                   nextStatus = ExitPermitStatus.EXITED;
                   extraData.exitTime = exitTime;
@@ -181,7 +192,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               goodsName: items.map(i => i.goodsName).join('، ') // Update summary
           });
 
-          // Fixed: Removed incorrect 'approverWarehouse' property from extra object
+          // Move to next step: PENDING_SECURITY
           await updateExitPermitStatus(warehouseFinalize.id, ExitPermitStatus.PENDING_SECURITY, currentUser);
           
           setWarehouseFinalize(null);
