@@ -41,10 +41,15 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
   return false;
 };
 
-// --- FIXED PERMISSION LOGIC ---
+/**
+ * REWRITTEN PERMISSION LOGIC (FAILSAFE)
+ * 1. Admin gets everything.
+ * 2. System Roles get HARDCODED defaults that cannot be removed by empty DB settings.
+ * 3. DB Settings are applied on top (MERGED), allowing overrides but preserving base functionality.
+ */
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     
-    // 1. ADMIN GETS EVERYTHING (Hard Override)
+    // --- 1. ADMIN OVERRIDE ---
     if (userRole === UserRole.ADMIN) {
         return {
             canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
@@ -54,92 +59,92 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         };
     }
 
-    // 2. DEFINE DEFAULTS (Base Permissions based on Role Type)
-    // Initialize with safe defaults
-    let perms: RolePermissions = {
+    // --- 2. DEFINE SYSTEM DEFAULTS (The Safety Net) ---
+    // These permissions exist regardless of what is saved in the database settings.
+    let basePerms: RolePermissions = {
         canViewAll: false,
         canEditOwn: true, 
         canDeleteOwn: true,
-        canCreatePaymentOrder: false, canViewPaymentOrders: false, canApproveFinancial: false, canApproveManager: false, canApproveCeo: false, canEditAll: false, canDeleteAll: false,
-        canManageTrade: false, canManageSettings: false,
-        canCreateExitPermit: false, canViewExitPermits: false, canApproveExitCeo: false, canApproveExitFactory: false, canApproveExitWarehouse: false, canApproveExitSecurity: false, canViewExitArchive: false, canEditExitArchive: false,
-        canManageWarehouse: false, canViewWarehouseReports: false, canApproveBijak: false,
-        canViewSecurity: false, canCreateSecurityLog: false, canApproveSecuritySupervisor: false
+        // Default all criticals to false, enable in switch
+        canApproveExitCeo: false,
+        canApproveExitFactory: false,
+        canApproveExitWarehouse: false,
+        canApproveExitSecurity: false
     };
 
-    // Apply System Defaults (Hardcoded Logic) - ensuring basic functionality per role
     switch (userRole) {
         case UserRole.CEO:
-            perms.canViewAll = true;
-            perms.canViewPaymentOrders = true;
-            perms.canApproveCeo = true;
-            perms.canViewExitPermits = true;
-            perms.canApproveExitCeo = true;
-            perms.canManageTrade = true;
-            perms.canApproveBijak = true;
-            perms.canViewSecurity = true;
+            basePerms.canViewAll = true;
+            basePerms.canViewPaymentOrders = true;
+            basePerms.canApproveCeo = true;
+            basePerms.canViewExitPermits = true;
+            basePerms.canApproveExitCeo = true; // CEO can approve Exit Step 1
+            basePerms.canManageTrade = true;
+            basePerms.canApproveBijak = true;
+            basePerms.canViewSecurity = true;
             break;
 
         case UserRole.FINANCIAL:
-            perms.canCreatePaymentOrder = true;
-            perms.canViewPaymentOrders = true;
-            perms.canApproveFinancial = true;
+            basePerms.canCreatePaymentOrder = true;
+            basePerms.canViewPaymentOrders = true;
+            basePerms.canApproveFinancial = true;
             break;
 
         case UserRole.MANAGER:
-            perms.canCreatePaymentOrder = true;
-            perms.canViewPaymentOrders = true;
-            perms.canApproveManager = true;
-            perms.canViewExitPermits = true; 
+            basePerms.canCreatePaymentOrder = true;
+            basePerms.canViewPaymentOrders = true;
+            basePerms.canApproveManager = true;
+            basePerms.canViewExitPermits = true; 
             break;
 
         case UserRole.SALES_MANAGER:
-            perms.canCreatePaymentOrder = true;
-            perms.canCreateExitPermit = true; // Can create exit request
-            perms.canViewExitPermits = true; // Can view status
+            basePerms.canCreatePaymentOrder = true;
+            basePerms.canCreateExitPermit = true; // Sales creates request
+            basePerms.canViewExitPermits = true;
             break;
 
         case UserRole.FACTORY_MANAGER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true; // CRITICAL DEFAULT
-            perms.canViewSecurity = true;
+            basePerms.canViewExitPermits = true;
+            basePerms.canApproveExitFactory = true; // Factory Manager approves Step 2
+            basePerms.canViewSecurity = true;
             break;
 
         case UserRole.WAREHOUSE_KEEPER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true; // CRITICAL DEFAULT
-            perms.canManageWarehouse = true;
+            basePerms.canViewExitPermits = true;
+            basePerms.canApproveExitWarehouse = true; // Warehouse approves Step 3
+            basePerms.canManageWarehouse = true;
             break;
 
         case UserRole.SECURITY_HEAD:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true; // CRITICAL DEFAULT
-            perms.canViewSecurity = true;
-            perms.canApproveSecuritySupervisor = true;
+            basePerms.canViewExitPermits = true;
+            basePerms.canApproveExitSecurity = true; // Security approves Step 4 (Final)
+            basePerms.canViewSecurity = true;
+            basePerms.canApproveSecuritySupervisor = true;
             break;
             
         case UserRole.SECURITY_GUARD:
-            perms.canViewSecurity = true;
-            perms.canCreateSecurityLog = true;
+            basePerms.canViewSecurity = true;
+            basePerms.canCreateSecurityLog = true;
             break;
             
         case UserRole.USER:
-            perms.canCreatePaymentOrder = true;
+            basePerms.canCreatePaymentOrder = true;
             break;
     }
 
-    // 3. APPLY DATABASE SETTINGS (MERGE)
-    // IMPORTANT: This merges saved permissions ON TOP OF defaults.
-    // It fixes the issue where saving settings would wipe out default role capabilities.
+    // --- 3. MERGE DATABASE SETTINGS ---
+    // If settings exist, overlay them. This ensures if you checked a box in settings, it applies.
+    // If you uncheck a box in settings, it might override defaults (depending on logic), 
+    // but usually, settings add extra permissions or custom roles.
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
-        const savedPerms = settings.rolePermissions[userRole];
-        perms = { ...perms, ...savedPerms };
+        const dbPerms = settings.rolePermissions[userRole];
+        basePerms = { ...basePerms, ...dbPerms };
     }
 
-    // 4. USER SPECIFIC OVERRIDES
+    // --- 4. USER SPECIFIC FLAGS ---
     if (userObject?.canManageTrade) {
-        perms.canManageTrade = true;
+        basePerms.canManageTrade = true;
     }
 
-    return perms;
+    return basePerms;
 };
