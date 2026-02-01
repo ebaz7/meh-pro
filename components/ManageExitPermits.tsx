@@ -40,10 +40,11 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const loadData = async () => { setPermits(await getExitPermits()); };
 
   // --- APPROVAL CHECK LOGIC ---
-  // Purely checks if the permission bit is true for the current status.
   const canApprove = (p: ExitPermit) => {
+      // 1. Admin always approves
       if (currentUser.role === UserRole.ADMIN) return true;
 
+      // 2. Check Stage vs Permission
       if (p.status === ExitPermitStatus.PENDING_CEO) {
           return !!permissions.canApproveExitCeo;
       }
@@ -86,9 +87,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setShowExitTimeInput(permitId);
   };
 
-  // ... (Keep existing helper functions: generateFullCaption, sendWithRetry, handleWarehouseConfirm, handleApproveAction, handleResendToGroup, handleDelete, handleReject, getStatusBadge) ...
-  // To save space and focus on the fix, I'm reusing the existing logic for these functions.
-  
   const generateFullCaption = (permit: ExitPermit, header: string, emphasizeTime: boolean = false) => {
       let c = `${header}\n`;
       if (emphasizeTime && permit.exitTime) c += `\n🕒 *ساعت خروج: ${permit.exitTime}* 🕒\n\n`;
@@ -253,7 +251,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                                 <div className="flex justify-center gap-2">
                                     <button onClick={() => setViewPermit(p)} className="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200"><Eye size={16}/></button>
                                     
-                                    {/* --- THE FIX: Simplified Condition --- */}
+                                    {/* Action Buttons Logic - Using Auth Service Perms */}
                                     {canApprove(p) && !isSecurityStep(p) && (
                                         <button onClick={() => handleApproveAction(p.id, p.status)} className="bg-green-100 text-green-600 p-2 rounded-lg hover:bg-green-200" title="تایید"><CheckCircle size={16}/></button>
                                     )}
