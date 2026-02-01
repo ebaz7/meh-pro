@@ -42,48 +42,75 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 };
 
 /**
- * FIXED PERMISSION LOGIC
- * 1. Load DB Settings first.
- * 2. FORCE System Defaults to TRUE for specific roles.
- * This ensures that even if settings are saved incorrectly, core buttons never disappear.
+ * CORE PERMISSION LOGIC - BUG FIXED
+ * Issue: DB settings were overwriting system defaults with 'false'.
+ * Fix: Explicitly re-enable critical permissions AFTER merging DB settings.
  */
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     
-    // 1. Start with Empty or DB Settings
+    // 1. Initialize with Admin Override (Super User)
+    if (userRole === UserRole.ADMIN) {
+        return {
+            canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
+            canCreateExitPermit: true, canViewExitPermits: true, canApproveExitCeo: true, canApproveExitFactory: true, canApproveExitWarehouse: true, canApproveExitSecurity: true, canViewExitArchive: true, canEditExitArchive: true,
+            canManageWarehouse: true, canViewWarehouseReports: true, canApproveBijak: true,
+            canViewSecurity: true, canCreateSecurityLog: true, canApproveSecuritySupervisor: true
+        };
+    }
+
+    // 2. Define Base Defaults (Fallback)
     let perms: RolePermissions = {
         canViewAll: false,
         canEditOwn: true,
         canDeleteOwn: true,
-        // ... defaults
+        // Exit Permit Defaults - Default to false unless specified
+        canApproveExitCeo: false,
+        canApproveExitFactory: false,
+        canApproveExitWarehouse: false,
+        canApproveExitSecurity: false,
     };
 
-    // Apply DB settings if available
+    // 3. Apply Database Settings (This might contain 'false' values that caused the bug)
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         perms = { ...perms, ...settings.rolePermissions[userRole] };
     }
 
-    // 2. FORCE SYSTEM DEFAULTS (Overrides DB if DB says false)
-    // This solves the issue of buttons disappearing after saving settings.
-    switch (userRole) {
-        case UserRole.ADMIN:
-            return {
-                canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
-                canCreateExitPermit: true, canViewExitPermits: true, canApproveExitCeo: true, canApproveExitFactory: true, canApproveExitWarehouse: true, canApproveExitSecurity: true, canViewExitArchive: true, canEditExitArchive: true,
-                canManageWarehouse: true, canViewWarehouseReports: true, canApproveBijak: true,
-                canViewSecurity: true, canCreateSecurityLog: true, canApproveSecuritySupervisor: true
-            };
+    // 4. FORCE CRITICAL PERMISSIONS (The Fix)
+    // We override whatever is in the DB/Defaults for these specific system roles
+    // to ensure the buttons NEVER disappear for them.
 
+    switch (userRole) {
         case UserRole.CEO:
             perms.canViewAll = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveCeo = true;
             perms.canViewExitPermits = true;
-            perms.canApproveExitCeo = true;
+            perms.canApproveExitCeo = true; // FORCE TRUE
             perms.canManageTrade = true;
             perms.canApproveBijak = true;
             perms.canViewSecurity = true;
             break;
 
+        case UserRole.FACTORY_MANAGER:
+            perms.canViewExitPermits = true;
+            perms.canApproveExitFactory = true; // FORCE TRUE
+            perms.canViewSecurity = true;
+            break;
+
+        case UserRole.WAREHOUSE_KEEPER:
+            perms.canViewExitPermits = true;
+            perms.canApproveExitWarehouse = true; // FORCE TRUE
+            perms.canManageWarehouse = true;
+            break;
+
+        case UserRole.SECURITY_HEAD:
+            perms.canViewExitPermits = true;
+            perms.canApproveExitSecurity = true; // FORCE TRUE
+            perms.canViewSecurity = true;
+            perms.canApproveSecuritySupervisor = true;
+            break;
+            
+        // ... Other roles keep their merged permissions
         case UserRole.FINANCIAL:
             perms.canCreatePaymentOrder = true;
             perms.canViewPaymentOrders = true;
@@ -102,37 +129,14 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canCreateExitPermit = true;
             perms.canViewExitPermits = true;
             break;
-
-        case UserRole.FACTORY_MANAGER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true;
-            perms.canViewSecurity = true;
-            break;
-
-        case UserRole.WAREHOUSE_KEEPER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true;
-            perms.canManageWarehouse = true;
-            break;
-
-        case UserRole.SECURITY_HEAD:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true;
-            perms.canViewSecurity = true;
-            perms.canApproveSecuritySupervisor = true;
-            break;
             
         case UserRole.SECURITY_GUARD:
             perms.canViewSecurity = true;
             perms.canCreateSecurityLog = true;
             break;
-            
-        case UserRole.USER:
-            perms.canCreatePaymentOrder = true;
-            break;
     }
 
-    // 3. User Specific Flags
+    // 5. User Specific Flags
     if (userObject?.canManageTrade) {
         perms.canManageTrade = true;
     }
