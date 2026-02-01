@@ -26,7 +26,6 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
   const [driverInfo, setDriverInfo] = useState({ plateNumber: permit.plateNumber || '', driverName: permit.driverName || '', description: permit.description || '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // State for rendering the hidden invoice for auto-send
   const [tempPermitForCapture, setTempPermitForCapture] = useState<ExitPermit | null>(null);
 
   const getIsoDate = () => { try { const date = jalaliToGregorian(shamsiDate.year, shamsiDate.month, shamsiDate.day); return date.toISOString().split('T')[0]; } catch (e) { return new Date().toISOString().split('T')[0]; } };
@@ -50,19 +49,19 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
           date: getIsoDate(),
           items: items,
           destinations: destinations,
-          goodsName: items.map(i => i.goodsName).join('، '), // Sync legacy
-          recipientName: destinations.map(d => d.recipientName).join('، '), // Sync legacy
+          goodsName: items.map(i => i.goodsName).join('، '),
+          recipientName: destinations.map(d => d.recipientName).join('، '),
           plateNumber: driverInfo.plateNumber,
           driverName: driverInfo.driverName,
           description: driverInfo.description,
           
-          // Reset Approval Process (Full Reset)
+          // Reset Approval Process
           status: ExitPermitStatus.PENDING_CEO,
           approverCeo: undefined,
           approverFactory: undefined,
-          approverWarehouse: undefined, // Ensure warehouse approval is reset
-          approverSecurity: undefined, // Ensure security approval is reset
-          exitTime: undefined, // Reset exit time
+          approverWarehouse: undefined, 
+          approverSecurity: undefined, 
+          exitTime: undefined, 
           
           rejectionReason: undefined,
           rejectedBy: undefined,
@@ -70,15 +69,10 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
       };
 
       try {
-          // 1. Save to DB
           await editExitPermit(updatedPermit);
-          
-          // 2. Prepare for Capture
           setTempPermitForCapture(updatedPermit);
           
-          // 3. Wait for Render and Send
           setTimeout(async () => {
-              // Unique ID for the hidden element in this modal
               const elementId = `print-permit-edit-modal-${updatedPermit.id}`;
               const element = document.getElementById(elementId);
               
@@ -91,47 +85,27 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
                       const users = await getUsers();
                       const settings = await getSettings();
 
-                      // A. Notify CEO (Correction Request) - CRITICAL
+                      // 1. Notify CEO (Return to Flow)
                       const ceo = users.find(u => u.role === UserRole.CEO && u.phoneNumber);
-                      
                       if (ceo) {
-                          let caption = `🚛 *اصلاحیه مجوز خروج*\n`;
-                          caption += `⚠️ *این مجوز ویرایش شده است*\n`;
-                          caption += `شماره: ${updatedPermit.permitNumber}\n`;
-                          caption += `گیرنده: ${updatedPermit.recipientName}\n`;
-                          caption += `وضعیت: بازگشت به صف (مدیرعامل)\n\n`;
-                          caption += `لطفا مجدداً بررسی و تایید نمایید.`;
-
-                          await apiCall('/send-whatsapp', 'POST', { 
-                              number: ceo.phoneNumber, 
-                              message: caption, 
-                              mediaData: { data: base64, mimeType: 'image/png', filename: `Permit_Edit_${updatedPermit.permitNumber}.png` } 
-                          });
+                          let caption = `🚛 *اصلاحیه مجوز خروج*\n⚠️ *این مجوز ویرایش شده و بازگشت خورد*\nشماره: ${updatedPermit.permitNumber}\nگیرنده: ${updatedPermit.recipientName}\n\nلطفا مجدداً بررسی و تایید نمایید.`;
+                          await apiCall('/send-whatsapp', 'POST', { number: ceo.phoneNumber, message: caption, mediaData: { data: base64, mimeType: 'image/png', filename: `Permit_Edit_${updatedPermit.permitNumber}.png` } });
                       }
 
-                      // B. Notify Group (Invalidation Alert) if group is configured
-                      const groupTarget = settings?.exitPermitNotificationGroup;
-                      if (groupTarget) {
-                          let groupCaption = `📝 *مجوز خروج ویرایش شد*\n`;
-                          groupCaption += `🚨 *توجه: نسخه قبلی این مجوز فاقد اعتبار است.*\n`;
-                          groupCaption += `شماره: ${updatedPermit.permitNumber}\n`;
-                          groupCaption += `وضعیت فعلی: در انتظار تایید مجدد مدیریت`;
+                      // 2. Notify Groups (Invalidation)
+                      const group1 = settings?.exitPermitGroup1;
+                      const group2 = settings?.exitPermitGroup2;
+                      const warningCaption = `🚨 *اصلاحیه / ابطال موقت*\nمجوز شماره ${updatedPermit.permitNumber} ویرایش شد و نسخه قبلی فاقد اعتبار است.\nوضعیت فعلی: در انتظار تایید مجدد مدیریت.`;
 
-                          await apiCall('/send-whatsapp', 'POST', { 
-                              number: groupTarget, 
-                              message: groupCaption, 
-                              mediaData: { data: base64, mimeType: 'image/png', filename: `Permit_Invalidated_${updatedPermit.permitNumber}.png` } 
-                          });
-                      }
+                      if (group1) await apiCall('/send-whatsapp', 'POST', { number: group1, message: warningCaption, mediaData: { data: base64, mimeType: 'image/png' } });
+                      if (group2) await apiCall('/send-whatsapp', 'POST', { number: group2, message: warningCaption, mediaData: { data: base64, mimeType: 'image/png' } });
 
                   } catch(e) { console.error("Auto send error", e); }
-              } else {
-                  console.error("Print element not found for ID:", elementId);
               }
               
               onSave();
               onClose();
-          }, 2000); // 2 seconds wait for reliable render
+          }, 2000);
 
       } catch (e) { alert('خطا در ذخیره تغییرات'); setIsSubmitting(false); }
   };
@@ -144,10 +118,8 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        {/* Hidden Render for Auto Send with Watermark - MUST BE HERE */}
         {tempPermitForCapture && (
             <div className="hidden-print-export" style={{position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', zIndex: -1}}>
-                {/* We use a specific ID to target this element for html2canvas inside the modal */}
                 <div id={`print-permit-edit-modal-${tempPermitForCapture.id}`}>
                     <PrintExitPermit permit={tempPermitForCapture} onClose={()=>{}} embed watermark="EDITED" />
                 </div>
@@ -164,7 +136,6 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-8">
-                
                 {permit.status === ExitPermitStatus.REJECTED && permit.rejectionReason && (
                     <div className="bg-red-50 border-r-4 border-red-500 p-4 rounded-lg flex gap-3 animate-fade-in">
                         <div className="text-red-500 mt-0.5"><AlertTriangle size={20}/></div>

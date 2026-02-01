@@ -42,13 +42,13 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 };
 
 /**
- * CORE PERMISSION LOGIC - BUG FIXED
- * Issue: DB settings were overwriting system defaults with 'false'.
- * Fix: Explicitly re-enable critical permissions AFTER merging DB settings.
+ * CORE PERMISSION LOGIC - UPDATED
+ * Now strictly respects the checkboxes in Settings > Permissions.
+ * No hardcoded "forced" permissions except for Admin.
  */
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     
-    // 1. Initialize with Admin Override (Super User)
+    // 1. Admin always has full access
     if (userRole === UserRole.ADMIN) {
         return {
             canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
@@ -58,85 +58,18 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         };
     }
 
-    // 2. Define Base Defaults (Fallback)
+    // 2. Default to restricted (all false)
     let perms: RolePermissions = {
         canViewAll: false,
-        canEditOwn: true,
-        canDeleteOwn: true,
-        // Exit Permit Defaults - Default to false unless specified
-        canApproveExitCeo: false,
-        canApproveExitFactory: false,
-        canApproveExitWarehouse: false,
-        canApproveExitSecurity: false,
+        // ... all undefined booleans default to false in JS/TS usage unless checked
     };
 
-    // 3. Apply Database Settings (This might contain 'false' values that caused the bug)
+    // 3. Apply Database Settings
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         perms = { ...perms, ...settings.rolePermissions[userRole] };
     }
 
-    // 4. FORCE CRITICAL PERMISSIONS (The Fix)
-    // We override whatever is in the DB/Defaults for these specific system roles
-    // to ensure the buttons NEVER disappear for them.
-
-    switch (userRole) {
-        case UserRole.CEO:
-            perms.canViewAll = true;
-            perms.canViewPaymentOrders = true;
-            perms.canApproveCeo = true;
-            perms.canViewExitPermits = true;
-            perms.canApproveExitCeo = true; // FORCE TRUE
-            perms.canManageTrade = true;
-            perms.canApproveBijak = true;
-            perms.canViewSecurity = true;
-            break;
-
-        case UserRole.FACTORY_MANAGER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitFactory = true; // FORCE TRUE
-            perms.canViewSecurity = true;
-            break;
-
-        case UserRole.WAREHOUSE_KEEPER:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitWarehouse = true; // FORCE TRUE
-            perms.canManageWarehouse = true;
-            break;
-
-        case UserRole.SECURITY_HEAD:
-            perms.canViewExitPermits = true;
-            perms.canApproveExitSecurity = true; // FORCE TRUE
-            perms.canViewSecurity = true;
-            perms.canApproveSecuritySupervisor = true;
-            break;
-            
-        // ... Other roles keep their merged permissions
-        case UserRole.FINANCIAL:
-            perms.canCreatePaymentOrder = true;
-            perms.canViewPaymentOrders = true;
-            perms.canApproveFinancial = true;
-            break;
-
-        case UserRole.MANAGER:
-            perms.canCreatePaymentOrder = true;
-            perms.canViewPaymentOrders = true;
-            perms.canApproveManager = true;
-            perms.canViewExitPermits = true;
-            break;
-
-        case UserRole.SALES_MANAGER:
-            perms.canCreatePaymentOrder = true;
-            perms.canCreateExitPermit = true;
-            perms.canViewExitPermits = true;
-            break;
-            
-        case UserRole.SECURITY_GUARD:
-            perms.canViewSecurity = true;
-            perms.canCreateSecurityLog = true;
-            break;
-    }
-
-    // 5. User Specific Flags
+    // 4. User Specific Flags (Legacy support)
     if (userObject?.canManageTrade) {
         perms.canManageTrade = true;
     }

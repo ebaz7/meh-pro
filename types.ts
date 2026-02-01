@@ -769,11 +769,6 @@ export interface FiscalYear {
     companySequences?: Record<string, CompanySequenceConfig>;
 }
 
-export interface SecondGroupConfig {
-    groupId: string;
-    activeStatuses: string[]; // List of ExitPermitStatus
-}
-
 export interface SystemSettings { 
     currentTrackingNumber: number; 
     currentExitPermitNumber: number; 
@@ -799,8 +794,9 @@ export interface SystemSettings {
     warehouseSequences?: Record<string, number>; 
     exitPermitNotificationGroup?: string; 
     
-    // NEW: Configuration for the second group with filters
-    exitPermitSecondGroupConfig?: SecondGroupConfig;
+    // NEW: Whatsapp Groups for Exit Permit Workflow
+    exitPermitGroup1?: string; // Group 1 (Management/Sales)
+    exitPermitGroup2?: string; // Group 2 (Ops/Warehouse)
 
     companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
     defaultWarehouseGroup?: string; 
