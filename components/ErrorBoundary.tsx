@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode, Component } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -11,11 +11,10 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null;
 }
 
-// Fixed: Explicitly extending React.Component ensures that 'state', 'props', and 'setState' are correctly inherited and recognized by TypeScript.
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// FIX: Explicitly extending Component from react to ensure this context is properly typed
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    // Fixed: Initializing state correctly within the constructor of a class extending React.Component.
     this.state = {
       hasError: false,
       error: null,
@@ -23,18 +22,18 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
-    return { hasError: true, error };
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error, errorInfo: null };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // Fixed: 'setState' is now recognized because the class correctly extends React.Component.
+    // FIX: Correctly updating state in lifecycle method
     this.setState({ errorInfo });
   }
 
   render() {
-    // Fixed: 'state' is now recognized because the class correctly extends React.Component.
+    // FIX: Accessing state with proper this context
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
@@ -63,7 +62,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    // Fixed: 'props' is now recognized because the class correctly extends React.Component.
+    // FIX: Accessing props correctly
     return this.props.children;
   }
 }

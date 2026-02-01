@@ -73,6 +73,67 @@ export interface PaymentOrder {
   fiscalYearId?: string;
 }
 
+export enum ExitPermitStatus {
+  PENDING_CEO = 'در انتظار تایید مدیرعامل',
+  PENDING_FACTORY = 'در انتظار مدیر کارخانه',
+  PENDING_WAREHOUSE = 'در انتظار توزین انبار',
+  PENDING_SECURITY = 'در انتظار خروج (انتظامات)',
+  EXITED = 'خارج شده (بایگانی)',
+  REJECTED = 'رد شده'
+}
+
+export interface ExitPermitItem {
+  id: string;
+  goodsName: string;
+  cartonCount: number;
+  weight: number;
+  deliveredCartonCount?: number;
+  deliveredWeight?: number;
+}
+
+export interface ExitPermitDestination {
+  id: string;
+  recipientName: string;
+  address: string;
+  phone: string;
+}
+
+export interface ExitPermit {
+  id: string;
+  permitNumber: number;
+  date: string;
+  requester: string;
+  goodsName: string; 
+  recipientName: string;
+  cartonCount: number;
+  weight?: number;
+  
+  items: ExitPermitItem[];
+  destinations: ExitPermitDestination[];
+
+  plateNumber?: string;
+  driverName?: string;
+  description?: string;
+  
+  status: ExitPermitStatus;
+  
+  approverCeo?: string;
+  approverFactory?: string;
+  approverWarehouse?: string;
+  approverSecurity?: string;
+  
+  exitTime?: string;
+  rejectionReason?: string;
+  rejectedBy?: string;
+  
+  createdAt: number;
+  updatedAt?: number;
+  fiscalYearId?: string;
+  // Legacy support for single destination
+  destinationAddress?: string;
+  isArchived?: boolean;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -82,7 +143,7 @@ export interface User {
   canManageTrade?: boolean;
   avatar?: string;
   telegramChatId?: string;
-  baleChatId?: string; // For individual users
+  baleChatId?: string;
   phoneNumber?: string;
   receiveNotifications?: boolean;
 }
@@ -130,32 +191,83 @@ export interface RolePermissions {
   canApproveFinancial?: boolean;
   canApproveManager?: boolean;
   canApproveCeo?: boolean;
-  canEditOwn?: boolean;
-  canEditAll?: boolean;
-  canDeleteOwn?: boolean;
-  canDeleteAll?: boolean;
-  canManageTrade?: boolean;
-  canManageSettings?: boolean;
   
-  // Exit Permit Permissions
   canCreateExitPermit?: boolean;
   canViewExitPermits?: boolean;
   canApproveExitCeo?: boolean;
   canApproveExitFactory?: boolean;
   canApproveExitWarehouse?: boolean;
   canApproveExitSecurity?: boolean;
+  
+  canManageWarehouse?: boolean;
+  canApproveBijak?: boolean;
+  canManageTrade?: boolean;
+  canManageSettings?: boolean;
+  canViewSecurity?: boolean;
+  canEditOwn?: boolean;
+  canEditAll?: boolean;
+  canDeleteOwn?: boolean;
+  canDeleteAll?: boolean;
   canViewExitArchive?: boolean;
   canEditExitArchive?: boolean;
-
-  // Warehouse Permissions
-  canManageWarehouse?: boolean;
   canViewWarehouseReports?: boolean;
-  canApproveBijak?: boolean;
-
-  // Security Permissions
-  canViewSecurity?: boolean;
   canCreateSecurityLog?: boolean;
   canApproveSecuritySupervisor?: boolean;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  number: string;
+  isGroup: boolean;
+  baleId?: string;
+}
+
+export interface PrintField {
+  id: string;
+  key: string;
+  label: string;
+  x: number;
+  y: number;
+  width?: number;
+  fontSize: number;
+  align?: 'left' | 'center' | 'right';
+  isBold?: boolean;
+  letterSpacing?: number;
+}
+
+export interface PrintTemplate {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  pageSize: 'A4' | 'A5';
+  orientation: 'portrait' | 'landscape';
+  backgroundImage?: string;
+  fields: PrintField[];
+}
+
+export interface FiscalYear {
+  id: string;
+  label: string;
+  isClosed: boolean;
+  companySequences: Record<string, CompanySequenceConfig>;
+  createdAt: number;
+}
+
+export interface CompanySequenceConfig {
+  startTrackingNumber: number;
+  startExitPermitNumber: number;
+  startBijakNumber: number;
+}
+
+export interface DailySecurityMeta {
+  dailyDescription?: string;
+  morningGuard?: { name: string; entry: string; exit: string };
+  eveningGuard?: { name: string; entry: string; exit: string };
+  nightGuard?: { name: string; entry: string; exit: string };
+  isFactoryDailyApproved?: boolean;
+  isCeoDailyApproved?: boolean;
 }
 
 export interface CustomRole {
@@ -163,53 +275,79 @@ export interface CustomRole {
   label: string;
 }
 
-export interface Contact {
-  id: string;
-  name: string;
-  number: string;
-  baleId?: string; // NEW: Added for mapping WA groups to Bale groups
-  isGroup: boolean;
+export interface SystemSettings { 
+    currentTrackingNumber: number; 
+    currentExitPermitNumber: number; 
+    companyNames: string[]; 
+    companies?: Company[]; 
+    defaultCompany: string; 
+    bankNames: string[]; 
+    rolePermissions: Record<string, RolePermissions>; 
+    customRoles?: CustomRole[]; 
+    activeFiscalYearId?: string;
+    fiscalYears?: FiscalYear[];
+    pwaIcon?: string;
+    operatingBankNames?: string[];
+    insuranceCompanies?: string[];
+    warehouseSequences?: Record<string, number>;
+    companyNotifications?: Record<string, { salesManager?: string, warehouseGroup?: string }>;
+    printTemplates?: PrintTemplate[];
+    commodityGroups: string[];
+    whatsappNumber?: string;
+    telegramBotToken?: string;
+    telegramAdminId?: string;
+    baleBotToken?: string;
+    smsApiKey?: string;
+    smsSenderNumber?: string;
+    googleCalendarId?: string;
+    geminiApiKey?: string;
+    defaultWarehouseGroup?: string;
+    defaultSalesManager?: string;
+    exitPermitNotificationGroup?: string;
+    savedContacts?: Contact[];
+    dailySecurityMeta?: Record<string, DailySecurityMeta>;
+    exitPermitSecondGroupConfig?: { groupId: string, activeStatuses: string[] };
 }
 
+// Chat Module Types
 export interface ChatMessage {
   id: string;
   sender: string;
   senderUsername: string;
   role: string;
-  message: string;
+  message?: string;
   timestamp: number;
   recipient?: string;
   groupId?: string;
-  attachment?: { fileName: string, url: string };
-  audioUrl?: string;
   replyTo?: {
     id: string;
     sender: string;
     message: string;
   };
+  audioUrl?: string;
+  attachment?: { fileName: string, url: string };
   isEdited?: boolean;
 }
 
 export interface ChatGroup {
   id: string;
   name: string;
-  members: string[]; // usernames
+  members: string[];
   createdBy: string;
-  icon?: string;
 }
 
 export interface GroupTask {
   id: string;
   groupId: string;
   title: string;
-  assignee?: string;
   isCompleted: boolean;
   createdBy: string;
   createdAt: number;
 }
 
+// Trade Module Types
 export enum TradeStage {
-  LICENSES = 'مجوزها و پروفرما',
+  PROFORMA = 'مجوزها و پروفرما',
   INSURANCE = 'بیمه',
   ALLOCATION_QUEUE = 'در صف تخصیص ارز',
   ALLOCATION_APPROVED = 'تخصیص یافته',
@@ -220,7 +358,8 @@ export enum TradeStage {
   GREEN_LEAF = 'برگ سبز',
   INTERNAL_SHIPPING = 'حمل داخلی',
   AGENT_FEES = 'هزینه‌های ترخیص',
-  FINAL_CALCULATION = 'قیمت تمام شده'
+  FINAL_COST = 'قیمت تمام شده',
+  LICENSES = 'مجوزهای ثبت سفارش'
 }
 
 export interface TradeItem {
@@ -232,6 +371,13 @@ export interface TradeItem {
   hsCode?: string;
 }
 
+export interface InsuranceEndorsement {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+}
+
 export interface TradeTransaction {
   id: string;
   date: string;
@@ -240,23 +386,16 @@ export interface TradeTransaction {
   description: string;
 }
 
-export interface InsuranceEndorsement {
-  id: string;
-  date: string;
-  amount: number;
-  description: string;
-}
-
 export interface CurrencyTranche {
   id: string;
   date: string;
   amount: number;
   currencyType: string;
+  brokerName?: string;
+  exchangeName?: string;
   rate?: number;
   rialAmount?: number;
   currencyFee?: number;
-  exchangeName?: string;
-  brokerName?: string;
   isDelivered?: boolean;
   deliveryDate?: string;
   returnAmount?: number;
@@ -264,40 +403,16 @@ export interface CurrencyTranche {
   receivedAmount?: number;
 }
 
-export interface CurrencyPurchaseData {
-  payments: TradeTransaction[];
-  purchasedAmount: number;
-  purchasedCurrencyType: string;
-  purchaseDate?: string;
-  brokerName?: string;
-  exchangeName?: string;
-  deliveredAmount?: number;
-  deliveredCurrencyType?: string;
-  deliveryDate?: string;
-  recipientName?: string;
-  remittedAmount?: number;
-  isDelivered?: boolean;
-  tranches?: CurrencyTranche[];
-  guaranteeCheque?: {
-      amount: string;
-      bank: string;
-      chequeNumber: string;
-      dueDate: string;
-      isDelivered?: boolean;
-  };
-}
-
 export interface TradeStageData {
   stage: TradeStage;
   isCompleted: boolean;
-  description: string;
+  description?: string;
   costRial: number;
   costCurrency: number;
   currencyType: string;
   attachments: { fileName: string, url: string }[];
   updatedAt: number;
   updatedBy: string;
-  // Specific fields
   queueDate?: string;
   allocationDate?: string;
   allocationCode?: string;
@@ -334,19 +449,13 @@ export interface ShippingDocument {
   createdAt: number;
   createdBy: string;
   attachments: { fileName: string, url: string }[];
-  
-  // Invoice Specific
-  currency?: string;
   invoiceItems?: InvoiceItem[];
-  freightCost?: number;
-
-  // Packing List Specific
   packingItems?: PackingItem[];
+  freightCost?: number;
+  currency?: string;
   netWeight?: number;
   grossWeight?: number;
   packagesCount?: number;
-
-  // BL Specific
   vesselName?: string;
   portOfLoading?: string;
   portOfDischarge?: string;
@@ -414,16 +523,16 @@ export interface GreenLeafGuarantee {
   id: string;
   relatedDutyId: string;
   guaranteeNumber: string;
-  chequeNumber: string;
-  chequeBank: string;
-  chequeDate: string;
-  chequeAmount: number;
-  isDelivered: boolean;
+  chequeNumber?: string;
+  chequeBank?: string;
+  chequeDate?: string;
+  chequeAmount?: number;
+  isDelivered?: boolean;
   cashAmount?: number;
   cashBank?: string;
   cashDate?: string;
+  guaranteeBank?: string;
   part?: string;
-  guaranteeBank?: string; // Legacy
 }
 
 export interface GreenLeafTax {
@@ -432,7 +541,6 @@ export interface GreenLeafTax {
   part: string;
   bank: string;
   date: string;
-  alert?: string;
 }
 
 export interface GreenLeafRoadToll {
@@ -456,7 +564,7 @@ export interface ShippingPayment {
   amount: number;
   date: string;
   bank: string;
-  description: string;
+  description?: string;
 }
 
 export interface InternalShippingData {
@@ -470,11 +578,34 @@ export interface AgentPayment {
   bank: string;
   date: string;
   part: string;
-  description: string;
+  description?: string;
 }
 
 export interface AgentData {
   payments: AgentPayment[];
+}
+
+export interface CurrencyPurchaseData {
+  payments: TradeTransaction[];
+  purchasedAmount: number;
+  purchasedCurrencyType: string;
+  purchaseDate: string;
+  brokerName: string;
+  exchangeName: string;
+  deliveredAmount: number;
+  deliveredCurrencyType: string;
+  deliveryDate: string;
+  recipientName: string;
+  remittedAmount: number;
+  isDelivered: boolean;
+  tranches: CurrencyTranche[];
+  guaranteeCheque?: {
+    amount: number;
+    bank: string;
+    chequeNumber: string;
+    dueDate: string;
+    isDelivered: boolean;
+  };
 }
 
 export interface TradeRecord {
@@ -484,6 +615,8 @@ export interface TradeRecord {
   orderNumber?: string;
   goodsName: string;
   registrationNumber?: string;
+  registrationDate?: string;
+  registrationExpiry?: string;
   sellerName: string;
   commodityGroup: string;
   mainCurrency: string;
@@ -491,103 +624,36 @@ export interface TradeRecord {
   freightCost?: number;
   startDate: string;
   status: 'Active' | 'Completed';
+  isArchived?: boolean;
   stages: Record<string, TradeStageData>;
   createdAt: number;
   createdBy: string;
-  isArchived?: boolean;
-  isCommitmentFulfilled?: boolean;
-  
-  registrationDate?: string;
-  registrationExpiry?: string;
-  currencyAllocationType?: string; // Bank, Export, Free...
-  allocationCurrencyRank?: 'Type1' | 'Type2';
-  operatingBank?: string;
-  isPriority?: boolean;
-
   licenseData?: { transactions: TradeTransaction[] };
-  insuranceData?: { 
-      policyNumber: string; 
-      company: string; 
-      cost: number; 
-      bank: string; 
-      endorsements?: InsuranceEndorsement[];
-      isPaid?: boolean;
-      paymentDate?: string;
+  insuranceData?: {
+    policyNumber: string;
+    company: string;
+    cost: number;
+    bank: string;
+    endorsements: InsuranceEndorsement[];
+    isPaid: boolean;
+    paymentDate: string;
   };
-  currencyPurchaseData?: CurrencyPurchaseData;
-  shippingDocuments?: ShippingDocument[];
   inspectionData?: InspectionData;
+  currencyPurchaseData?: CurrencyPurchaseData;
+  shippingDocuments: ShippingDocument[];
   clearanceData?: ClearanceData;
   greenLeafData?: GreenLeafData;
   internalShippingData?: InternalShippingData;
   agentData?: AgentData;
-  
-  // Legacy fields fallback
   exchangeRate?: number;
+  currencyAllocationType?: string;
+  allocationCurrencyRank?: 'Type1' | 'Type2';
+  operatingBank?: string;
+  isPriority?: boolean;
+  isCommitmentFulfilled?: boolean;
 }
 
-export enum ExitPermitStatus {
-  PENDING_CEO = 'در انتظار تایید مدیرعامل',
-  PENDING_FACTORY = 'تایید مدیرعامل / در انتظار خروج (کارخانه)',
-  PENDING_WAREHOUSE = 'تایید مدیر کارخانه / در انتظار انبار',
-  PENDING_SECURITY = 'تایید انبار / در انتظار انتظامات',
-  EXITED = 'خارج شده (بایگانی)',
-  REJECTED = 'رد شده'
-}
-
-export interface ExitPermitItem {
-  id: string;
-  goodsName: string;
-  cartonCount: number;
-  weight: number;
-  deliveredCartonCount?: number;
-  deliveredWeight?: number;
-}
-
-export interface ExitPermitDestination {
-  id: string;
-  recipientName: string;
-  address: string;
-  phone: string;
-}
-
-export interface ExitPermit {
-  id: string;
-  permitNumber: number;
-  date: string;
-  requester: string;
-  goodsName: string; // Summary
-  recipientName: string; // Summary
-  cartonCount: number; // Summary
-  weight?: number; // Summary
-  destinationAddress?: string; // Legacy
-  
-  items: ExitPermitItem[];
-  destinations: ExitPermitDestination[];
-
-  plateNumber?: string;
-  driverName?: string;
-  description?: string;
-  
-  status: ExitPermitStatus;
-  
-  approverCeo?: string;
-  approverFactory?: string;
-  approverWarehouse?: string;
-  approverSecurity?: string;
-  
-  exitTime?: string;
-  
-  rejectionReason?: string;
-  rejectedBy?: string;
-  
-  createdAt?: number;
-  updatedAt?: number;
-  
-  sentToGroup?: boolean;
-  fiscalYearId?: string;
-}
-
+// Warehouse Module Types
 export interface WarehouseItem {
   id: string;
   name: string;
@@ -609,36 +675,30 @@ export interface WarehouseTransaction {
   type: 'IN' | 'OUT';
   date: string;
   company: string;
-  number: number; // Bijak Number or 0 for IN
+  number: number;
   items: WarehouseTransactionItem[];
-  
-  proformaNumber?: string; // For IN
-  
-  recipientName?: string; // For OUT
+  createdAt: number;
+  createdBy: string;
+  updatedAt?: number;
+  proformaNumber?: string;
+  recipientName?: string;
   driverName?: string;
   plateNumber?: string;
   destination?: string;
-  
-  createdAt: number;
-  createdBy: string;
-  
   status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   approvedBy?: string;
   rejectionReason?: string;
   rejectedBy?: string;
-  updatedAt?: number;
-  description?: string;
   fiscalYearId?: string;
 }
 
+// Security Module Types
 export enum SecurityStatus {
-  PENDING_SUPERVISOR = 'در انتظار تایید سرپرست',
-  PENDING_FACTORY = 'تایید سرپرست / در انتظار مدیر کارخانه',
-  APPROVED_FACTORY_CHECK = 'تایید مدیر کارخانه / منتظر ارسال به مدیرعامل', // Intermediate check
-  PENDING_CEO = 'تایید شده / در انتظار تایید نهایی مدیرعامل',
+  PENDING_SUPERVISOR = 'در انتظار سرپرست',
+  PENDING_FACTORY = 'در انتظار مدیر کارخانه',
+  PENDING_CEO = 'در انتظار مدیرعامل',
   ARCHIVED = 'بایگانی شده',
-  REJECTED = 'رد شده',
-  APPROVED_SUPERVISOR_CHECK = 'تایید سرپرست / منتظر ارسال به مدیر' // Delay specific
+  REJECTED = 'رد شده'
 }
 
 export interface SecurityLog {
@@ -657,16 +717,12 @@ export interface SecurityLog {
   receiver: string;
   workDescription: string;
   permitProvider: string;
-  
   registrant: string;
   status: SecurityStatus;
-  
+  createdAt: number;
   approverSupervisor?: string;
   approverFactory?: string;
   approverCeo?: string;
-  
-  rejectionReason?: string;
-  createdAt: number;
 }
 
 export interface PersonnelDelay {
@@ -677,17 +733,13 @@ export interface PersonnelDelay {
   arrivalTime: string;
   delayAmount: string;
   repeatCount: string;
-  instruction?: string;
-  
+  instruction: string;
   registrant: string;
   status: SecurityStatus;
-  
+  createdAt: number;
   approverSupervisor?: string;
   approverFactory?: string;
   approverCeo?: string;
-  
-  rejectionReason?: string;
-  createdAt: number;
 }
 
 export interface SecurityIncident {
@@ -697,118 +749,15 @@ export interface SecurityIncident {
   subject: string;
   description: string;
   shift: string;
-  witnesses?: string;
-  
+  witnesses: string;
   registrant: string;
   status: SecurityStatus;
-  
-  shiftManagerOpinion?: string;
+  createdAt: number;
+  rejectionReason?: string;
   approverSupervisor?: string;
-  
   approverFactory?: string;
+  approverCeo?: string;
+  shiftManagerOpinion?: string;
   hrAction?: string;
   safetyAction?: string;
-  
-  approverCeo?: string;
-  
-  rejectionReason?: string;
-  createdAt: number;
-}
-
-export interface DailySecurityMeta {
-  dailyDescription?: string;
-  morningGuard?: { name: string, entry: string, exit: string };
-  eveningGuard?: { name: string, entry: string, exit: string };
-  nightGuard?: { name: string, entry: string, exit: string };
-  
-  // Checkbox states for daily approvals
-  isFactoryDailyApproved?: boolean;
-  isCeoDailyApproved?: boolean;
-  
-  isDelaySupervisorApproved?: boolean;
-  isDelayFactoryApproved?: boolean;
-  isDelayCeoApproved?: boolean;
-}
-
-export interface PrintField {
-    id: string;
-    key: string;
-    label: string;
-    x: number; // mm
-    y: number; // mm
-    width?: number; // mm
-    fontSize: number; // pt
-    isBold?: boolean;
-    align?: 'left' | 'center' | 'right';
-    letterSpacing?: number; // px
-}
-
-export interface PrintTemplate {
-    id: string;
-    name: string;
-    width: number; // mm
-    height: number; // mm
-    pageSize: 'A4' | 'A5';
-    orientation: 'portrait' | 'landscape';
-    backgroundImage?: string; // base64
-    fields: PrintField[];
-}
-
-export interface CompanySequenceConfig {
-    startTrackingNumber?: number;
-    startExitPermitNumber?: number;
-    startBijakNumber?: number;
-}
-
-export interface FiscalYear {
-    id: string;
-    label: string; // e.g. "1403"
-    isClosed: boolean;
-    createdAt: number;
-    // Map company name to sequence config
-    companySequences?: Record<string, CompanySequenceConfig>;
-}
-
-export interface SecondGroupConfig {
-    groupId: string;
-    activeStatuses: string[]; // List of ExitPermitStatus
-}
-
-export interface SystemSettings { 
-    currentTrackingNumber: number; 
-    currentExitPermitNumber: number; 
-    companyNames: string[]; 
-    companies?: Company[]; 
-    defaultCompany: string; 
-    bankNames: string[]; 
-    operatingBankNames?: string[]; 
-    commodityGroups: string[]; 
-    rolePermissions: Record<string, RolePermissions>; 
-    customRoles?: CustomRole[]; 
-    savedContacts?: Contact[]; 
-    pwaIcon?: string; 
-    telegramBotToken?: string; 
-    telegramAdminId?: string; 
-    baleBotToken?: string; // NEW: Bale Bot Token
-    smsApiKey?: string; 
-    smsSenderNumber?: string; 
-    googleCalendarId?: string; 
-    whatsappNumber?: string; 
-    geminiApiKey?: string; 
-    insuranceCompanies?: string[]; 
-    warehouseSequences?: Record<string, number>; 
-    exitPermitNotificationGroup?: string; 
-    
-    // NEW: Configuration for the second group with filters
-    exitPermitSecondGroupConfig?: SecondGroupConfig;
-
-    companyNotifications?: Record<string, { salesManager?: string; warehouseGroup?: string; }>; 
-    defaultWarehouseGroup?: string; 
-    defaultSalesManager?: string; 
-    dailySecurityMeta?: Record<string, DailySecurityMeta>; 
-    printTemplates?: PrintTemplate[]; 
-    
-    // FISCAL YEAR SETTINGS
-    activeFiscalYearId?: string;
-    fiscalYears?: FiscalYear[];
 }

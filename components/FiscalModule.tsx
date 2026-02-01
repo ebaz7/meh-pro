@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { FiscalYear, SystemSettings, Company, CompanySequenceConfig } from '../types';
 import { getSettings, saveSettings } from '../services/storageService';
@@ -99,7 +98,8 @@ export const FiscalYearManager: React.FC = () => {
         const defaultExit = currentSettings.currentExitPermitNumber ? currentSettings.currentExitPermitNumber + 1 : 1000;
 
         companies.forEach(c => {
-            const seq = year.companySequences?.[c.name] || {};
+            // FIX: Using type assertion to avoid property errors on empty object
+            const seq = (year.companySequences?.[c.name] || {}) as CompanySequenceConfig;
             
             // Warehouse Bijak: Use specific company sequence if available in settings, else 1
             const currentBijak = currentSettings.warehouseSequences?.[c.name];
