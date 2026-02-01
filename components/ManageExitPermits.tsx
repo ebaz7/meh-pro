@@ -48,41 +48,38 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       setLoading(false);
   };
 
-  // --- ROBUST ACTION CHECKER --- //
+  // --- STRICT ACTION CHECKER --- //
+  // This function decides if the current user can approve the permit based on its EXACT status.
   const getActionForUser = (status: string): string | null => {
       const role = currentUser.role;
-      const s = status || '';
+      const isAdmin = role === UserRole.ADMIN;
 
-      // 1. Admin Override
-      if (role === UserRole.ADMIN) return 'APPROVE_ANY';
-      
-      // 2. CEO Step (Status: PENDING_CEO)
-      if (s === ExitPermitStatus.PENDING_CEO || s.includes('مدیرعامل')) {
-          if (role === UserRole.CEO || permissions.canApproveExitCeo) return 'APPROVE_CEO';
+      // 1. CEO Step
+      if (status === ExitPermitStatus.PENDING_CEO) {
+          if (isAdmin || role === UserRole.CEO || permissions.canApproveExitCeo) return 'APPROVE_CEO';
       }
       
-      // 3. Factory Manager Step (Status: PENDING_FACTORY)
-      // Checks if status contains "کارخانه" OR is exactly PENDING_FACTORY
-      if (s === ExitPermitStatus.PENDING_FACTORY || s.includes('کارخانه')) {
-          if (role === UserRole.FACTORY_MANAGER || permissions.canApproveExitFactory) return 'APPROVE_FACTORY';
+      // 2. Factory Manager Step
+      // DO NOT use includes() here. Status must be EXACTLY PENDING_FACTORY
+      else if (status === ExitPermitStatus.PENDING_FACTORY) {
+          if (isAdmin || role === UserRole.FACTORY_MANAGER || permissions.canApproveExitFactory) return 'APPROVE_FACTORY';
       }
       
-      // 4. Warehouse Step (Status: PENDING_WAREHOUSE)
-      // Checks if status contains "انبار" (Anbar) OR is exactly PENDING_WAREHOUSE
-      if (s === ExitPermitStatus.PENDING_WAREHOUSE || s.includes('انبار') || s.includes('Warehouse')) {
-          if (role === UserRole.WAREHOUSE_KEEPER || permissions.canApproveExitWarehouse) return 'APPROVE_WAREHOUSE';
+      // 3. Warehouse Step
+      else if (status === ExitPermitStatus.PENDING_WAREHOUSE) {
+          if (isAdmin || role === UserRole.WAREHOUSE_KEEPER || permissions.canApproveExitWarehouse) return 'APPROVE_WAREHOUSE';
       }
       
-      // 5. Security Step (Status: PENDING_SECURITY)
-      // Checks if status contains "انتظامات" OR is exactly PENDING_SECURITY
-      if (s === ExitPermitStatus.PENDING_SECURITY || s.includes('انتظامات') || s.includes('Security')) {
-          if (role === UserRole.SECURITY_HEAD || role === UserRole.SECURITY_GUARD || permissions.canApproveExitSecurity) return 'APPROVE_SECURITY';
+      // 4. Security Step
+      else if (status === ExitPermitStatus.PENDING_SECURITY) {
+          if (isAdmin || role === UserRole.SECURITY_HEAD || role === UserRole.SECURITY_GUARD || permissions.canApproveExitSecurity) return 'APPROVE_SECURITY';
       }
       
       return null;
   };
 
   const isMyRequest = (p: ExitPermit) => p.requester === currentUser.fullName;
+  const isArchived = (status: string) => status === ExitPermitStatus.EXITED || status === ExitPermitStatus.REJECTED;
 
   const filteredPermits = permits.filter(p => {
       // 1. Search Filter
@@ -94,7 +91,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       
       if (!matchesSearch) return false;
 
-      const isArchivedStatus = p.status === ExitPermitStatus.EXITED || p.status === ExitPermitStatus.REJECTED;
+      const isArchivedStatus = isArchived(p.status);
 
       // 2. Tab Filter
       if (filterMode === 'ARCHIVE') return isArchivedStatus;
@@ -103,7 +100,8 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           // Show if I can approve it (IT IS MY TURN)
           const action = getActionForUser(p.status);
           if (action) return true;
-          
+          // Optionally show my own pending requests so I can track them, but primary is "My Tasks"
+          // if (isMyRequest(p) && !isArchivedStatus) return true; 
           return false;
       }
       
@@ -142,27 +140,25 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           setProcessingId(p.id);
           try {
               let nextStatus = p.status;
-              let extraData: any = {};
-
-              // Calculate Next Status based on Current
-              if (p.status === ExitPermitStatus.PENDING_CEO || p.status.includes('مدیرعامل')) {
+              
+              // Calculate Next Status STRICTLY based on current status
+              if (p.status === ExitPermitStatus.PENDING_CEO) {
                   nextStatus = ExitPermitStatus.PENDING_FACTORY;
               }
-              else if (p.status === ExitPermitStatus.PENDING_FACTORY || p.status.includes('کارخانه')) {
+              else if (p.status === ExitPermitStatus.PENDING_FACTORY) {
                   nextStatus = ExitPermitStatus.PENDING_WAREHOUSE;
               }
-              else if (p.status === ExitPermitStatus.PENDING_WAREHOUSE || p.status.includes('انبار')) {
+              else if (p.status === ExitPermitStatus.PENDING_WAREHOUSE) {
                   nextStatus = ExitPermitStatus.PENDING_SECURITY;
               }
-              else if (p.status === ExitPermitStatus.PENDING_SECURITY || p.status.includes('انتظامات')) {
+              else if (p.status === ExitPermitStatus.PENDING_SECURITY) {
                   nextStatus = ExitPermitStatus.EXITED;
-                  extraData.exitTime = exitTime;
               }
 
-              // Update Signatures
-              if (action === 'APPROVE_CEO') extraData.approverCeo = currentUser.fullName;
-              if (action === 'APPROVE_FACTORY') extraData.approverFactory = currentUser.fullName;
-              if (action === 'APPROVE_SECURITY') extraData.approverSecurity = currentUser.fullName;
+              // Extra data for the update function (rejection reason, times, etc)
+              // Note: storageService handles updating approver names based on the status transition automatically
+              const extraData: any = {};
+              if (action === 'APPROVE_SECURITY') extraData.exitTime = exitTime;
 
               await updateExitPermitStatus(p.id, nextStatus, currentUser, extraData);
               
@@ -228,10 +224,10 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const StatusBadge = ({ status }: { status: ExitPermitStatus }) => {
       let colorClass = 'bg-gray-100 text-gray-700 border-gray-200';
       
-      if (status === ExitPermitStatus.PENDING_CEO || status.includes('مدیرعامل')) colorClass = 'bg-purple-100 text-purple-700 border-purple-200';
-      else if (status === ExitPermitStatus.PENDING_FACTORY || status.includes('کارخانه')) colorClass = 'bg-blue-100 text-blue-700 border-blue-200';
-      else if (status === ExitPermitStatus.PENDING_WAREHOUSE || status.includes('انبار')) colorClass = 'bg-orange-100 text-orange-700 border-orange-200';
-      else if (status === ExitPermitStatus.PENDING_SECURITY || status.includes('انتظامات')) colorClass = 'bg-amber-100 text-amber-700 border-amber-200 animate-pulse';
+      if (status === ExitPermitStatus.PENDING_CEO) colorClass = 'bg-purple-100 text-purple-700 border-purple-200';
+      else if (status === ExitPermitStatus.PENDING_FACTORY) colorClass = 'bg-blue-100 text-blue-700 border-blue-200';
+      else if (status === ExitPermitStatus.PENDING_WAREHOUSE) colorClass = 'bg-orange-100 text-orange-700 border-orange-200';
+      else if (status === ExitPermitStatus.PENDING_SECURITY) colorClass = 'bg-amber-100 text-amber-700 border-amber-200 animate-pulse';
       else if (status === ExitPermitStatus.EXITED) colorClass = 'bg-green-100 text-green-700 border-green-200';
       else if (status === ExitPermitStatus.REJECTED) colorClass = 'bg-red-100 text-red-700 border-red-200';
 
@@ -243,27 +239,27 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   };
 
   const PipelineBar = ({ status }: { status: ExitPermitStatus }) => {
-      const steps = [
-          { s: ExitPermitStatus.PENDING_CEO, label: 'مدیرعامل' },
-          { s: ExitPermitStatus.PENDING_FACTORY, label: 'کارخانه' },
-          { s: ExitPermitStatus.PENDING_WAREHOUSE, label: 'انبار' },
-          { s: ExitPermitStatus.PENDING_SECURITY, label: 'انتظامات' },
-          { s: ExitPermitStatus.EXITED, label: 'خروج' }
+      // Define exact order
+      const sequence = [
+          ExitPermitStatus.PENDING_CEO,
+          ExitPermitStatus.PENDING_FACTORY,
+          ExitPermitStatus.PENDING_WAREHOUSE,
+          ExitPermitStatus.PENDING_SECURITY,
+          ExitPermitStatus.EXITED
       ];
       
-      let activeIndex = -1;
-      if(status === ExitPermitStatus.EXITED) activeIndex = 4;
-      else if(status.includes('انتظامات')) activeIndex = 3;
-      else if(status.includes('انبار')) activeIndex = 2;
-      else if(status.includes('کارخانه')) activeIndex = 1;
-      else if(status.includes('مدیرعامل')) activeIndex = 0;
+      const labels = ['مدیرعامل', 'کارخانه', 'انبار', 'انتظامات', 'خروج'];
+      
+      // Find current index
+      let currentIndex = sequence.indexOf(status);
+      if (currentIndex === -1) currentIndex = -1; // Rejected or Unknown
 
       if (status === ExitPermitStatus.REJECTED) return <div className="h-1.5 bg-red-500 rounded-full w-full mt-2 opacity-50"></div>;
 
       return (
           <div className="flex gap-1 h-1.5 mt-3 w-full">
-              {steps.map((step, idx) => (
-                  <div key={idx} className={`flex-1 rounded-full transition-colors ${idx <= activeIndex ? 'bg-green-500' : 'bg-gray-200'}`} title={step.label}></div>
+              {labels.map((label, idx) => (
+                  <div key={idx} className={`flex-1 rounded-full transition-colors ${idx <= currentIndex ? 'bg-green-500' : 'bg-gray-200'}`} title={label}></div>
               ))}
           </div>
       );
@@ -381,8 +377,5 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
     </div>
   );
 };
-
-// Helper for status check
-const isArchived = (status: string) => status === ExitPermitStatus.EXITED || status === ExitPermitStatus.REJECTED;
 
 export default ManageExitPermits;
