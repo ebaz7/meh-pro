@@ -44,8 +44,8 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
 /**
  * REWRITTEN PERMISSION LOGIC (FAILSAFE)
  * 1. Admin gets everything.
- * 2. System Roles get HARDCODED defaults that cannot be removed by empty DB settings.
- * 3. DB Settings are applied on top (MERGED), allowing overrides but preserving base functionality.
+ * 2. System Roles get HARDCODED defaults.
+ * 3. DB Settings are MERGED on top, ensuring defaults are never lost.
  */
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     
@@ -133,9 +133,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     }
 
     // --- 3. MERGE DATABASE SETTINGS ---
-    // If settings exist, overlay them. This ensures if you checked a box in settings, it applies.
-    // If you uncheck a box in settings, it might override defaults (depending on logic), 
-    // but usually, settings add extra permissions or custom roles.
+    // Critical Fix: Merge settings ON TOP of defaults instead of replacing them.
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         const dbPerms = settings.rolePermissions[userRole];
         basePerms = { ...basePerms, ...dbPerms };

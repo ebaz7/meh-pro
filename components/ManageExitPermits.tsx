@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings, ExitPermitItem } from '../types';
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit } from '../services/storageService';
@@ -30,7 +29,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   
   // States for hidden print render (Auto Send)
   const [permitForAutoSend, setPermitForAutoSend] = useState<ExitPermit | null>(null);
-  const [autoSendWatermark, setAutoSendWatermark] = useState<'DELETED' | 'EDITED' | null>(null);
   
   // Warehouse Modal
   const [warehouseFinalizePermit, setWarehouseFinalizePermit] = useState<ExitPermit | null>(null);
@@ -64,9 +62,10 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   const canEdit = (p: ExitPermit) => {
       if (currentUser.role === UserRole.ADMIN) return true;
       if (p.status === ExitPermitStatus.EXITED) return !!permissions.canEditExitArchive;
+      
+      // If we are here, status is NOT EXITED because of the check above which returns.
       if (permissions.canEditAll) return true;
       if (permissions.canEditOwn && p.requester === currentUser.fullName) return true;
-      // If code reaches here, p.status is NOT EXITED because of the check above
       if (currentUser.role === UserRole.SALES_MANAGER) return true;
       return false;
   };
@@ -153,7 +152,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                       apiCall('/send-whatsapp', 'POST', { number: num, message: txt, mediaData: { data: base64, mimeType: 'image/png' } }).catch(console.error);
                   };
 
-                  // A. Standard Flow Notifications
+                  // A. Standard Flow Notifications (Fixed Roles)
                   if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
                       const caption = generateCaption(updatedPermitMock, "📢 *تایید مدیرعامل انجام شد*");
                       users.filter(u => u.role === UserRole.FACTORY_MANAGER && u.phoneNumber).forEach(u => send(u.phoneNumber!, caption));
@@ -165,17 +164,19 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                   }
                   else if (nextStatus === ExitPermitStatus.PENDING_SECURITY) {
                       const caption = generateCaption(updatedPermitMock, "📦 *تایید انبار/توزین انجام شد*");
-                      // Notify Security Head? (Optional, usually they check cartable)
+                      // Notify Security Head? (Optional)
                   }
                   else if (nextStatus === ExitPermitStatus.EXITED) {
                       const caption = generateCaption(updatedPermitMock, "✅ *خروج نهایی کالا ثبت شد*");
                       if(settings?.exitPermitNotificationGroup) send(settings.exitPermitNotificationGroup, caption);
                   }
 
-                  // B. SECOND GROUP NOTIFICATION (FIXED LOGIC)
+                  // B. SECOND GROUP NOTIFICATION (DYNAMIC CONFIG)
                   // Check if this specific status is enabled in settings for the second group
                   const secondGroupConfig = settings?.exitPermitSecondGroupConfig;
+                  
                   if (secondGroupConfig && secondGroupConfig.groupId && secondGroupConfig.activeStatuses) {
+                      // Check if the NEW status is in the list of checkboxes
                       if (secondGroupConfig.activeStatuses.includes(nextStatus)) {
                           const statusLabel = 
                               nextStatus === ExitPermitStatus.PENDING_FACTORY ? "تایید مدیرعامل" :
