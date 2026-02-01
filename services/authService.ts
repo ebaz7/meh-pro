@@ -129,14 +129,19 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     }
 
     // 3. APPLY DATABASE SETTINGS (MERGE)
-    // This allows custom overrides from the Settings page to *add* or *remove* permissions
-    // without wiping out the logic for system roles if the user didn't touch them.
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         const savedPerms = settings.rolePermissions[userRole];
         perms = { ...perms, ...savedPerms };
     }
 
-    // 4. USER SPECIFIC OVERRIDES
+    // 4. FORCE SYSTEM DEFAULTS AGAIN (SAFETY NET)
+    // Ensure critical approvals for system roles aren't accidentally disabled by empty settings
+    if (userRole === UserRole.FACTORY_MANAGER) perms.canApproveExitFactory = true;
+    if (userRole === UserRole.WAREHOUSE_KEEPER) perms.canApproveExitWarehouse = true;
+    if (userRole === UserRole.SECURITY_HEAD) perms.canApproveExitSecurity = true;
+    if (userRole === UserRole.CEO) { perms.canApproveExitCeo = true; perms.canApproveCeo = true; }
+
+    // 5. USER SPECIFIC OVERRIDES
     if (userObject?.canManageTrade) {
         perms.canManageTrade = true;
     }
