@@ -33,8 +33,8 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
     setItems([...items, {
         id: generateUUID(),
         goodsName: '',
-        cartonCount: 0, // Requested is 0 for new items added by warehouse
-        weight: 0,      // Requested is 0 for new items added by warehouse
+        cartonCount: 0, 
+        weight: 0,      
         deliveredCartonCount: 0,
         deliveredWeight: 0
     }]);
@@ -61,7 +61,18 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
       alert("نام کالا نمی‌تواند خالی باشد.");
       return;
     }
-    onConfirm(items);
+    // Map delivered values back to main values if they differ, effectively updating the record
+    const finalizedItems = items.map(i => ({
+        ...i,
+        goodsName: i.goodsName, // Allow updating name
+        cartonCount: Number(i.deliveredCartonCount), // Commit delivered as final
+        weight: Number(i.deliveredWeight), // Commit delivered as final
+        // Keep original request for history if needed (optional, here we overwrite for simplicity in next steps)
+        deliveredCartonCount: Number(i.deliveredCartonCount),
+        deliveredWeight: Number(i.deliveredWeight)
+    }));
+    
+    onConfirm(finalizedItems);
   };
 
   return (
@@ -91,7 +102,7 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
               <thead className="bg-gray-100 text-gray-700 font-bold">
                 <tr>
                   <th className="p-3 w-10">#</th>
-                  <th className="p-3 text-right">شرح کالا</th>
+                  <th className="p-3 text-right">شرح کالا (قابل ویرایش)</th>
                   <th className="p-3 w-28 bg-blue-50 text-blue-800 border-l border-white">تعداد درخواستی</th>
                   <th className="p-3 w-28 bg-green-50 text-green-800">تعداد خروجی</th>
                   <th className="p-3 w-28 bg-blue-50 text-blue-800 border-l border-white">وزن درخواستی</th>
@@ -105,7 +116,7 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
                     <td className="p-3 text-gray-500 font-mono">{idx + 1}</td>
                     <td className="p-3">
                       <input 
-                        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
                         value={item.goodsName}
                         onChange={e => handleUpdateItem(idx, 'goodsName', e.target.value)}
                         placeholder="نام کالا"

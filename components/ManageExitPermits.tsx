@@ -60,7 +60,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       }
       
       // 3. Factory Manager Step (Status: PENDING_FACTORY)
-      // Check loose string matching to avoid encoding issues
       if (s === ExitPermitStatus.PENDING_FACTORY || s.includes('کارخانه')) {
           if (role === UserRole.FACTORY_MANAGER || permissions.canApproveExitFactory) return 'APPROVE_FACTORY';
       }
@@ -96,10 +95,11 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       if (filterMode === 'ARCHIVE') return isArchivedStatus;
       
       if (filterMode === 'ACTION') {
-          // Show if I can approve it OR if I created it and it's pending (to track it)
+          // Show if I can approve it 
           const canIApprove = getActionForUser(p.status) !== null;
-          const isMyPending = isMyRequest(p) && !isArchivedStatus;
-          return canIApprove || isMyPending;
+          // OR if I created it and it's active (so I can track it) - optional, can remove if user wants PURE inbox
+          // const isMyPending = isMyRequest(p) && !isArchivedStatus; 
+          return canIApprove; // Strict Cartable: Only things I need to act on
       }
       
       if (filterMode === 'ALL') return !isArchivedStatus; // Show all active flow
@@ -116,13 +116,22 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
           return;
       }
 
+      // Warehouse uses a special modal
       if (action === 'APPROVE_WAREHOUSE') {
           setWarehouseFinalize(p);
           return;
       }
 
-      const isSecurity = action === 'APPROVE_SECURITY';
-      const promptMsg = isSecurity ? 'آیا خروج نهایی بار را تایید می‌کنید؟' : 'آیا تایید می‌کنید؟';
+      // Security Time Confirmation
+      let exitTime = '';
+      if (action === 'APPROVE_SECURITY') {
+          const defaultTime = new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
+          const userInput = prompt('لطفا ساعت دقیق خروج را وارد کنید:', defaultTime);
+          if (userInput === null) return; // Cancelled
+          exitTime = userInput || defaultTime;
+      }
+
+      const promptMsg = 'آیا تایید می‌کنید؟';
 
       if (confirm(promptMsg)) {
           setProcessingId(p.id);
@@ -131,13 +140,12 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               let extraData: any = {};
 
               // Calculate Next Status
-              // Using loose matching to be safe
               if (p.status === ExitPermitStatus.PENDING_CEO || p.status.includes('مدیرعامل')) nextStatus = ExitPermitStatus.PENDING_FACTORY;
               else if (p.status === ExitPermitStatus.PENDING_FACTORY || p.status.includes('کارخانه')) nextStatus = ExitPermitStatus.PENDING_WAREHOUSE;
               else if (p.status === ExitPermitStatus.PENDING_WAREHOUSE || p.status.includes('انبار')) nextStatus = ExitPermitStatus.PENDING_SECURITY;
               else if (p.status === ExitPermitStatus.PENDING_SECURITY || p.status.includes('انتظامات')) {
                   nextStatus = ExitPermitStatus.EXITED;
-                  extraData.exitTime = new Date().toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'});
+                  extraData.exitTime = exitTime;
               }
 
               // Update Signatures
@@ -169,9 +177,11 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
               items, 
               weight: totalWeight, 
               cartonCount: totalCartons,
-              approverWarehouse: currentUser.fullName
+              approverWarehouse: currentUser.fullName,
+              goodsName: items.map(i => i.goodsName).join('، ') // Update summary
           });
 
+          // Fixed: Removed incorrect 'approverWarehouse' property from extra object
           await updateExitPermitStatus(warehouseFinalize.id, ExitPermitStatus.PENDING_SECURITY, currentUser);
           
           setWarehouseFinalize(null);
@@ -202,7 +212,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       }
   };
 
-  // --- UI COMPONENTS --- //
+  // --- UI COMPONENTS ---
   
   const StatusBadge = ({ status }: { status: ExitPermitStatus }) => {
       let colorClass = 'bg-gray-100 text-gray-700 border-gray-200';
@@ -222,7 +232,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
   };
 
   const PipelineBar = ({ status }: { status: ExitPermitStatus }) => {
-      // Simple visualizer
       const steps = [
           { s: ExitPermitStatus.PENDING_CEO, label: 'مدیرعامل' },
           { s: ExitPermitStatus.PENDING_FACTORY, label: 'کارخانه' },
@@ -232,7 +241,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
       ];
       
       let activeIndex = -1;
-      // Loose matching
       if(status === ExitPermitStatus.EXITED) activeIndex = 4;
       else if(status.includes('انتظامات')) activeIndex = 3;
       else if(status.includes('انبار')) activeIndex = 2;
@@ -281,7 +289,7 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                 <div className="col-span-full text-center py-12 flex flex-col items-center text-gray-400 bg-white rounded-2xl border border-dashed">
                     <Filter size={48} className="opacity-20 mb-2"/>
                     <span>موردی یافت نشد.</span>
-                    {filterMode === 'ACTION' && <span className="text-xs mt-1">(اگر مجوزی ثبت شده است، ممکن است در مرحله تایید شما نباشد)</span>}
+                    {filterMode === 'ACTION' && <span className="text-xs mt-1 text-gray-400">(کارتابل شما خالی است)</span>}
                 </div>
             ) :
             filteredPermits.map(p => {
@@ -351,7 +359,6 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                 permit={viewPermit} 
                 onClose={() => setViewPermit(null)} 
                 settings={settings} 
-                // CRITICAL: Pass handlers here for the modal view
                 onApprove={getActionForUser(viewPermit.status) ? () => handleApprove(viewPermit) : undefined}
                 onReject={getActionForUser(viewPermit.status) ? () => handleReject(viewPermit) : undefined}
                 onEdit={isMyRequest(viewPermit) && viewPermit.status !== ExitPermitStatus.EXITED ? () => { setEditPermit(viewPermit); setViewPermit(null); } : undefined}
