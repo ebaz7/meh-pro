@@ -41,7 +41,7 @@ export const hasPermission = (user: User | null, permissionType: string): boolea
   return false;
 };
 
-// --- REWRITTEN PERMISSION LOGIC (STRICT MODE & FAILSAFE) ---
+// --- FIXED PERMISSION LOGIC ---
 export const getRolePermissions = (userRole: string, settings: SystemSettings | null, userObject?: User): RolePermissions => {
     
     // 1. ADMIN GETS EVERYTHING (Hard Override)
@@ -55,7 +55,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     }
 
     // 2. DEFINE DEFAULTS (Base Permissions based on Role Type)
-    // Start with all false
+    // Initialize with safe defaults
     let perms: RolePermissions = {
         canViewAll: false,
         canEditOwn: true, 
@@ -67,7 +67,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canViewSecurity: false, canCreateSecurityLog: false, canApproveSecuritySupervisor: false
     };
 
-    // Apply System Defaults (Hardcoded Logic)
+    // Apply System Defaults (Hardcoded Logic) - ensuring basic functionality per role
     switch (userRole) {
         case UserRole.CEO:
             perms.canViewAll = true;
@@ -129,8 +129,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     }
 
     // 3. APPLY DATABASE SETTINGS (MERGE)
-    // This allows custom overrides from the Settings page to *add* or *remove* permissions
-    // without wiping out the logic for system roles if the user didn't touch them.
+    // IMPORTANT: This merges saved permissions ON TOP OF defaults.
+    // It fixes the issue where saving settings would wipe out default role capabilities.
     if (settings && settings.rolePermissions && settings.rolePermissions[userRole]) {
         const savedPerms = settings.rolePermissions[userRole];
         perms = { ...perms, ...savedPerms };

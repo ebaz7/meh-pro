@@ -178,11 +178,21 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                       const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
                       const base64 = canvas.toDataURL('image/png').split(',')[1];
                       const users = await getUsers();
+                      
+                      // -- CONFIG FOR NOTIFICATIONS --
                       const group1 = settings?.exitPermitNotificationGroup;
-                      const group2 = settings?.exitPermitSecondGroupConfig?.groupId;
+                      const group2Id = settings?.exitPermitSecondGroupConfig?.groupId;
+                      const group2Statuses = settings?.exitPermitSecondGroupConfig?.activeStatuses || [];
 
                       const send = async (num: string, msg: string) => {
                           try { await apiCall('/send-whatsapp', 'POST', { number: num, message: msg, mediaData: { data: base64, mimeType: 'image/png' } }); } catch(e){}
+                      };
+
+                      // Helper to check if Group 2 should receive msg for this status
+                      const sendToGroup2IfConfigured = (status: string, caption: string) => {
+                          if (group2Id && group2Statuses.includes(status)) {
+                              send(group2Id, caption);
+                          }
                       };
 
                       if (nextStatus === ExitPermitStatus.PENDING_FACTORY) {
@@ -190,16 +200,29 @@ const ManageExitPermits: React.FC<Props> = ({ currentUser, settings, statusFilte
                           const caption = generateFullCaption(updatedPermitMock, title);
                           users.filter(u => u.role === UserRole.FACTORY_MANAGER && u.phoneNumber).forEach(u => send(u.phoneNumber!, caption));
                           if (group1) send(group1, caption);
+                          
+                          // Check Group 2 for PENDING_FACTORY
+                          sendToGroup2IfConfigured(ExitPermitStatus.PENDING_FACTORY, caption);
+
                       } else if (nextStatus === ExitPermitStatus.PENDING_WAREHOUSE) {
                           const caption = generateFullCaption(updatedPermitMock, "🏭 *تایید مدیر کارخانه انجام شد* (مجوز ورود به انبار)");
                           users.filter(u => u.role === UserRole.WAREHOUSE_KEEPER && u.phoneNumber).forEach(u => send(u.phoneNumber!, caption));
+                          
+                          // Check Group 2 for PENDING_WAREHOUSE
+                          sendToGroup2IfConfigured(ExitPermitStatus.PENDING_WAREHOUSE, caption);
+
                       } else if (nextStatus === ExitPermitStatus.PENDING_SECURITY) {
                           const caption = generateFullCaption(updatedPermitMock, "📦 *تایید انبار و توزین انجام شد* (مجوز خروج انتظامات)");
-                          if (group2) send(group2, caption);
+                          
+                          // Check Group 2 for PENDING_SECURITY
+                          sendToGroup2IfConfigured(ExitPermitStatus.PENDING_SECURITY, caption);
+
                       } else if (nextStatus === ExitPermitStatus.EXITED) {
                           const caption = generateFullCaption(updatedPermitMock, "✅ *خروج نهایی بار از کارخانه ثبت شد*", true);
                           if (group1) { await send(group1, caption); await updateExitPermitStatus(id, ExitPermitStatus.EXITED, currentUser, { sentToGroup: true }); }
-                          if (group2) send(group2, caption);
+                          
+                          // Check Group 2 for EXITED
+                          sendToGroup2IfConfigured(ExitPermitStatus.EXITED, caption);
                       }
                   } catch (e) { console.error(e); }
               }
