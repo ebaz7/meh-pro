@@ -1,4 +1,3 @@
-
 import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
@@ -12,12 +11,17 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null;
 }
 
+// Fixed: Explicitly extending React.Component ensures that 'state', 'props', and 'setState' are correctly inherited and recognized by TypeScript.
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = {
-    hasError: false,
-    error: null,
-    errorInfo: null
-  };
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    // Fixed: Initializing state correctly within the constructor of a class extending React.Component.
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null
+    };
+  }
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, error };
@@ -25,10 +29,12 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+    // Fixed: 'setState' is now recognized because the class correctly extends React.Component.
     this.setState({ errorInfo });
   }
 
   render() {
+    // Fixed: 'state' is now recognized because the class correctly extends React.Component.
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
@@ -37,9 +43,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
               <AlertTriangle className="text-red-600" size={32} />
             </div>
             <h1 className="text-xl font-black text-gray-800 mb-2">اوه! مشکلی پیش آمد</h1>
-            <p className="text-gray-500 text-sm mb-4">
-              نرم‌افزار با یک خطای غیرمنتظره مواجه شد.
-            </p>
+            <p className="text-gray-500 text-sm mb-4">نرم‌افزار با یک خطای غیرمنتظره مواجه شد.</p>
             
             <div className="bg-gray-100 p-3 rounded-lg text-left dir-ltr mb-6 overflow-auto max-h-40">
               <code className="text-xs text-red-600 font-mono break-all">
@@ -59,6 +63,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
+    // Fixed: 'props' is now recognized because the class correctly extends React.Component.
     return this.props.children;
   }
 }
