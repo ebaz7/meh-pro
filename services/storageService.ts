@@ -2,7 +2,15 @@
 import { PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, PersonnelDelay, SecurityIncident } from '../types';
 import { apiCall } from './apiService';
 
-export const getOrders = async (): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>('/orders'); };
+// Safely return array
+const safeArray = <T>(data: any): T[] => {
+    return Array.isArray(data) ? data : [];
+};
+
+export const getOrders = async (): Promise<PaymentOrder[]> => { 
+    const res = await apiCall<PaymentOrder[]>('/orders'); 
+    return safeArray(res);
+};
 export const saveOrder = async (order: PaymentOrder): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>('/orders', 'POST', order); };
 export const editOrder = async (updatedOrder: PaymentOrder): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>(`/orders/${updatedOrder.id}`, 'PUT', updatedOrder); };
 export const updateOrderStatus = async (id: string, status: OrderStatus, approverUser: User, rejectionReason?: string): Promise<PaymentOrder[]> => {
@@ -21,7 +29,10 @@ export const updateOrderStatus = async (id: string, status: OrderStatus, approve
 };
 export const deleteOrder = async (id: string): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>(`/orders/${id}`, 'DELETE'); };
 
-export const getExitPermits = async (): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>('/exit-permits'); };
+export const getExitPermits = async (): Promise<ExitPermit[]> => { 
+    const res = await apiCall<ExitPermit[]>('/exit-permits');
+    return safeArray(res);
+};
 export const saveExitPermit = async (permit: ExitPermit): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>('/exit-permits', 'POST', permit); };
 export const editExitPermit = async (updatedPermit: ExitPermit): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>(`/exit-permits/${updatedPermit.id}`, 'PUT', updatedPermit); };
 
@@ -53,15 +64,15 @@ export const updateExitPermitStatus = async (id: string, status: ExitPermitStatu
 export const deleteExitPermit = async (id: string): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>(`/exit-permits/${id}`, 'DELETE'); };
 export const getNextExitPermitNumber = async (): Promise<number> => { try { const response = await apiCall<{ nextNumber: number }>('/next-exit-permit-number'); return response.nextNumber; } catch(e) { return 1001; } };
 
-export const getSecurityLogs = async (): Promise<SecurityLog[]> => { return await apiCall<SecurityLog[]>('/security/logs'); };
+export const getSecurityLogs = async (): Promise<SecurityLog[]> => { const res = await apiCall<SecurityLog[]>('/security/logs'); return safeArray(res); };
 export const saveSecurityLog = async (log: SecurityLog): Promise<SecurityLog[]> => { return await apiCall<SecurityLog[]>('/security/logs', 'POST', log); };
 export const updateSecurityLog = async (log: SecurityLog): Promise<SecurityLog[]> => { return await apiCall<SecurityLog[]>(`/security/logs/${log.id}`, 'PUT', log); };
 export const deleteSecurityLog = async (id: string): Promise<SecurityLog[]> => { return await apiCall<SecurityLog[]>(`/security/logs/${id}`, 'DELETE'); };
-export const getPersonnelDelays = async (): Promise<PersonnelDelay[]> => { return await apiCall<PersonnelDelay[]>('/security/delays'); };
+export const getPersonnelDelays = async (): Promise<PersonnelDelay[]> => { const res = await apiCall<PersonnelDelay[]>('/security/delays'); return safeArray(res); };
 export const savePersonnelDelay = async (delay: PersonnelDelay): Promise<PersonnelDelay[]> => { return await apiCall<PersonnelDelay[]>('/security/delays', 'POST', delay); };
 export const updatePersonnelDelay = async (delay: PersonnelDelay): Promise<PersonnelDelay[]> => { return await apiCall<PersonnelDelay[]>(`/security/delays/${delay.id}`, 'PUT', delay); };
 export const deletePersonnelDelay = async (id: string): Promise<PersonnelDelay[]> => { return await apiCall<PersonnelDelay[]>(`/security/delays/${id}`, 'DELETE'); };
-export const getSecurityIncidents = async (): Promise<SecurityIncident[]> => { return await apiCall<SecurityIncident[]>('/security/incidents'); };
+export const getSecurityIncidents = async (): Promise<SecurityIncident[]> => { const res = await apiCall<SecurityIncident[]>('/security/incidents'); return safeArray(res); };
 export const saveSecurityIncident = async (incident: SecurityIncident): Promise<SecurityIncident[]> => { return await apiCall<SecurityIncident[]>('/security/incidents', 'POST', incident); };
 export const updateSecurityIncident = async (incident: SecurityIncident): Promise<SecurityIncident[]> => { return await apiCall<SecurityIncident[]>(`/security/incidents/${incident.id}`, 'PUT', incident); };
 export const deleteSecurityIncident = async (id: string): Promise<SecurityIncident[]> => { return await apiCall<SecurityIncident[]>(`/security/incidents/${id}`, 'DELETE'); };
@@ -70,31 +81,31 @@ export const saveSettings = async (settings: SystemSettings): Promise<SystemSett
 export const getNextTrackingNumber = async (): Promise<number> => { try { const response = await apiCall<{ nextTrackingNumber: number }>('/next-tracking-number'); return response.nextTrackingNumber; } catch (e) { return 1001; } };
 
 // Chat Exports
-export const getMessages = async (): Promise<ChatMessage[]> => { return await apiCall<ChatMessage[]>('/chat'); };
+export const getMessages = async (): Promise<ChatMessage[]> => { const res = await apiCall<ChatMessage[]>('/chat'); return safeArray(res); };
 export const sendMessage = async (message: ChatMessage): Promise<ChatMessage[]> => { return await apiCall<ChatMessage[]>('/chat', 'POST', message); };
 export const updateMessage = async (message: ChatMessage): Promise<ChatMessage[]> => { return await apiCall<ChatMessage[]>(`/chat/${message.id}`, 'PUT', message); };
 export const deleteMessage = async (id: string): Promise<ChatMessage[]> => { return await apiCall<ChatMessage[]>(`/chat/${id}`, 'DELETE'); };
 
-export const getGroups = async (): Promise<ChatGroup[]> => { return await apiCall<ChatGroup[]>('/groups'); };
+export const getGroups = async (): Promise<ChatGroup[]> => { const res = await apiCall<ChatGroup[]>('/groups'); return safeArray(res); };
 export const createGroup = async (group: ChatGroup): Promise<ChatGroup[]> => { return await apiCall<ChatGroup[]>('/groups', 'POST', group); };
 export const updateGroup = async (group: ChatGroup): Promise<ChatGroup[]> => { return await apiCall<ChatGroup[]>(`/groups/${group.id}`, 'PUT', group); };
 export const deleteGroup = async (id: string): Promise<ChatGroup[]> => { return await apiCall<ChatGroup[]>(`/groups/${id}`, 'DELETE'); };
 
-export const getTasks = async (): Promise<GroupTask[]> => { return await apiCall<GroupTask[]>('/tasks'); };
+export const getTasks = async (): Promise<GroupTask[]> => { const res = await apiCall<GroupTask[]>('/tasks'); return safeArray(res); };
 export const createTask = async (task: GroupTask): Promise<GroupTask[]> => { return await apiCall<GroupTask[]>('/tasks', 'POST', task); };
 export const updateTask = async (task: GroupTask): Promise<GroupTask[]> => { return await apiCall<GroupTask[]>(`/tasks/${task.id}`, 'PUT', task); };
 export const deleteTask = async (id: string): Promise<GroupTask[]> => { return await apiCall<GroupTask[]>(`/tasks/${id}`, 'DELETE'); };
 
-export const getTradeRecords = async (): Promise<TradeRecord[]> => { return await apiCall<TradeRecord[]>('/trade'); };
+export const getTradeRecords = async (): Promise<TradeRecord[]> => { const res = await apiCall<TradeRecord[]>('/trade'); return safeArray(res); };
 export const saveTradeRecord = async (record: TradeRecord): Promise<TradeRecord[]> => { return await apiCall<TradeRecord[]>('/trade', 'POST', record); };
 export const updateTradeRecord = async (record: TradeRecord): Promise<TradeRecord[]> => { return await apiCall<TradeRecord[]>(`/trade/${record.id}`, 'PUT', record); };
 export const deleteTradeRecord = async (id: string): Promise<TradeRecord[]> => { return await apiCall<TradeRecord[]>(`/trade/${id}`, 'DELETE'); };
 export const uploadFile = async (fileName: string, fileData: string): Promise<{ fileName: string, url: string }> => { return await apiCall<{ fileName: string, url: string }>('/upload', 'POST', { fileName, fileData }); };
-export const getWarehouseItems = async (): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>('/warehouse/items'); };
+export const getWarehouseItems = async (): Promise<WarehouseItem[]> => { const res = await apiCall<WarehouseItem[]>('/warehouse/items'); return safeArray(res); };
 export const saveWarehouseItem = async (item: WarehouseItem): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>('/warehouse/items', 'POST', item); };
 export const updateWarehouseItem = async (item: WarehouseItem): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>(`/warehouse/items/${item.id}`, 'PUT', item); };
 export const deleteWarehouseItem = async (id: string): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>(`/warehouse/items/${id}`, 'DELETE'); };
-export const getWarehouseTransactions = async (): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>('/warehouse/transactions'); };
+export const getWarehouseTransactions = async (): Promise<WarehouseTransaction[]> => { const res = await apiCall<WarehouseTransaction[]>('/warehouse/transactions'); return safeArray(res); };
 export const saveWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>('/warehouse/transactions', 'POST', tx); };
 export const updateWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${tx.id}`, 'PUT', tx); };
 export const deleteWarehouseTransaction = async (id: string): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${id}`, 'DELETE'); };

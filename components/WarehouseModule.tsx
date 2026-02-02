@@ -64,10 +64,23 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
     useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
     useEffect(() => { if(selectedCompany && activeTab === 'exit' && settings) { updateNextBijak(); } }, [selectedCompany, activeTab, settings]);
 
-    const loadData = async () => { setLoadingData(true); try { const [i, t] = await Promise.all([getWarehouseItems(), getWarehouseTransactions()]); setItems(i || []); setTransactions(t || []); } catch (e) { console.error(e); } finally { setLoadingData(false); } };
+    const loadData = async () => { 
+        setLoadingData(true); 
+        try { 
+            const [i, t] = await Promise.all([getWarehouseItems(), getWarehouseTransactions()]); 
+            setItems(Array.isArray(i) ? i : []); 
+            setTransactions(Array.isArray(t) ? t : []); 
+        } catch (e) { 
+            console.error(e); 
+            setItems([]);
+            setTransactions([]);
+        } finally { 
+            setLoadingData(false); 
+        } 
+    };
+    
     const updateNextBijak = async () => { if(selectedCompany) { const num = await getNextBijakNumber(selectedCompany); setNextBijakNum(num); } };
     
-    // FIX: Set hours to noon (12:00) to avoid timezone shifts making the date jump back one day
     const getIsoDate = () => { 
         try { 
             const date = jalaliToGregorian(txDate.year, txDate.month, txDate.day); 
@@ -324,12 +337,16 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
         try { await updateWarehouseTransaction(updatedTx); setEditingReceipt(null); loadData(); alert('رسید با موفقیت ویرایش شد.'); } catch (e) { console.error(e); alert('خطا در ویرایش رسید.'); }
     };
 
+    // SAFE ACCESS FOR TRANSACTIONS
+    const safeTransactions = Array.isArray(transactions) ? transactions : [];
+
     const allWarehousesStock = useMemo(() => {
         const companies = settings?.companies?.filter(c => c.showInWarehouse !== false).map(c => c.name) || [];
         const result = companies.map(company => {
             const companyItems = items.map(catalogItem => {
                 let quantity = 0; let weight = 0;
-                transactions.filter(tx => tx.company === company && tx.status !== 'REJECTED').forEach(tx => {
+                
+                safeTransactions.filter(tx => tx.company === company && tx.status !== 'REJECTED').forEach(tx => {
                     tx.items.forEach(txItem => {
                         if (txItem.itemId === catalogItem.id) {
                             if (tx.type === 'IN') { quantity += txItem.quantity; weight += txItem.weight; } 
@@ -344,13 +361,15 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
             return { company, items: companyItems };
         });
         return result;
-    }, [transactions, items, settings]);
+    }, [safeTransactions, items, settings]);
 
-    const recentBijaks = useMemo(() => transactions.filter(t => t.type === 'OUT').slice(0, 5), [transactions]);
-    const filteredArchiveBijaks = useMemo(() => transactions.filter(t => t.type === 'OUT' && (!archiveFilterCompany || t.company === archiveFilterCompany) && (String(t.number).includes(reportSearch) || t.recipientName?.includes(reportSearch))), [transactions, archiveFilterCompany, reportSearch]);
-    const filteredArchiveReceipts = useMemo(() => transactions.filter(t => t.type === 'IN' && (!archiveFilterCompany || t.company === archiveFilterCompany) && (String(t.proformaNumber).includes(reportSearch))), [transactions, archiveFilterCompany, reportSearch]);
+    const recentBijaks = useMemo(() => safeTransactions.filter(t => t.type === 'OUT').slice(0, 5), [safeTransactions]);
     
-    const pendingBijaks = useMemo(() => transactions.filter(t => t.type === 'OUT' && t.status === 'PENDING'), [transactions]);
+    const filteredArchiveBijaks = useMemo(() => safeTransactions.filter(t => t.type === 'OUT' && (!archiveFilterCompany || t.company === archiveFilterCompany) && (String(t.number).includes(reportSearch) || t.recipientName?.includes(reportSearch))), [safeTransactions, archiveFilterCompany, reportSearch]);
+    
+    const filteredArchiveReceipts = useMemo(() => safeTransactions.filter(t => t.type === 'IN' && (!archiveFilterCompany || t.company === archiveFilterCompany) && (String(t.proformaNumber).includes(reportSearch))), [safeTransactions, archiveFilterCompany, reportSearch]);
+    
+    const pendingBijaks = useMemo(() => safeTransactions.filter(t => t.type === 'OUT' && t.status === 'PENDING'), [safeTransactions]);
 
     const handlePrintStock = () => { setShowPrintStockReport(true); };
 
@@ -404,7 +423,7 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
             <div className="flex-1 overflow-y-auto p-6">
                 
                 {activeTab === 'reports' && (
-                    <WarehouseKardexReport items={items} transactions={transactions} companies={companyList} />
+                    <WarehouseKardexReport items={items} transactions={safeTransactions} companies={companyList} />
                 )}
 
                 {activeTab === 'approvals' && (
@@ -445,8 +464,8 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div onClick={() => setActiveTab('items')} className="bg-blue-50 p-6 rounded-2xl border border-blue-100 flex items-center justify-between cursor-pointer hover:shadow-md transition-all"><div><div className="text-3xl font-black text-blue-700">{items.length}</div><div className="text-sm text-blue-600 font-bold">تعداد کالاها</div></div><Package size={40} className="text-blue-300"/></div>
-                            <div onClick={() => setActiveTab('entry')} className="bg-green-50 p-6 rounded-2xl border border-green-100 flex items-center justify-between cursor-pointer hover:shadow-md transition-all"><div><div className="text-3xl font-black text-green-700">{transactions.filter(t=>t.type==='IN').length}</div><div className="text-sm text-green-600 font-bold">تعداد رسیدها</div></div><ArrowDownCircle size={40} className="text-green-300"/></div>
-                            <div onClick={() => setActiveTab('exit')} className="bg-red-50 p-6 rounded-2xl border border-red-100 flex items-center justify-between cursor-pointer hover:shadow-md transition-all"><div><div className="text-3xl font-black text-red-700">{transactions.filter(t=>t.type==='OUT').length}</div><div className="text-sm text-red-600 font-bold">تعداد حواله‌ها (بیجک)</div></div><ArrowUpCircle size={40} className="text-red-300"/></div>
+                            <div onClick={() => setActiveTab('entry')} className="bg-green-50 p-6 rounded-2xl border border-green-100 flex items-center justify-between cursor-pointer hover:shadow-md transition-all"><div><div className="text-3xl font-black text-green-700">{safeTransactions.filter(t=>t.type==='IN').length}</div><div className="text-sm text-green-600 font-bold">تعداد رسیدها</div></div><ArrowDownCircle size={40} className="text-green-300"/></div>
+                            <div onClick={() => setActiveTab('exit')} className="bg-red-50 p-6 rounded-2xl border border-red-100 flex items-center justify-between cursor-pointer hover:shadow-md transition-all"><div><div className="text-3xl font-black text-red-700">{safeTransactions.filter(t=>t.type==='OUT').length}</div><div className="text-sm text-red-600 font-bold">تعداد حواله‌ها (بیجک)</div></div><ArrowUpCircle size={40} className="text-red-300"/></div>
                         </div>
                         <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
                             <div className="bg-gray-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center gap-2"><FileClock size={20}/> آخرین بیجک‌های صادر شده</h3><button onClick={() => setActiveTab('archive')} className="text-xs text-blue-600 hover:underline font-bold border border-blue-200 px-3 py-1 rounded bg-white">مشاهده بایگانی</button></div>

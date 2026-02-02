@@ -144,26 +144,32 @@ const getDb = () => {
         // 1. Root Level Sanitization
         const safeDB = { ...DEFAULT_DB, ...parsed };
         
-        // Ensure root arrays
+        // Ensure root arrays are arrays
         ['orders', 'exitPermits', 'warehouseItems', 'warehouseTransactions', 'users', 'messages', 'tradeRecords', 'securityLogs', 'personnelDelays'].forEach(key => {
             if (!Array.isArray(safeDB[key])) safeDB[key] = [];
         });
 
-        // 2. Deep Sanitization for Orders (Crucial for "filter is not a function")
+        // 2. Deep Sanitization for Orders
         safeDB.orders = safeDB.orders.map(order => ({
             ...order,
             paymentDetails: Array.isArray(order.paymentDetails) ? order.paymentDetails : [],
             attachments: Array.isArray(order.attachments) ? order.attachments : []
         }));
 
-        // 3. Deep Sanitization for Exit Permits
+        // 3. Deep Sanitization for Exit Permits (Critical for your issue)
         safeDB.exitPermits = safeDB.exitPermits.map(permit => ({
             ...permit,
             items: Array.isArray(permit.items) ? permit.items : [],
             destinations: Array.isArray(permit.destinations) ? permit.destinations : []
         }));
 
-        // 4. Settings Sanitization
+        // 4. Warehouse Transactions
+        safeDB.warehouseTransactions = safeDB.warehouseTransactions.map(tx => ({
+            ...tx,
+            items: Array.isArray(tx.items) ? tx.items : []
+        }));
+
+        // 5. Settings Sanitization
         if (safeDB.settings) {
             if (!Array.isArray(safeDB.settings.companies)) safeDB.settings.companies = [];
             safeDB.settings.companies = safeDB.settings.companies.map(c => ({
@@ -230,7 +236,8 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
             }
         }
         const filtered = safeCompany ? safeArr.filter(item => {
-            const itemComp = (type === 'payment' ? item.payingCompany : (type === 'bijak' ? item.company : item.companyName));
+            const itemComp = (type === 'payment' ? item.payingCompany : (type === 'bijak' ? item.company : item.companyName)); // Exit permit uses companyName? No, usually no company field on root, mostly requester.
+            // For ExitPermit numbering logic in legacy was global or simple. Assuming global if no company.
             return itemComp && itemComp.trim() === safeCompany;
         }) : safeArr;
         const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
@@ -257,56 +264,22 @@ app.post('/api/emergency-restore', (req, res) => {
 
         if (!parsed.users) return res.status(400).json({ success: false, error: 'Invalid backup structure' });
 
-        // Backup current state
         if (fs.existsSync(DB_FILE)) {
             fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre_restore_${Date.now()}.json`));
         }
 
-        // --- STRICT SANITIZATION ---
         const ensureArray = (val) => Array.isArray(val) ? val : [];
         const ensureObject = (val) => (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
 
-        const finalDB = { ...DEFAULT_DB };
-
-        // 1. Merge Root Arrays
-        finalDB.orders = ensureArray(parsed.orders || finalDB.orders);
-        finalDB.exitPermits = ensureArray(parsed.exitPermits || finalDB.exitPermits);
-        finalDB.warehouseItems = ensureArray(parsed.warehouseItems || finalDB.warehouseItems);
-        finalDB.warehouseTransactions = ensureArray(parsed.warehouseTransactions || finalDB.warehouseTransactions);
-        finalDB.users = ensureArray(parsed.users || finalDB.users);
-        finalDB.messages = ensureArray(parsed.messages || finalDB.messages);
-        finalDB.groups = ensureArray(parsed.groups || finalDB.groups);
-        finalDB.tasks = ensureArray(parsed.tasks || finalDB.tasks);
-        finalDB.tradeRecords = ensureArray(parsed.tradeRecords || finalDB.tradeRecords);
-        finalDB.securityLogs = ensureArray(parsed.securityLogs || finalDB.securityLogs);
-        finalDB.personnelDelays = ensureArray(parsed.personnelDelays || finalDB.personnelDelays);
-        finalDB.securityIncidents = ensureArray(parsed.securityIncidents || finalDB.securityIncidents);
-
-        // 2. Merge Settings
-        if (parsed.settings) {
-            finalDB.settings = { ...DEFAULT_DB.settings, ...parsed.settings };
-            
-            // Fix Settings Arrays
-            finalDB.settings.companies = ensureArray(finalDB.settings.companies);
-            finalDB.settings.companyNames = ensureArray(finalDB.settings.companyNames);
-            finalDB.settings.fiscalYears = ensureArray(finalDB.settings.fiscalYears);
-            finalDB.settings.printTemplates = ensureArray(finalDB.settings.printTemplates);
-            finalDB.settings.customRoles = ensureArray(finalDB.settings.customRoles);
-            finalDB.settings.savedContacts = ensureArray(finalDB.settings.savedContacts);
-            finalDB.settings.bankNames = ensureArray(finalDB.settings.bankNames);
-            finalDB.settings.operatingBankNames = ensureArray(finalDB.settings.operatingBankNames);
-            finalDB.settings.commodityGroups = ensureArray(finalDB.settings.commodityGroups);
-            finalDB.settings.insuranceCompanies = ensureArray(finalDB.settings.insuranceCompanies);
-            
-            // Fix Settings Objects
-            finalDB.settings.rolePermissions = ensureObject(finalDB.settings.rolePermissions);
-            finalDB.settings.warehouseSequences = ensureObject(finalDB.settings.warehouseSequences);
-            finalDB.settings.companyNotifications = ensureObject(finalDB.settings.companyNotifications);
-            finalDB.settings.dailySecurityMeta = ensureObject(finalDB.settings.dailySecurityMeta);
-        }
-
+        const finalDB = { ...DEFAULT_DB, ...parsed };
+        finalDB.orders = ensureArray(parsed.orders);
+        finalDB.exitPermits = ensureArray(parsed.exitPermits);
+        finalDB.warehouseItems = ensureArray(parsed.warehouseItems);
+        finalDB.warehouseTransactions = ensureArray(parsed.warehouseTransactions);
+        finalDB.users = ensureArray(parsed.users);
+        
         saveDb(finalDB);
-        logToFile(`>>> DATABASE RESTORED & SANITIZED SUCCESSFULLY`);
+        logToFile(`>>> DATABASE RESTORED SUCCESSFULLY`);
         res.json({ success: true });
     } catch (e) {
         logToFile(`Restore Failed: ${e.message}`);
@@ -330,6 +303,7 @@ app.post('/api/login', safeHandler((req, res) => {
     u ? res.json(u) : res.status(401).send('Invalid'); 
 }));
 
+// --- ORDERS ---
 app.get('/api/orders', safeHandler((req, res) => res.json(getDb().orders || [])));
 app.post('/api/orders', safeHandler((req, res) => { 
     const db = getDb(); 
@@ -342,6 +316,32 @@ app.post('/api/orders', safeHandler((req, res) => {
 }));
 app.put('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders); } else res.sendStatus(404); }));
 app.delete('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); }));
+
+// --- EXIT PERMITS (CRITICAL MISSING PART RESTORED) ---
+app.get('/api/exit-permits', safeHandler((req, res) => res.json(getDb().exitPermits || [])));
+app.post('/api/exit-permits', safeHandler((req, res) => { 
+    const db = getDb(); 
+    const permit = req.body; 
+    // Usually permit number is pre-calculated on client or simple int
+    // If client sends permitNumber, use it, else calculate. 
+    // Usually client calls getNextExitPermitNumber first.
+    db.exitPermits.push(permit); 
+    saveDb(db); 
+    res.json(db.exitPermits); 
+}));
+app.put('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); res.json(db.exitPermits); } else res.sendStatus(404); }));
+app.delete('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb(); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits); }));
+
+// --- WAREHOUSE ---
+app.get('/api/warehouse/items', safeHandler((req, res) => res.json(getDb().warehouseItems || [])));
+app.post('/api/warehouse/items', safeHandler((req, res) => { const db=getDb(); db.warehouseItems.push(req.body); saveDb(db); res.json(db.warehouseItems); }));
+app.put('/api/warehouse/items/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.warehouseItems.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseItems[idx]={...db.warehouseItems[idx], ...req.body}; saveDb(db); res.json(db.warehouseItems); } else res.sendStatus(404); }));
+app.delete('/api/warehouse/items/:id', safeHandler((req, res) => { const db=getDb(); db.warehouseItems=db.warehouseItems.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseItems); }));
+
+app.get('/api/warehouse/transactions', safeHandler((req, res) => res.json(getDb().warehouseTransactions || [])));
+app.post('/api/warehouse/transactions', safeHandler((req, res) => { const db=getDb(); db.warehouseTransactions.unshift(req.body); saveDb(db); res.json(db.warehouseTransactions); }));
+app.put('/api/warehouse/transactions/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx], ...req.body}; saveDb(db); res.json(db.warehouseTransactions); } else res.sendStatus(404); }));
+app.delete('/api/warehouse/transactions/:id', safeHandler((req, res) => { const db=getDb(); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions); }));
 
 // Minimal routes for boot
 app.get('/api/settings', safeHandler((req, res) => res.json(getDb().settings)));

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings, ExitPermitItem } from '../types';
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit } from '../services/storageService';
@@ -23,9 +24,17 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
 
     const loadData = async () => {
         setLoading(true);
-        const data = await getExitPermits();
-        setPermits(data.sort((a, b) => b.createdAt - a.createdAt));
-        setLoading(false);
+        try {
+            const data = await getExitPermits();
+            // Ensure data is array before sorting
+            const safeData = Array.isArray(data) ? data : [];
+            setPermits(safeData.sort((a, b) => b.createdAt - a.createdAt));
+        } catch (e) {
+            console.error("Failed to load permits", e);
+            setPermits([]);
+        } finally {
+            setLoading(false);
+        }
     };
 
     // منطق تاییدات طبق اولویت
@@ -119,7 +128,10 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         }
     };
 
-    const filteredPermits = permits.filter(p => {
+    // SAFE ARRAY CHECK FOR FILTER
+    const safePermits = Array.isArray(permits) ? permits : [];
+
+    const filteredPermits = safePermits.filter(p => {
         const searchStr = `${p.permitNumber} ${p.recipientName} ${p.goodsName}`.toLowerCase();
         if (searchTerm && !searchStr.includes(searchTerm.toLowerCase())) return false;
 
@@ -205,7 +217,8 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                                 <div className="bg-gray-50 rounded-2xl p-3 mb-4 space-y-2 border border-gray-100">
                                     <div className="flex items-center gap-2 text-gray-700 font-bold text-xs">
                                         <Package size={14} className="text-blue-500" />
-                                        <span className="truncate">{p.goodsName}</span>
+                                        {/* Safer item access */}
+                                        <span className="truncate">{(Array.isArray(p.items) && p.items.length > 0) ? p.items.map(i=>i.goodsName).join(', ') : p.goodsName}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-[10px] text-gray-500 border-t border-gray-200 pt-2">
                                         <div className="flex items-center gap-1"><UserCheck size={10}/> <span>{p.requester}</span></div>
