@@ -35,7 +35,7 @@ const BackupManager: React.FC = () => {
     };
 
     const handleRestoreClick = () => {
-        if (confirm('⚠️ هشدار بازگردانی هوشمند:\n\nآیا مطمئن هستید؟ این عملیات تمام اطلاعات فعلی را با فایل انتخاب شده جایگزین می‌کند.\n\nنکته: سیستم از «بازگردانی هوشمند» استفاده می‌کند، بنابراین اگر فایل بکاپ قدیمی باشد، مشکلی برای قابلیت‌های جدید (مثل انبار، بازرگانی، انتظامات) پیش نمی‌آید و دیتای آنها حفظ می‌شود.')) {
+        if (confirm('⚠️ هشدار بازگردانی هوشمند:\n\nآیا مطمئن هستید؟ این عملیات تمام اطلاعات فعلی را با فایل انتخاب شده جایگزین می‌کند.\n\nنکته: سیستم از «بازسازی هوشمند» استفاده می‌کند. این یعنی می‌توانید بکاپ نسخه قدیمی را روی نسخه جدید بریزید و همه چیز (پرونده‌ها، انبار، پرداخت و...) سالم می‌ماند.')) {
             fileInputRef.current?.click();
         }
     };
@@ -87,9 +87,9 @@ const BackupManager: React.FC = () => {
                     <span className="text-sm font-bold text-green-800 block mb-1">سیستم پشتیبان‌گیری خودکار فعال است</span>
                     <p className="text-xs text-green-700 leading-relaxed">
                         سیستم به صورت خودکار <strong>هر ۱ ساعت</strong> یک نسخه پشتیبان تهیه می‌کند. 
-                        همچنین بکاپ‌های قدیمی‌تر از ۴۸ ساعت به طور خودکار حذف می‌شوند تا فضای سرور پر نشود.
+                        همچنین بکاپ‌های قدیمی‌تر از ۴۸ ساعت به طور خودکار حذف می‌شوند.
                         <br/>
-                        <span className="font-bold mt-1 block text-green-900">ویژگی جدید: بکاپ‌ها مستقل از آپدیت هستند. با خیال راحت آپدیت کنید.</span>
+                        <span className="font-bold mt-1 block text-green-900">بک‌آپ‌ها مستقل از آپدیت هستند. با خیال راحت آپدیت کنید.</span>
                     </p>
                 </div>
             </div>
@@ -108,21 +108,22 @@ const BackupManager: React.FC = () => {
                             {downloading ? <Loader2 size={18} className="animate-spin"/> : <DownloadCloud size={18} className="text-blue-600"/>} 
                             دانلود کامل دیتابیس (JSON)
                         </span>
-                        <span className="text-[10px] bg-white px-2 py-0.5 rounded border">سریع</span>
+                        <span className="text-[10px] bg-white px-2 py-0.5 rounded border">شامل تمام منوها</span>
                     </button>
                     
-                    <button 
-                        type="button" 
-                        onClick={() => handleDownloadBackup(true)} 
-                        disabled={downloading}
-                        className="w-full flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-3 rounded-xl text-sm font-bold transition-colors border border-gray-200"
-                    >
-                        <span className="flex items-center gap-2">
-                             {downloading ? <Loader2 size={18} className="animate-spin"/> : <DownloadCloud size={18} className="text-purple-600"/>}
-                             دانلود کامل (با تصاویر)
-                        </span>
-                        <span className="text-[10px] bg-white px-2 py-0.5 rounded border">حجیم</span>
-                    </button>
+                    <div className="text-[10px] text-gray-500 leading-relaxed bg-gray-50 p-2 rounded border">
+                        <strong>اطلاعات موجود در فایل بک‌آپ:</strong>
+                        <ul className="list-disc list-inside mt-1 grid grid-cols-2 gap-1">
+                            <li>دستور پرداخت‌ها</li>
+                            <li>مجوزهای خروج</li>
+                            <li>بیجک‌ها و رسیدهای انبار</li>
+                            <li>کالاهای انبار</li>
+                            <li>پرونده‌های بازرگانی</li>
+                            <li>گزارشات انتظامات</li>
+                            <li>کاربران و نقش‌ها</li>
+                            <li>تنظیمات سیستم</li>
+                        </ul>
+                    </div>
                 </div>
 
                 {/* Restore Section */}
@@ -138,7 +139,7 @@ const BackupManager: React.FC = () => {
                     >
                         {restoring ? <Loader2 size={32} className="animate-spin"/> : <UploadCloud size={32}/>}
                         {restoring ? 'در حال بازگردانی هوشمند...' : 'آپلود فایل بکاپ برای بازگردانی'}
-                        {!restoring && <span className="text-[10px] opacity-70 font-normal">شامل تمام منوها و تنظیمات قبلی</span>}
+                        {!restoring && <span className="text-[10px] opacity-70 font-normal">سازگار با تمام نسخه‌های قبلی و بعدی</span>}
                     </button>
                     
                     {message && (
@@ -147,11 +148,6 @@ const BackupManager: React.FC = () => {
                         </div>
                     )}
                 </div>
-            </div>
-            
-            <div className="mt-6 pt-4 border-t border-gray-100 text-[10px] text-gray-400 flex items-center gap-1">
-                <AlertTriangle size={12}/>
-                توجه: بکاپ شامل تمامی بخش‌ها (پرداخت، انبار، بازرگانی، انتظامات و کاربران) می‌باشد.
             </div>
         </div>
     );
