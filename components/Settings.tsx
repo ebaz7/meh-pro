@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { SystemSettings, Company, Contact, CompanyBank, User, PrintTemplate } from '../types';
-import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, WifiOff, Info, Clock, CheckCircle2 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, WifiOff, Info, Clock } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp } from '../services/notificationService';
 import { getUsers } from '../services/authService';
@@ -495,15 +495,22 @@ const Settings: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <label className="text-xs font-bold text-gray-500 block mb-1">شماره/گروه انبار (جهت ارسال بیجک)</label>
-                                                    <input 
-                                                        className="w-full border rounded-lg p-2 text-sm dir-ltr" 
-                                                        placeholder="98912... or 12345678@g.us" 
+                                                    {/* FIX: Use SELECT for Name instead of Text ID */}
+                                                    <select 
+                                                        className="w-full border rounded-lg p-2 text-sm dir-ltr bg-white" 
                                                         value={notifConfig.warehouseGroup || ''}
                                                         onChange={e => {
                                                             const newConfig = { ...settings.companyNotifications, [company.name]: { ...notifConfig, warehouseGroup: e.target.value } };
                                                             setSettings({ ...settings, companyNotifications: newConfig });
                                                         }}
-                                                    />
+                                                    >
+                                                        <option value="">-- انتخاب گروه/شخص --</option>
+                                                        {settings.savedContacts?.map(c => (
+                                                            <option key={c.id} value={c.number}>
+                                                                {c.name} {c.isGroup ? '(گروه)' : ''}
+                                                            </option>
+                                                        ))}
+                                                    </select>
                                                 </div>
                                             </div>
                                         </div>
@@ -518,12 +525,18 @@ const Settings: React.FC = () => {
                             
                             <div className="mb-4">
                                 <label className="text-sm font-bold text-gray-700 block mb-1">گروه اطلاع‌رسانی پیش‌فرض (مدیریت):</label>
-                                <input 
-                                    className="w-full border rounded-lg p-2 text-sm dir-ltr" 
-                                    placeholder="شماره یا ID گروه واتساپ..." 
+                                <select 
+                                    className="w-full border rounded-lg p-2 text-sm dir-ltr bg-white" 
                                     value={settings.exitPermitNotificationGroup || ''}
                                     onChange={e => setSettings({ ...settings, exitPermitNotificationGroup: e.target.value })}
-                                />
+                                >
+                                    <option value="">-- انتخاب گروه --</option>
+                                    {settings.savedContacts?.map(c => (
+                                        <option key={c.id} value={c.number}>
+                                            {c.name} {c.isGroup ? '(گروه)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
                                 <p className="text-[10px] text-gray-500 mt-1">این گروه در تمامی مراحل تایید خروج، پیام دریافت می‌کند.</p>
                             </div>
 
