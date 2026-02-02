@@ -160,10 +160,9 @@ const getDb = () => {
         // Ensure Settings Object exists
         if (!safeDB.settings) safeDB.settings = { ...DEFAULT_DB.settings };
         
-        // Ensure Settings Arrays exist
-        ['companies', 'companyNames', 'bankNames', 'savedContacts', 'fiscalYears'].forEach(key => {
-             if (!Array.isArray(safeDB.settings[key])) safeDB.settings[key] = [];
-        });
+        // Deep Merge Settings (Preserve new config keys like dailySecurityMeta)
+        // This ensures if we restore an old backup, new settings keys aren't lost
+        safeDB.settings = { ...DEFAULT_DB.settings, ...safeDB.settings };
 
         return safeDB;
 
@@ -193,7 +192,7 @@ const saveDb = (data) => {
     }
 };
 
-// --- AUTOMATIC BACKUP SYSTEM ---
+// --- AUTOMATIC BACKUP SYSTEM (HOURLY) ---
 const scheduleAutoBackup = () => {
     logToFile(">>> Initializing Auto-Backup System (Every Hour)");
     
@@ -208,16 +207,16 @@ const scheduleAutoBackup = () => {
                 fs.copyFileSync(DB_FILE, backupPath);
                 logToFile(`[AutoBackup] Created: ${backupPath}`);
                 
-                // Cleanup: Keep only last 7 days of backups
+                // Cleanup: Keep only last 48 hours of backups to save space
                 const files = fs.readdirSync(BACKUPS_DIR);
                 const nowMs = Date.now();
-                const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+                const retentionMs = 48 * 60 * 60 * 1000; // 48 Hours
                 
                 files.forEach(file => {
                     if (file.startsWith('auto_backup_')) {
                         const filePath = path.join(BACKUPS_DIR, file);
                         const stats = fs.statSync(filePath);
-                        if (nowMs - stats.mtimeMs > sevenDaysMs) {
+                        if (nowMs - stats.mtimeMs > retentionMs) {
                             fs.unlinkSync(filePath);
                         }
                     }
@@ -272,8 +271,7 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
 // --- ROUTES ---
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
-// --- ROBUST / SMART RESTORE ENDPOINT ---
-// This handles backward compatibility by merging old backup data into the new DB structure
+// --- SMART RESTORE ENDPOINT ---
 app.post('/api/emergency-restore', (req, res) => {
     try {
         const { fileData } = req.body;
@@ -301,7 +299,7 @@ app.post('/api/emergency-restore', (req, res) => {
             }
         };
 
-        // 3. Merge Root Arrays
+        // 3. Merge Root Arrays (Data)
         mergeArray('orders');
         mergeArray('exitPermits');
         mergeArray('warehouseItems');
@@ -316,19 +314,11 @@ app.post('/api/emergency-restore', (req, res) => {
         mergeArray('securityIncidents');
 
         // 4. Merge Settings (Deep Merge)
+        // This ensures that if the backup lacks 'dailySecurityMeta' or 'fiscalYears', the default values are kept
         if (parsedBackup.settings) {
-            // Overwrite primitives
-            finalDB.settings = { ...finalDB.settings, ...parsedBackup.settings };
+            finalDB.settings = { ...DEFAULT_DB.settings, ...parsedBackup.settings };
             
-            // Ensure complex objects/arrays from DEFAULT are preserved if missing in backup
-            const defaultSettings = DEFAULT_DB.settings;
-            Object.keys(defaultSettings).forEach(key => {
-                if (finalDB.settings[key] === undefined) {
-                    finalDB.settings[key] = defaultSettings[key];
-                }
-            });
-            
-            // Fix arrays inside settings
+            // Re-ensure settings arrays are arrays (just in case backup has nulls)
             ['companies', 'companyNames', 'fiscalYears', 'savedContacts'].forEach(key => {
                  if (!Array.isArray(finalDB.settings[key])) finalDB.settings[key] = [];
             });
