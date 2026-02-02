@@ -114,8 +114,8 @@ const BackupManager: React.FC = () => {
                     <div className="text-[10px] text-gray-500 leading-relaxed bg-gray-50 p-2 rounded border">
                         <strong>اطلاعات موجود در فایل بک‌آپ:</strong>
                         <ul className="list-disc list-inside mt-1 grid grid-cols-2 gap-1">
+                            <li className="font-bold text-blue-700">مجوزهای خروج کارخانه</li>
                             <li>دستور پرداخت‌ها</li>
-                            <li>مجوزهای خروج</li>
                             <li>بیجک‌ها و رسیدهای انبار</li>
                             <li>کالاهای انبار</li>
                             <li>پرونده‌های بازرگانی</li>

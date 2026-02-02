@@ -194,49 +194,52 @@ scheduleAutoBackup();
 
 // --- HELPER FOR NEXT NUMBER ---
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
+    // 1. Determine Default Start Number from Global Settings
     let startNum = 1000;
-    try {
-        const safeArr = Array.isArray(arr) ? arr : [];
+    
+    if (type === 'payment') startNum = db.settings.currentTrackingNumber || 1000;
+    else if (type === 'exit') startNum = db.settings.currentExitPermitNumber || 1000;
+    else if (type === 'bijak') {
+        const sequences = db.settings.warehouseSequences || {};
         const safeCompany = companyName ? companyName.trim() : '';
-        
-        if (fiscalYearId && safeCompany && db.settings.fiscalYears) {
-            const activeYear = db.settings.fiscalYears.find(y => y.id === fiscalYearId);
-            if (activeYear && activeYear.companySequences) {
-                const seqConfig = activeYear.companySequences[safeCompany];
-                if (seqConfig) {
-                    if (type === 'payment') startNum = seqConfig.startTrackingNumber || 1000;
-                    else if (type === 'exit') startNum = seqConfig.startExitPermitNumber || 1000;
-                    else if (type === 'bijak') startNum = seqConfig.startBijakNumber || 1000;
-                }
-            }
-        } else {
-            if (type === 'payment') startNum = db.settings.currentTrackingNumber || 1000;
-            else if (type === 'exit') startNum = db.settings.currentExitPermitNumber || 1000;
-            else if (type === 'bijak') {
-                const sequences = db.settings.warehouseSequences || {};
-                startNum = sequences[safeCompany] || 1000;
-            }
-        }
-        
-        const existing = safeArr.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
-        let next = startNum;
-        if (existing.length > 0) {
-             const maxExisting = existing[existing.length - 1];
-             if (maxExisting >= startNum) {
-                 next = maxExisting + 1;
-             }
-        }
-        return next;
-    } catch (e) {
-        return 1001; 
+        startNum = sequences[safeCompany] || 1000;
     }
+
+    // 2. Override with Fiscal Year specific if exists
+    if (fiscalYearId && companyName && db.settings.fiscalYears) {
+        const activeYear = db.settings.fiscalYears.find(y => y.id === fiscalYearId);
+        if (activeYear && activeYear.companySequences) {
+            const seqConfig = activeYear.companySequences[companyName];
+            if (seqConfig) {
+                if (type === 'payment' && seqConfig.startTrackingNumber) startNum = seqConfig.startTrackingNumber;
+                else if (type === 'exit' && seqConfig.startExitPermitNumber) startNum = seqConfig.startExitPermitNumber;
+                else if (type === 'bijak' && seqConfig.startBijakNumber) startNum = seqConfig.startBijakNumber;
+            }
+        }
+    }
+    
+    // 3. Find Max in Existing Data
+    const safeArr = Array.isArray(arr) ? arr : [];
+    const existingNumbers = safeArr.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    
+    // If we have existing numbers, take max(last_used + 1, startNum)
+    // If no existing numbers, use startNum directly
+    let next = startNum;
+    if (existingNumbers.length > 0) {
+         const maxExisting = existingNumbers[existingNumbers.length - 1];
+         if (maxExisting >= startNum) {
+             next = maxExisting + 1;
+         }
+    }
+    
+    return next;
 };
 
 // --- ROUTES ---
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
 // --- SMART RESTORE ENDPOINT ---
-// This is the CORE logic for cross-version compatibility
+// This ensures ALL MENUS including EXIT PERMITS are restored
 app.post('/api/emergency-restore', (req, res) => {
     try {
         const { fileData } = req.body;
@@ -248,30 +251,28 @@ app.post('/api/emergency-restore', (req, res) => {
 
         if (!parsedBackup.users) return res.status(400).json({ success: false, error: 'Invalid backup: No users found' });
 
-        // 1. Create a backup of current state just in case
+        // 1. Backup current state
         if (fs.existsSync(DB_FILE)) {
             fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre_restore_${Date.now()}.json`));
         }
 
-        // 2. Initialize with FRESH structure from CURRENT server version
-        // This ensures all new fields (e.g. from Version 10) exist even if restoring Version 3 backup
+        // 2. Initialize with FRESH structure to support updates
         const finalDB = JSON.parse(JSON.stringify(DEFAULT_DB));
 
-        // 3. Explicitly Map and Restore Data Arrays
-        // We do this explicitly to ensure no "undefined" errors
+        // 3. Restore Data Arrays (Explicit List)
         const restoreList = [
             'orders',                   // Payments
-            'exitPermits',              // Exits
-            'warehouseItems',           // Warehouse Catalog
-            'warehouseTransactions',    // Bijaks/Receipts
+            'exitPermits',              // Exits (IMPORTANT: Included)
+            'warehouseItems',           // Warehouse Items
+            'warehouseTransactions',    // Bijaks
             'users',                    // Users
             'messages',                 // Chat
             'groups',                   // Chat Groups
             'tasks',                    // Tasks
-            'tradeRecords',             // Trade (New)
-            'securityLogs',             // Security (New)
-            'personnelDelays',          // Security (New)
-            'securityIncidents'         // Security (New)
+            'tradeRecords',             // Trade
+            'securityLogs',             // Security
+            'personnelDelays',          // Security
+            'securityIncidents'         // Security
         ];
 
         restoreList.forEach(key => {
@@ -280,21 +281,19 @@ app.post('/api/emergency-restore', (req, res) => {
             }
         });
 
-        // 4. Smart Merge Settings
-        // We want to keep the backup's settings, but ensure we have defaults for any new settings added in updates
+        // 4. Merge Settings (Keep new keys, overwrite old values)
         if (parsedBackup.settings) {
             finalDB.settings = { 
-                ...DEFAULT_DB.settings,   // Base: New Defaults
-                ...parsedBackup.settings  // Overlay: User's Old Settings
+                ...DEFAULT_DB.settings,   
+                ...parsedBackup.settings  
             };
             
-            // Safety check for arrays in settings
+            // Safety check for arrays
             ['companies', 'companyNames', 'fiscalYears', 'savedContacts'].forEach(key => {
                  if (!Array.isArray(finalDB.settings[key])) finalDB.settings[key] = [];
             });
         }
 
-        // 5. Save the Reconstructed Database
         saveDb(finalDB);
         logToFile(`>>> DATABASE SMART RESTORE SUCCESSFUL (Merged ${Object.keys(parsedBackup).length} keys)`);
         
@@ -311,7 +310,6 @@ app.get('/api/full-backup', async (req, res) => {
         const db = getDb();
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Content-Disposition', `attachment; filename=backup_${Date.now()}.json`);
-        // Send the complete DB object as is
         res.json(db); 
     } catch (e) {
         res.status(500).send("Backup Error");
@@ -340,9 +338,12 @@ app.post('/api/orders', safeHandler((req, res) => {
     const order = req.body; 
     order.id = Date.now().toString(); 
     order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', db.settings.activeFiscalYearId, order.payingCompany);
+    
+    // Update Counter
     if (!db.settings.activeFiscalYearId) {
          db.settings.currentTrackingNumber = order.trackingNumber;
     }
+    
     db.orders.unshift(order); 
     saveDb(db); 
     res.json(db.orders); 
@@ -356,10 +357,20 @@ app.post('/api/exit-permits', safeHandler((req, res) => {
     const db = getDb(); 
     const permit = req.body; 
     const company = db.settings.defaultCompany; 
-    permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
+    
+    // 1. Calculate next number based on settings
+    const nextNum = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
+    permit.permitNumber = nextNum;
+    
+    // 2. Update the counter in settings so next one increments
     if (!db.settings.activeFiscalYearId) {
-        db.settings.currentExitPermitNumber = permit.permitNumber;
+        db.settings.currentExitPermitNumber = nextNum;
+    } else {
+        // If fiscal year is active, we should technically update that sequence, 
+        // but for simplicity and safety, we also update global as fallback
+        db.settings.currentExitPermitNumber = nextNum;
     }
+
     db.exitPermits.push(permit); 
     saveDb(db); 
     res.json(db.exitPermits); 

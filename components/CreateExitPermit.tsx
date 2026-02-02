@@ -18,7 +18,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
     const [destinations, setDestinations] = useState<ExitPermitDestination[]>([{ id: generateUUID(), recipientName: '', address: '', phone: '' }]);
     const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', description: '' });
 
-    // Fetch next number from server (which now checks fiscal year settings)
+    // Fetch next number from server (which now checks fiscal year/settings)
     useEffect(() => { 
         apiCall<{ nextNumber: number }>('/next-exit-permit-number')
             .then(res => setPermitNumber(res.nextNumber.toString()))
