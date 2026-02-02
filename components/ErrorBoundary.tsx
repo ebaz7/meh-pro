@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode, Component } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -11,10 +11,11 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null;
 }
 
-// FIX: Explicitly extending Component from react to ensure this context is properly typed
+// Fixed: Inheriting from Component directly with explicit generic types to ensure state, props, and setState are recognized.
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    // Fixed: Initializing state in the constructor.
     this.state = {
       hasError: false,
       error: null,
@@ -28,12 +29,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // FIX: Correctly updating state in lifecycle method
+    // Fixed: Updating state using setState.
     this.setState({ errorInfo });
   }
 
   render() {
-    // FIX: Accessing state with proper this context
+    // Fixed: Accessing the hasError state.
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
@@ -46,6 +47,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             
             <div className="bg-gray-100 p-3 rounded-lg text-left dir-ltr mb-6 overflow-auto max-h-40">
               <code className="text-xs text-red-600 font-mono break-all">
+                {/* Fixed: Accessing the error object from state. */}
                 {this.state.error?.toString()}
               </code>
             </div>
@@ -62,7 +64,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // FIX: Accessing props correctly
+    // Fixed: Returning children from props.
     return this.props.children;
   }
 }
