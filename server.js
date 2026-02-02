@@ -124,7 +124,7 @@ const DEFAULT_DB = {
     securityIncidents: []
 };
 
-// --- FAIL-SAFE DATABASE LOADER ---
+// --- FAIL-SAFE DATABASE LOADER WITH DEEP SANITIZATION ---
 const getDb = () => {
     try {
         if (!fs.existsSync(DB_FILE)) {
@@ -141,13 +141,37 @@ const getDb = () => {
         const parsed = JSON.parse(data);
         if (!parsed.users) throw new Error("Invalid DB Structure");
         
-        // Merge with Default to ensure all fields exist (Fixes crash on old DBs)
-        // We verify array integrity here too
+        // 1. Root Level Sanitization
         const safeDB = { ...DEFAULT_DB, ...parsed };
-        if (!Array.isArray(safeDB.orders)) safeDB.orders = [];
-        if (!Array.isArray(safeDB.exitPermits)) safeDB.exitPermits = [];
-        // ... extend check if needed, but 'emergency-restore' does full sanitization
         
+        // Ensure root arrays
+        ['orders', 'exitPermits', 'warehouseItems', 'warehouseTransactions', 'users', 'messages', 'tradeRecords', 'securityLogs', 'personnelDelays'].forEach(key => {
+            if (!Array.isArray(safeDB[key])) safeDB[key] = [];
+        });
+
+        // 2. Deep Sanitization for Orders (Crucial for "filter is not a function")
+        safeDB.orders = safeDB.orders.map(order => ({
+            ...order,
+            paymentDetails: Array.isArray(order.paymentDetails) ? order.paymentDetails : [],
+            attachments: Array.isArray(order.attachments) ? order.attachments : []
+        }));
+
+        // 3. Deep Sanitization for Exit Permits
+        safeDB.exitPermits = safeDB.exitPermits.map(permit => ({
+            ...permit,
+            items: Array.isArray(permit.items) ? permit.items : [],
+            destinations: Array.isArray(permit.destinations) ? permit.destinations : []
+        }));
+
+        // 4. Settings Sanitization
+        if (safeDB.settings) {
+            if (!Array.isArray(safeDB.settings.companies)) safeDB.settings.companies = [];
+            safeDB.settings.companies = safeDB.settings.companies.map(c => ({
+                ...c,
+                banks: Array.isArray(c.banks) ? c.banks : []
+            }));
+        }
+
         return safeDB;
 
     } catch (e) {
@@ -239,7 +263,6 @@ app.post('/api/emergency-restore', (req, res) => {
         }
 
         // --- STRICT SANITIZATION ---
-        // Ensures that even if the backup has nulls where arrays should be, we fix it.
         const ensureArray = (val) => Array.isArray(val) ? val : [];
         const ensureObject = (val) => (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
 

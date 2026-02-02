@@ -8,7 +8,7 @@ import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Ar
 import PrintVoucher from './PrintVoucher';
 import EditOrderModal from './EditOrderModal';
 import { apiCall } from '../services/apiService';
-import MobileOrderCard from './mobile/MobileOrderCard'; // Reuse the card component
+import MobileOrderCard from './mobile/MobileOrderCard';
 
 interface ManageOrdersProps {
   orders: PaymentOrder[];
@@ -20,6 +20,9 @@ interface ManageOrdersProps {
 }
 
 const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, currentUser, initialTab = 'current', settings, statusFilter }) => {
+  // CRITICAL FIX: Ensure orders is always an array to prevent "filter is not a function"
+  const safeOrders = Array.isArray(orders) ? orders : [];
+
   const [activeTab, setActiveTab] = useState<'current' | 'archive'>(initialTab);
   const [viewOrder, setViewOrder] = useState<PaymentOrder | null>(null); 
   const [editingOrder, setEditingOrder] = useState<PaymentOrder | null>(null);
@@ -197,7 +200,9 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
       if (filteredOrders.length === 0) { alert("هیچ سفارشی موجود نیست."); return; }
       const headers = ["شماره دستور", "تاریخ", "گیرنده", "مبلغ", "شرکت پرداخت کننده", "بانک/روش", "شرح", "وضعیت", "درخواست کننده"];
       const rows = filteredOrders.map(o => {
-          const banks = o.paymentDetails.map(d => d.bankName || d.method).join(', ');
+          // SAFE GUARD for paymentDetails
+          const details = Array.isArray(o.paymentDetails) ? o.paymentDetails : [];
+          const banks = details.map(d => d.bankName || d.method).join(', ');
           return [o.trackingNumber, formatDate(o.date), o.payee, o.totalAmount, o.payingCompany || '-', banks, o.description, getStatusLabel(o.status), o.requester];
       });
       const csvContent = [headers.join(','), ...rows.map(r => r.map(f => `"${String(f).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -216,11 +221,12 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
   };
 
   const getOrdersForTab = () => {
-      let tabOrders = orders;
+      // Use safeOrders instead of orders
+      let tabOrders = safeOrders;
       if (activeTab === 'archive') {
-          tabOrders = orders.filter(o => o.status === OrderStatus.APPROVED_CEO || o.status === OrderStatus.REVOKED);
+          tabOrders = safeOrders.filter(o => o.status === OrderStatus.APPROVED_CEO || o.status === OrderStatus.REVOKED);
       } else {
-          tabOrders = orders.filter(o => o.status !== OrderStatus.APPROVED_CEO && o.status !== OrderStatus.REVOKED);
+          tabOrders = safeOrders.filter(o => o.status !== OrderStatus.APPROVED_CEO && o.status !== OrderStatus.REVOKED);
       }
       
       if (currentStatusFilter) return tabOrders;
@@ -261,7 +267,12 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
     if (companyFilter && order.payingCompany !== companyFilter) return false;
 
     const term = searchTerm.toLowerCase();
-    if (!order.payee.toLowerCase().includes(term) && !order.description.toLowerCase().includes(term) && !order.trackingNumber.toString().includes(term)) return false;
+    // Safety check for strings
+    const payee = order.payee || '';
+    const desc = order.description || '';
+    const track = order.trackingNumber ? order.trackingNumber.toString() : '';
+
+    if (!payee.toLowerCase().includes(term) && !desc.toLowerCase().includes(term) && !track.includes(term)) return false;
     if (amountRange.min && order.totalAmount < deformatNumberString(amountRange.min)) return false;
     if (amountRange.max && order.totalAmount > deformatNumberString(amountRange.max)) return false;
     if (dateRange.enabled) {
@@ -397,6 +408,9 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                       filteredOrders.map((order) => {
                           const isRevocation = isRevocationStatus(order.status);
                           const rowClass = isRevocation ? "bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500 transition-colors" : "hover:bg-gray-50/80 transition-colors";
+                          
+                          // SAFE ACCESS for paymentDetails map
+                          const paymentDetails = Array.isArray(order.paymentDetails) ? order.paymentDetails : [];
 
                           return (
                           <tr key={order.id} className={rowClass}>
@@ -405,7 +419,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                             <td className="px-6 py-4 font-medium text-gray-900 max-w-[200px]"><div className="truncate font-bold">{order.payee}</div><div className="text-xs text-gray-500 truncate mt-1">{order.description}</div><div className="flex gap-1 mt-1">{order.attachments?.map((a,i) => <a key={i} href={a.data} target="_blank" className="text-blue-500 text-[10px] bg-blue-50 px-1 rounded flex items-center"><Paperclip size={10}/></a>)}</div></td>
                             <td className="px-6 py-4 text-xs font-bold text-gray-700">{order.payingCompany || '-'}</td>
                             <td className="px-6 py-4 text-xs text-gray-600">
-                                {order.paymentDetails.map((d, i) => (
+                                {paymentDetails.map((d, i) => (
                                     <div key={i} className="truncate max-w-[120px]" title={d.bankName || d.method}>
                                         {d.bankName ? d.bankName : d.method === PaymentMethod.CASH ? 'صندوق' : d.method}
                                     </div>
