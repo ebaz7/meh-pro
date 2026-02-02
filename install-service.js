@@ -1,56 +1,54 @@
 
 import { Service } from 'node-windows';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
-import readline from 'readline';
+import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
+// چک کردن اینکه آیا دیتابیس در این پوشه هست یا نه
+const dbPath = path.join(__dirname, 'database.json');
+if (!fs.existsSync(dbPath)) {
+    console.warn('⚠️ هشدار: فایل database.json در این پوشه یافت نشد.');
+    console.log('سرویس نصب می‌شود، اما مطمئن شوید فایل را در مسیر زیر کپی کرده‌اید:');
+    console.log(dbPath);
+} else {
+    console.log('✅ فایل دیتابیس با موفقیت شناسایی شد و آماده بازیابی است.');
+}
+
+const svc = new Service({
+  name: 'PaymentOrderPro',
+  description: 'سیستم مدیریت پرداخت و انبارداری - با قابلیت بک‌آپ خودکار',
+  script: path.join(__dirname, 'server.js'),
+  workingDirectory: __dirname,
+  env: [
+    { name: "NODE_ENV", value: "production" },
+    { name: "PORT", value: "3000" }
+  ]
 });
 
-console.log("---------------------------------------------------------");
-console.log("   Payment System Service Installer (Absolute Mode)      ");
-console.log("---------------------------------------------------------");
-
-rl.question('Port (Default 3000): ', (inputPort) => {
-  const port = inputPort.trim() || '3000';
-  
-  const svc = new Service({
-    name: 'PaymentOrderPro',
-    description: 'The Payment and Warehouse Management Service',
-    script: path.join(__dirname, 'server.js'),
-    workingDirectory: __dirname, // CRITICAL: Sets the context to the project folder
-    env: [
-        { name: "PORT", value: port },
-        { name: "NODE_ENV", value: "production" }
-    ]
-  });
-
-  svc.on('install', function() {
-    console.log('> Service Installed Successfully.');
-    svc.start();
-  });
-
-  svc.on('start', function() {
-    console.log(`> Service Started. App is live at http://localhost:${port}`);
-    rl.close();
-  });
-
-  svc.on('error', (e) => {
-    console.error('> Service Error:', e);
-    rl.close();
-  });
-
-  if (svc.exists) {
-      console.log("> Service already exists. Reinstalling...");
-      svc.uninstall();
-      svc.on('uninstall', () => svc.install());
-  } else {
-      svc.install();
-  }
+svc.on('install', function() {
+  console.log('--------------------------------------------------');
+  console.log('سرویس با موفقیت نصب شد.');
+  console.log('بک‌آپ خودکار فعال گردید.');
+  console.log('برنامه از طریق http://localhost:3000 در دسترس است.');
+  console.log('--------------------------------------------------');
+  svc.start();
 });
+
+svc.on('alreadyinstalled', function() {
+    console.log('سرویس از قبل نصب شده است. در حال بازنشانی...');
+    svc.uninstall();
+});
+
+svc.on('uninstall', function() {
+    console.log('نسخه قبلی حذف شد. نصب نسخه جدید...');
+    svc.install();
+});
+
+if (svc.exists) {
+    svc.uninstall();
+} else {
+    svc.install();
+}

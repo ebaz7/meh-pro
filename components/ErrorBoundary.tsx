@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -11,30 +11,38 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null;
 }
 
-// Fixed: Inheriting from Component directly with explicit generic types to ensure state, props, and setState are recognized.
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+/**
+ * ErrorBoundary component to catch runtime errors in the component tree.
+ */
+// Fix: Inherit from React.Component with explicit generic types for props and state to ensure proper member recognition.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Initializing state as a class property (replaces line 19 constructor initialization) ensures 'state' is recognized as a member of ErrorBoundary.
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+    errorInfo: null
+  };
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    // Fixed: Initializing state in the constructor.
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null
-    };
   }
 
+  // Fix: Provide correct return type for static state derivation.
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    // Update state so the next render will show the fallback UI.
     return { hasError: true, error, errorInfo: null };
   }
 
+  // Fix: Lifecycle method to catch and log component errors.
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log the error to console
     console.error("Uncaught error:", error, errorInfo);
-    // Fixed: Updating state using setState.
+    // Fix: Using the inherited setState method from the React.Component base class (Resolves error on line 35).
     this.setState({ errorInfo });
   }
 
   render() {
-    // Fixed: Accessing the hasError state.
+    // Fix: Accessing state through 'this.state' which is now correctly typed and recognized (Resolves error on line 40).
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
@@ -47,7 +55,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             
             <div className="bg-gray-100 p-3 rounded-lg text-left dir-ltr mb-6 overflow-auto max-h-40">
               <code className="text-xs text-red-600 font-mono break-all">
-                {/* Fixed: Accessing the error object from state. */}
+                {/* Fix: Accessing error property from the inherited state object (Resolves error on line 53). */}
                 {this.state.error?.toString()}
               </code>
             </div>
@@ -64,7 +72,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Fixed: Returning children from props.
+    // Fix: Accessing the children from inherited props property (Resolves error on line 70).
     return this.props.children;
   }
 }

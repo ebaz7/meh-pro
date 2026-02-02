@@ -12,7 +12,7 @@ const { Client, LocalAuth, MessageMedia } = wwebjs;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// FIX: Using absolute path relative to project root
+// FIX: Using absolute path to root directory
 const DB_PATH = path.resolve(__dirname, '..', 'database.json');
 
 let client = null;
@@ -52,7 +52,7 @@ export const initWhatsApp = async (authDir) => {
         if (!db) return;
         const result = await parseMessage(body, db);
         if (!result) return;
-        // ... action handling ...
+        // Action logic...
     });
 
     await client.initialize();
