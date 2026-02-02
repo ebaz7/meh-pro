@@ -10,42 +10,63 @@ import cron from 'node-cron';
 import puppeteer from 'puppeteer';
 import webpush from 'web-push'; 
 
-// --- 1. HARDCODED ROOT PATH (The Fix) ---
-// This forces the app to look exactly in C:\PaymentSystem
-const ROOT_DIR = "C:\\PaymentSystem";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Define paths based on the hardcoded root
+// --- INTELLIGENT PATH FINDER ---
+// This function searches for the correct root directory
+const findRootDirectory = () => {
+    const candidates = [
+        "C:\\PaymentSystem", // Priority 1: The user specified path
+        __dirname,           // Priority 2: Where this script is located
+        process.cwd(),       // Priority 3: Current working directory
+        path.resolve(__dirname, '..') // Priority 4: One level up
+    ];
+
+    for (const dir of candidates) {
+        // Look for package.json or database.json to confirm this is the app root
+        if (fs.existsSync(path.join(dir, 'package.json')) || fs.existsSync(path.join(dir, 'database.json'))) {
+            return dir;
+        }
+    }
+    
+    // Default fallback if nothing found
+    return "C:\\PaymentSystem";
+};
+
+const ROOT_DIR = findRootDirectory();
 const DB_FILE = path.join(ROOT_DIR, 'database.json');
 const BACKUPS_DIR = path.join(ROOT_DIR, 'backups');
 const UPLOADS_DIR = path.join(ROOT_DIR, 'uploads');
 const WAUTH_DIR = path.join(ROOT_DIR, 'wauth');
 const VAPID_FILE = path.join(ROOT_DIR, 'vapid.json');
-const LOG_FILE = path.join(ROOT_DIR, 'server_debug.log');
+const LOG_FILE = path.join(ROOT_DIR, 'server_status.log');
 
-// --- SIMPLE FILE LOGGER ---
-// Writes errors to a text file so you can see them without a console
+// --- DEBUG LOGGER ---
 const logToFile = (message) => {
     const timestamp = new Date().toISOString();
-    const logLine = `[${timestamp}] ${message}\n`;
     try {
-        fs.appendFileSync(LOG_FILE, logLine);
+        // Ensure log file exists
+        if (!fs.existsSync(ROOT_DIR)) fs.mkdirSync(ROOT_DIR, { recursive: true });
+        fs.appendFileSync(LOG_FILE, `[${timestamp}] ${message}\n`);
         console.log(message);
     } catch (e) {
-        console.error("Logging failed:", e);
+        console.error("Logger failed:", e);
     }
 };
 
-logToFile(">>> Starting Server...");
-logToFile(`>>> Root Directory: ${ROOT_DIR}`);
+logToFile("------------------------------------------------");
+logToFile(`>>> SYSTEM STARTING`);
+logToFile(`>>> Detected Root Path: ${ROOT_DIR}`);
+logToFile(`>>> Looking for DB at: ${DB_FILE}`);
 
-// Ensure directories exist
+// Ensure critical directories exist
 [UPLOADS_DIR, BACKUPS_DIR, WAUTH_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) {
         try {
             fs.mkdirSync(dir, { recursive: true });
-            logToFile(`Created directory: ${dir}`);
-        } catch (e) {
-            logToFile(`Error creating directory ${dir}: ${e.message}`);
+        } catch(e) {
+            logToFile(`Error creating dir ${dir}: ${e.message}`);
         }
     }
 });
@@ -66,7 +87,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(ROOT_DIR, 'dist')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// --- WEB PUSH SETUP ---
+// --- WEB PUSH ---
 let vapidKeys = { publicKey: '', privateKey: '' };
 try {
     if (fs.existsSync(VAPID_FILE)) {
@@ -78,11 +99,11 @@ try {
     webpush.setVapidDetails('mailto:admin@example.com', vapidKeys.publicKey, vapidKeys.privateKey);
 } catch (error) { logToFile("VAPID Error: " + error.message); }
 
-// --- DATABASE MANAGEMENT ---
+// --- DATABASE HANDLER ---
 const getDb = () => {
     try {
         if (!fs.existsSync(DB_FILE)) {
-            logToFile(">>> Database file not found. Creating new one.");
+            logToFile("!!! Database file missing. Attempting to create new one...");
             const initial = { 
                 settings: { currentTrackingNumber: 1000, currentExitPermitNumber: 1000, companyNames: [], companies: [] }, 
                 orders: [], exitPermits: [], warehouseItems: [], warehouseTransactions: [], 
@@ -90,13 +111,29 @@ const getDb = () => {
                 messages: [], groups: [], tasks: [], tradeRecords: [], securityLogs: [], personnelDelays: [], securityIncidents: []
             };
             fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
+            logToFile(">>> New database created successfully.");
             return initial;
         }
-        return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        const data = fs.readFileSync(DB_FILE, 'utf8');
+        if (!data || data.trim() === '') {
+             throw new Error("Database file is empty");
+        }
+        return JSON.parse(data);
     } catch (e) {
-        logToFile("!!! CRITICAL DB ERROR: " + e.message);
-        // Return minimal structure to prevent crash
-        return { orders: [], users: [] }; 
+        logToFile(`!!! CRITICAL DB ERROR: ${e.message}`);
+        // Attempt to find a backup
+        try {
+            const backups = fs.readdirSync(BACKUPS_DIR).sort().reverse();
+            if (backups.length > 0) {
+                logToFile(`>>> Attempting to restore from backup: ${backups[0]}`);
+                const backupData = fs.readFileSync(path.join(BACKUPS_DIR, backups[0]), 'utf8');
+                fs.writeFileSync(DB_FILE, backupData);
+                return JSON.parse(backupData);
+            }
+        } catch (restoreErr) {
+            logToFile("!!! Restore failed: " + restoreErr.message);
+        }
+        return { orders: [], users: [] }; // Emergency fallback
     }
 };
 
@@ -111,7 +148,6 @@ const saveDb = (data) => {
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
     let startNum = 1000;
     const safeCompany = companyName ? companyName.trim() : '';
-    
     if (fiscalYearId && safeCompany && db.settings.fiscalYears) {
         const activeYear = db.settings.fiscalYears.find(y => y.id === fiscalYearId);
         if (activeYear && activeYear.companySequences) {
@@ -130,34 +166,35 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
             startNum = sequences[safeCompany] || 1000;
         }
     }
-
     const filtered = safeCompany ? arr.filter(item => {
         const itemComp = (type === 'payment' ? item.payingCompany : (type === 'bijak' ? item.company : item.companyName));
         return itemComp && itemComp.trim() === safeCompany;
     }) : arr;
-
     const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
     let next = existing.length > 0 ? Math.max(existing[existing.length - 1] + 1, startNum) : startNum;
     return next;
 };
 
-// --- OFFLINE AUTO-BACKUP ---
-cron.schedule('0 */6 * * *', () => {
+// --- AUTO BACKUP ---
+cron.schedule('0 */4 * * *', () => {
     try {
         if (fs.existsSync(DB_FILE)) {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const backupPath = path.join(BACKUPS_DIR, `backup-${timestamp}.json`);
             fs.copyFileSync(DB_FILE, backupPath);
-            logToFile(`[Backup] Created: ${backupPath}`);
+            logToFile(`[Backup] Auto-backup created: ${backupPath}`);
             
-            // Clean old backups
+            // Clean old backups (keep last 30)
             const files = fs.readdirSync(BACKUPS_DIR).map(f => ({ 
                 name: f, 
+                path: path.join(BACKUPS_DIR, f),
                 time: fs.statSync(path.join(BACKUPS_DIR, f)).mtime.getTime() 
-            })).sort((a, b) => a.time - b.time);
+            })).sort((a, b) => b.time - a.time); // Newest first
 
-            if (files.length > 50) {
-                fs.unlinkSync(path.join(BACKUPS_DIR, files[0].name));
+            if (files.length > 30) {
+                for(let i=30; i<files.length; i++) {
+                    fs.unlinkSync(files[i].path);
+                }
             }
         }
     } catch (err) {
@@ -165,17 +202,18 @@ cron.schedule('0 */6 * * *', () => {
     }
 });
 
-// --- INITIALIZE BOTS ---
+// --- BOTS INIT ---
 const db = getDb();
-if (db.settings?.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { logToFile("Telegram Error: " + e.message); }
-if (db.settings?.baleBotToken) try { initBaleBot(db.settings.baleBotToken); } catch (e) { logToFile("Bale Error: " + e.message); }
+if (db && db.settings) {
+    if (db.settings.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { logToFile("Telegram Error: " + e.message); }
+    if (db.settings.baleBotToken) try { initBaleBot(db.settings.baleBotToken); } catch (e) { logToFile("Bale Error: " + e.message); }
+}
 
 setTimeout(() => { 
     try { initWhatsApp(WAUTH_DIR); } catch(e) { logToFile("WA Init Error: " + e.message); } 
 }, 5000);
 
-// --- API ROUTES ---
-
+// --- ROUTES ---
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 app.get('/api/vapid-key', (req, res) => res.json({ publicKey: vapidKeys.publicKey }));
 
@@ -287,14 +325,13 @@ app.post('/api/login', (req, res) => { const u=getDb().users.find(x=>x.username=
 app.get('/api/settings', (req, res) => res.json(getDb().settings));
 app.post('/api/settings', (req, res) => { const db = getDb(); db.settings = { ...db.settings, ...req.body }; saveDb(db); res.json(db.settings); });
 
-// Catch-all to serve React app
 app.get('*', (req, res) => { 
     const p = path.join(ROOT_DIR, 'dist', 'index.html'); 
     if(fs.existsSync(p)) res.sendFile(p); 
-    else res.send('Build first'); 
+    else res.send('Build first or wait for React compilation.'); 
 });
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    logToFile(`\n>>> Server running on port ${PORT}`);
-    logToFile(`>>> Serving database from: ${DB_FILE}`);
+    logToFile(`\n>>> Server successfully running on port ${PORT}`);
+    logToFile(`>>> Root: ${ROOT_DIR}`);
 });
