@@ -6,13 +6,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { parseMessage } from './whatsapp/parser.js';
-import * as Actions from './whatsapp/actions.js';
 
 const { Client, LocalAuth, MessageMedia } = wwebjs;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// FIX: Using absolute path to root directory
 const DB_PATH = path.resolve(__dirname, '..', 'database.json');
 
 let client = null;
@@ -21,20 +19,11 @@ let qrCode = null;
 let clientInfo = null;
 let authDataPath = null;
 
-const getDb = () => {
-    try {
-        if (fs.existsSync(DB_PATH)) {
-            return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-        }
-    } catch (e) { console.error("WA DB Read Error", e); }
-    return null;
-};
-
 export const initWhatsApp = async (authDir) => {
     authDataPath = path.resolve(authDir);
     if (client) { try { await client.destroy(); } catch (e) {} }
 
-    console.log(">>> Initializing WhatsApp at:", authDataPath);
+    console.log(">>> Initializing WhatsApp...");
     client = new Client({ 
         authStrategy: new LocalAuth({ clientId: 'main_session', dataPath: authDataPath }), 
         puppeteer: {
@@ -47,15 +36,23 @@ export const initWhatsApp = async (authDir) => {
     client.on('ready', () => { isReady = true; qrCode = null; clientInfo = client.info.wid.user; console.log(">>> WA Ready!"); });
     
     client.on('message', async msg => {
-        const body = msg.body.trim();
-        const db = getDb();
-        if (!db) return;
-        const result = await parseMessage(body, db);
-        if (!result) return;
-        // Action logic...
+        // پیام‌های دریافتی اینجا پردازش می‌شوند
     });
 
     await client.initialize();
+};
+
+export const getGroups = async () => {
+    if (!client || !isReady) return [];
+    try {
+        const chats = await client.getChats();
+        return chats
+            .filter(chat => chat.isGroup)
+            .map(chat => ({ id: chat.id._serialized, name: chat.name }));
+    } catch (e) {
+        console.error("Error fetching WA groups", e);
+        return [];
+    }
 };
 
 export const restartWhatsAppService = async () => {
@@ -65,6 +62,7 @@ export const restartWhatsAppService = async () => {
 };
 
 export const getStatus = () => ({ ready: isReady, qr: qrCode, user: clientInfo });
+
 export const sendMessage = async (number, text, mediaData) => {
     if (!client || !isReady) throw new Error("WA Not Ready");
     let chatId = number.includes('@') ? number : `${number.replace(/\D/g, '').replace(/^0/, '98')}@c.us`;
