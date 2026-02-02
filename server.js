@@ -18,8 +18,8 @@ import http from 'http';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import { initTelegram, sendDocument as sendTelegramDoc, sendMessage as sendTelegramMsg, notifyNewBijak } from './backend/telegram.js';
-import { initWhatsApp, sendMessage as sendWhatsAppMessage, getStatus as getWhatsAppStatus, logout as logoutWhatsApp, getGroups as getWhatsAppGroups, restartClient as restartWhatsApp } from './backend/whatsapp.js';
+import { initTelegram, sendSystemNotification } from './backend/telegram.js';
+import { initWhatsApp, sendMessage as sendWhatsAppMessage, getStatus as getWhatsAppStatus, logout as logoutWhatsApp, restartClient as restartWhatsApp } from './backend/whatsapp.js';
 import { sendBaleMessage, initBaleBot } from './backend/bale.js';
 
 const app = express();
@@ -36,31 +36,58 @@ const getDb = () => JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
 // --- ROUTES ---
+
+// اصلاح مسیر ارسال واتساپ برای شامل شدن تلگرام
+app.post('/api/send-whatsapp', async (req, res) => {
+    const { number, message, mediaData } = req.body;
+    const db = getDb();
+    let results = { whatsapp: false, telegram: false };
+
+    // 1. WhatsApp
+    try {
+        await sendWhatsAppMessage(number, message, mediaData);
+        results.whatsapp = true;
+    } catch (e) { console.error("WA Send Fail"); }
+
+    // 2. Telegram (Auto-Notification Hub)
+    // هر پیامی که برای واتساپ ساخته می‌شود، به کانال اطلاع‌رسانی تلگرام هم برود
+    try {
+        if (db.settings.telegramBotToken) {
+            await sendSystemNotification(message, mediaData);
+            results.telegram = true;
+        }
+    } catch (e) { console.error("TG Send Fail"); }
+
+    res.json({ success: true, results });
+});
+
 app.get('/api/whatsapp/status', (req, res) => res.json(getWhatsAppStatus()));
 app.post('/api/whatsapp/restart', async (req, res) => {
     try {
         await restartWhatsApp();
-        res.json({ success: true, message: 'درخواست راه‌اندازی مجدد ارسال شد. لطفاً چند لحظه صبر کنید.' });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/whatsapp/logout', async (req, res) => { await logoutWhatsApp(); res.json({ success: true }); });
 
-// ... (بقیه کدهای سرور که قبلاً بودند)
-app.get('/api/version', (req, res) => res.json({ version: '1.0.0' }));
 app.get('/api/settings', (req, res) => res.json(getDb().settings));
-app.post('/api/settings', (req, res) => { const db = getDb(); db.settings = { ...db.settings, ...req.body }; saveDb(db); res.json(db.settings); });
+app.post('/api/settings', (req, res) => { 
+    const db = getDb(); 
+    db.settings = { ...db.settings, ...req.body }; 
+    saveDb(db); 
+    // Re-init bots if tokens changed
+    if (req.body.telegramBotToken) initTelegram(req.body.telegramBotToken);
+    res.json(db.settings); 
+});
+
 app.get('/api/orders', (req, res) => res.json(getDb().orders));
-app.post('/api/orders', (req, res) => { /* منطق ثبت سفارش */ });
-app.get('/api/chat', (req, res) => res.json(getDb().messages));
-app.post('/api/chat', (req, res) => { /* منطق چت */ });
 app.get('/api/users', (req, res) => res.json(getDb().users));
-app.post('/api/upload', (req, res) => { /* منطق آپلود */ res.json({ success: true }); });
+app.get('/api/version', (req, res) => res.json({ version: '1.2.5' }));
 
 app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'dist', 'index.html')); });
 
 app.listen(PORT, '0.0.0.0', () => {
+    const db = getDb();
     console.log(`Server running on port ${PORT}`);
     initWhatsApp(WAUTH_DIR);
+    if (db.settings.telegramBotToken) initTelegram(db.settings.telegramBotToken);
 });
