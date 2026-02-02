@@ -1,4 +1,5 @@
-import React, { ErrorInfo, ReactNode, Component } from 'react';
+
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -11,10 +12,11 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null;
 }
 
-// FIX: Explicitly extending Component from react to ensure this context is properly typed
+// Fix: Explicitly import Component and extend it with Props and State interfaces to resolve state/props accessibility errors
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    // Fix: state property is inherited from Component; initializing it in the constructor
     this.state = {
       hasError: false,
       error: null,
@@ -28,12 +30,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // FIX: Correctly updating state in lifecycle method
+    // Fix: setState method is correctly inherited from Component
     this.setState({ errorInfo });
   }
 
   render() {
-    // FIX: Accessing state with proper this context
+    // Fix: state property is correctly inherited from Component
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
@@ -62,7 +64,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // FIX: Accessing props correctly
+    // Fix: props property is correctly inherited from Component
     return this.props.children;
   }
 }
