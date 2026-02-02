@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { login } from '../services/authService';
 import { getServerHost, setServerHost, apiCall } from '../services/apiService';
 import { User } from '../types';
-import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, Globe, CheckCircle2, XCircle, Database, UploadCloud } from 'lucide-react';
+import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, Globe, CheckCircle2, XCircle, Database, UploadCloud, AlertTriangle } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 interface LoginProps {
@@ -184,16 +184,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       {/* Settings Button */}
       <button 
         onClick={() => setShowServerConfig(!showServerConfig)} 
-        className="absolute top-6 right-6 p-3 bg-white rounded-full shadow-md text-gray-500 hover:text-blue-600 transition-colors z-10"
+        className="absolute top-6 right-6 p-3 bg-white rounded-full shadow-md text-gray-500 hover:text-blue-600 transition-colors z-50"
         title="تنظیمات اتصال"
       >
         <Settings size={24} />
       </button>
 
-      {/* Database Restore Button (New) */}
+      {/* Database Restore Button (Corner fallback) */}
       <button 
         onClick={() => setShowRestoreModal(true)} 
-        className="absolute top-6 left-6 p-3 bg-white rounded-full shadow-md text-amber-500 hover:text-amber-700 transition-colors z-10"
+        className="absolute top-6 left-6 p-3 bg-white rounded-full shadow-md text-amber-500 hover:text-amber-700 transition-colors z-50 md:flex hidden"
         title="بازگردانی دیتابیس (اضطراری)"
       >
         <Database size={24} />
@@ -201,7 +201,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
       {/* Restore Modal */}
       {showRestoreModal && (
-          <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm">
+          <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
                   <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600">
                       <Database size={32}/>
@@ -216,7 +216,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                       type="file" 
                       ref={restoreFileInputRef} 
                       className="hidden" 
-                      accept=".json,.txt" // Assuming simple JSON restore for now based on server implementation
+                      accept=".json,.txt" 
                       onChange={handleRestoreFileChange}
                   />
                   
@@ -353,6 +353,18 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                       {loading ? <Loader2 className="animate-spin" /> : <LogIn size={22} />}
                       ورود به حساب
                   </button>
+
+                  {/* Add Visible Restore Button Here */}
+                  <div className="pt-4 border-t border-gray-100 text-center">
+                      <button 
+                        type="button"
+                        onClick={() => setShowRestoreModal(true)}
+                        className="text-xs text-amber-600 hover:text-amber-800 font-bold flex items-center justify-center gap-1 mx-auto transition-colors px-3 py-2 rounded-lg hover:bg-amber-50"
+                      >
+                          <Database size={14} />
+                          بازیابی اطلاعات (بازگردانی دیتابیس)
+                      </button>
+                  </div>
                 </form>
             </>
         )}
