@@ -35,7 +35,6 @@ const DB_FILE = path.join(ROOT_DIR, 'database.json');
 const BACKUPS_DIR = path.join(ROOT_DIR, 'backups');
 const UPLOADS_DIR = path.join(ROOT_DIR, 'uploads');
 const WAUTH_DIR = path.join(ROOT_DIR, 'wauth');
-const VAPID_FILE = path.join(ROOT_DIR, 'vapid.json');
 const LOG_FILE = path.join(ROOT_DIR, 'server_status.log');
 
 // --- CRITICAL ERROR LOGGING ---
@@ -54,7 +53,6 @@ const logToFile = (message) => {
 process.on('uncaughtException', (err) => {
     logToFile(`!!! UNCAUGHT EXCEPTION: ${err.message}`);
     console.error(err);
-    // Keep process alive
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -90,7 +88,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(ROOT_DIR, 'dist')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// --- DEFAULT DB STRUCTURE ---
+// --- DEFAULT DB STRUCTURE (The Source of Truth) ---
 const DEFAULT_DB = { 
     settings: { 
         currentTrackingNumber: 1000, 
@@ -124,7 +122,7 @@ const DEFAULT_DB = {
     securityIncidents: []
 };
 
-// --- FAIL-SAFE DATABASE LOADER WITH DEEP SANITIZATION ---
+// --- FAIL-SAFE DATABASE LOADER WITH SMART MERGE ---
 const getDb = () => {
     try {
         if (!fs.existsSync(DB_FILE)) {
@@ -141,49 +139,36 @@ const getDb = () => {
         const parsed = JSON.parse(data);
         if (!parsed.users) throw new Error("Invalid DB Structure");
         
-        // 1. Root Level Sanitization
+        // --- SMART MERGE: Preserve Defaults for Missing Keys ---
+        // This fixes the issue where Warehouse data disappears if the key was missing in a corrupt save
         const safeDB = { ...DEFAULT_DB, ...parsed };
-        
-        // Ensure root arrays are arrays
-        ['orders', 'exitPermits', 'warehouseItems', 'warehouseTransactions', 'users', 'messages', 'tradeRecords', 'securityLogs', 'personnelDelays'].forEach(key => {
-            if (!Array.isArray(safeDB[key])) safeDB[key] = [];
+
+        // Ensure Root Arrays exist (Warehouse Fix)
+        const arrayKeys = [
+            'orders', 'exitPermits', 'warehouseItems', 'warehouseTransactions', 
+            'users', 'messages', 'groups', 'tasks', 'tradeRecords', 
+            'securityLogs', 'personnelDelays', 'securityIncidents'
+        ];
+
+        arrayKeys.forEach(key => {
+            if (!Array.isArray(safeDB[key])) {
+                logToFile(`Warning: Fixed broken array for key: ${key}`);
+                safeDB[key] = []; 
+            }
         });
 
-        // 2. Deep Sanitization for Orders
-        safeDB.orders = safeDB.orders.map(order => ({
-            ...order,
-            paymentDetails: Array.isArray(order.paymentDetails) ? order.paymentDetails : [],
-            attachments: Array.isArray(order.attachments) ? order.attachments : []
-        }));
-
-        // 3. Deep Sanitization for Exit Permits (Critical for your issue)
-        safeDB.exitPermits = safeDB.exitPermits.map(permit => ({
-            ...permit,
-            items: Array.isArray(permit.items) ? permit.items : [],
-            destinations: Array.isArray(permit.destinations) ? permit.destinations : []
-        }));
-
-        // 4. Warehouse Transactions
-        safeDB.warehouseTransactions = safeDB.warehouseTransactions.map(tx => ({
-            ...tx,
-            items: Array.isArray(tx.items) ? tx.items : []
-        }));
-
-        // 5. Settings Sanitization
-        if (safeDB.settings) {
-            if (!Array.isArray(safeDB.settings.companies)) safeDB.settings.companies = [];
-            safeDB.settings.companies = safeDB.settings.companies.map(c => ({
-                ...c,
-                banks: Array.isArray(c.banks) ? c.banks : []
-            }));
-        }
+        // Ensure Settings Object exists
+        if (!safeDB.settings) safeDB.settings = { ...DEFAULT_DB.settings };
+        
+        // Ensure Settings Arrays exist
+        ['companies', 'companyNames', 'bankNames', 'savedContacts', 'fiscalYears'].forEach(key => {
+             if (!Array.isArray(safeDB.settings[key])) safeDB.settings[key] = [];
+        });
 
         return safeDB;
 
     } catch (e) {
         logToFile(`!!! CRITICAL DB CORRUPTION: ${e.message}`);
-        
-        // Backup corrupt file
         try {
             const corruptName = path.join(ROOT_DIR, `database_corrupt_${Date.now()}.json`);
             if (fs.existsSync(DB_FILE)) {
@@ -193,9 +178,7 @@ const getDb = () => {
         } catch (renameErr) {
             logToFile(`Failed to rename corrupt DB: ${renameErr.message}`);
         }
-
         // Return default so server starts
-        logToFile(">>> Starting with FRESH DATABASE to allow recovery.");
         return DEFAULT_DB; 
     }
 };
@@ -210,12 +193,51 @@ const saveDb = (data) => {
     }
 };
 
+// --- AUTOMATIC BACKUP SYSTEM ---
+const scheduleAutoBackup = () => {
+    logToFile(">>> Initializing Auto-Backup System (Every Hour)");
+    
+    // Run every hour: '0 * * * *'
+    cron.schedule('0 * * * *', () => {
+        try {
+            const now = new Date();
+            const timestamp = now.toISOString().replace(/[:.]/g, '-');
+            const backupPath = path.join(BACKUPS_DIR, `auto_backup_${timestamp}.json`);
+            
+            if (fs.existsSync(DB_FILE)) {
+                fs.copyFileSync(DB_FILE, backupPath);
+                logToFile(`[AutoBackup] Created: ${backupPath}`);
+                
+                // Cleanup: Keep only last 7 days of backups
+                const files = fs.readdirSync(BACKUPS_DIR);
+                const nowMs = Date.now();
+                const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+                
+                files.forEach(file => {
+                    if (file.startsWith('auto_backup_')) {
+                        const filePath = path.join(BACKUPS_DIR, file);
+                        const stats = fs.statSync(filePath);
+                        if (nowMs - stats.mtimeMs > sevenDaysMs) {
+                            fs.unlinkSync(filePath);
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            logToFile(`[AutoBackup] Failed: ${e.message}`);
+        }
+    });
+};
+
+// Start Backup Scheduler
+scheduleAutoBackup();
+
+
+// --- HELPER FOR NEXT NUMBER ---
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
     let startNum = 1000;
     try {
-        // SAFE GUARD: Ensure arr is an array
         const safeArr = Array.isArray(arr) ? arr : [];
-
         const safeCompany = companyName ? companyName.trim() : '';
         if (fiscalYearId && safeCompany && db.settings.fiscalYears) {
             const activeYear = db.settings.fiscalYears.find(y => y.id === fiscalYearId);
@@ -236,15 +258,13 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
             }
         }
         const filtered = safeCompany ? safeArr.filter(item => {
-            const itemComp = (type === 'payment' ? item.payingCompany : (type === 'bijak' ? item.company : item.companyName)); // Exit permit uses companyName? No, usually no company field on root, mostly requester.
-            // For ExitPermit numbering logic in legacy was global or simple. Assuming global if no company.
+            const itemComp = (type === 'payment' ? item.payingCompany : (type === 'bijak' ? item.company : item.companyName));
             return itemComp && itemComp.trim() === safeCompany;
         }) : safeArr;
         const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
         let next = existing.length > 0 ? Math.max(existing[existing.length - 1] + 1, startNum) : startNum;
         return next;
     } catch (e) {
-        logToFile("findNextNumber Error: " + e.message);
         return 1001; 
     }
 };
@@ -252,7 +272,8 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
 // --- ROUTES ---
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
-// Emergency Restore with STRICT TYPE SANITIZATION
+// --- ROBUST / SMART RESTORE ENDPOINT ---
+// This handles backward compatibility by merging old backup data into the new DB structure
 app.post('/api/emergency-restore', (req, res) => {
     try {
         const { fileData } = req.body;
@@ -260,30 +281,77 @@ app.post('/api/emergency-restore', (req, res) => {
 
         const base64Data = fileData.replace(/^data:.*?;base64,/, "");
         const jsonContent = Buffer.from(base64Data, 'base64').toString('utf-8');
-        const parsed = JSON.parse(jsonContent);
+        const parsedBackup = JSON.parse(jsonContent);
 
-        if (!parsed.users) return res.status(400).json({ success: false, error: 'Invalid backup structure' });
+        if (!parsedBackup.users) return res.status(400).json({ success: false, error: 'Invalid backup: No users found' });
 
+        // Backup current state before restoring
         if (fs.existsSync(DB_FILE)) {
             fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre_restore_${Date.now()}.json`));
         }
 
-        const ensureArray = (val) => Array.isArray(val) ? val : [];
-        const ensureObject = (val) => (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
+        // --- SMART MERGE LOGIC ---
+        // 1. Start with fresh DEFAULT_DB (Latest Structure)
+        const finalDB = JSON.parse(JSON.stringify(DEFAULT_DB));
 
-        const finalDB = { ...DEFAULT_DB, ...parsed };
-        finalDB.orders = ensureArray(parsed.orders);
-        finalDB.exitPermits = ensureArray(parsed.exitPermits);
-        finalDB.warehouseItems = ensureArray(parsed.warehouseItems);
-        finalDB.warehouseTransactions = ensureArray(parsed.warehouseTransactions);
-        finalDB.users = ensureArray(parsed.users);
-        
+        // 2. Helper to merge arrays safely
+        const mergeArray = (key) => {
+            if (parsedBackup[key] && Array.isArray(parsedBackup[key])) {
+                finalDB[key] = parsedBackup[key];
+            }
+        };
+
+        // 3. Merge Root Arrays
+        mergeArray('orders');
+        mergeArray('exitPermits');
+        mergeArray('warehouseItems');
+        mergeArray('warehouseTransactions');
+        mergeArray('users');
+        mergeArray('messages');
+        mergeArray('groups');
+        mergeArray('tasks');
+        mergeArray('tradeRecords');
+        mergeArray('securityLogs');
+        mergeArray('personnelDelays');
+        mergeArray('securityIncidents');
+
+        // 4. Merge Settings (Deep Merge)
+        if (parsedBackup.settings) {
+            // Overwrite primitives
+            finalDB.settings = { ...finalDB.settings, ...parsedBackup.settings };
+            
+            // Ensure complex objects/arrays from DEFAULT are preserved if missing in backup
+            const defaultSettings = DEFAULT_DB.settings;
+            Object.keys(defaultSettings).forEach(key => {
+                if (finalDB.settings[key] === undefined) {
+                    finalDB.settings[key] = defaultSettings[key];
+                }
+            });
+            
+            // Fix arrays inside settings
+            ['companies', 'companyNames', 'fiscalYears', 'savedContacts'].forEach(key => {
+                 if (!Array.isArray(finalDB.settings[key])) finalDB.settings[key] = [];
+            });
+        }
+
         saveDb(finalDB);
-        logToFile(`>>> DATABASE RESTORED SUCCESSFULLY`);
+        logToFile(`>>> DATABASE SMART RESTORE SUCCESSFUL`);
         res.json({ success: true });
     } catch (e) {
         logToFile(`Restore Failed: ${e.message}`);
         res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Full Backup Download
+app.get('/api/full-backup', async (req, res) => {
+    try {
+        const db = getDb();
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=payment_system_full_backup_${Date.now()}.json`);
+        res.json(db);
+    } catch (e) {
+        res.status(500).send("Backup Error");
     }
 });
 
@@ -317,14 +385,11 @@ app.post('/api/orders', safeHandler((req, res) => {
 app.put('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders); } else res.sendStatus(404); }));
 app.delete('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); }));
 
-// --- EXIT PERMITS (CRITICAL MISSING PART RESTORED) ---
+// --- EXIT PERMITS ---
 app.get('/api/exit-permits', safeHandler((req, res) => res.json(getDb().exitPermits || [])));
 app.post('/api/exit-permits', safeHandler((req, res) => { 
     const db = getDb(); 
     const permit = req.body; 
-    // Usually permit number is pre-calculated on client or simple int
-    // If client sends permitNumber, use it, else calculate. 
-    // Usually client calls getNextExitPermitNumber first.
     db.exitPermits.push(permit); 
     saveDb(db); 
     res.json(db.exitPermits); 
@@ -332,7 +397,7 @@ app.post('/api/exit-permits', safeHandler((req, res) => {
 app.put('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); res.json(db.exitPermits); } else res.sendStatus(404); }));
 app.delete('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb(); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits); }));
 
-// --- WAREHOUSE ---
+// --- WAREHOUSE (FIXED & PROTECTED) ---
 app.get('/api/warehouse/items', safeHandler((req, res) => res.json(getDb().warehouseItems || [])));
 app.post('/api/warehouse/items', safeHandler((req, res) => { const db=getDb(); db.warehouseItems.push(req.body); saveDb(db); res.json(db.warehouseItems); }));
 app.put('/api/warehouse/items/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.warehouseItems.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseItems[idx]={...db.warehouseItems[idx], ...req.body}; saveDb(db); res.json(db.warehouseItems); } else res.sendStatus(404); }));
@@ -343,7 +408,7 @@ app.post('/api/warehouse/transactions', safeHandler((req, res) => { const db=get
 app.put('/api/warehouse/transactions/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.warehouseTransactions.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseTransactions[idx]={...db.warehouseTransactions[idx], ...req.body}; saveDb(db); res.json(db.warehouseTransactions); } else res.sendStatus(404); }));
 app.delete('/api/warehouse/transactions/:id', safeHandler((req, res) => { const db=getDb(); db.warehouseTransactions=db.warehouseTransactions.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.warehouseTransactions); }));
 
-// Minimal routes for boot
+// --- SETTINGS ---
 app.get('/api/settings', safeHandler((req, res) => res.json(getDb().settings)));
 app.post('/api/settings', safeHandler((req, res) => { const db = getDb(); db.settings = { ...db.settings, ...req.body }; saveDb(db); res.json(db.settings); }));
 app.get('/api/users', safeHandler((req, res) => res.json(getDb().users || [])));
