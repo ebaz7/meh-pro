@@ -183,6 +183,9 @@ const saveDb = (data) => {
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
     let startNum = 1000;
     try {
+        // SAFE GUARD: Ensure arr is an array
+        const safeArr = Array.isArray(arr) ? arr : [];
+
         const safeCompany = companyName ? companyName.trim() : '';
         if (fiscalYearId && safeCompany && db.settings.fiscalYears) {
             const activeYear = db.settings.fiscalYears.find(y => y.id === fiscalYearId);
@@ -202,14 +205,15 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
                 startNum = sequences[safeCompany] || 1000;
             }
         }
-        const filtered = safeCompany ? arr.filter(item => {
+        const filtered = safeCompany ? safeArr.filter(item => {
             const itemComp = (type === 'payment' ? item.payingCompany : (type === 'bijak' ? item.company : item.companyName));
             return itemComp && itemComp.trim() === safeCompany;
-        }) : arr;
+        }) : safeArr;
         const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
         let next = existing.length > 0 ? Math.max(existing[existing.length - 1] + 1, startNum) : startNum;
         return next;
     } catch (e) {
+        logToFile("findNextNumber Error: " + e.message);
         return 1001; 
     }
 };

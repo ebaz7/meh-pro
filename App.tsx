@@ -187,10 +187,28 @@ function App() {
     try {
         const [ordersData, settingsData, messagesData] = await Promise.all([getOrders(), getSettings(), getMessages()]);
         
-        // --- SAFE GUARD: Ensure arrays are arrays ---
-        const safeOrders = Array.isArray(ordersData) ? ordersData : [];
+        // --- SAFE GUARD & DEEP SANITIZATION (The Fix) ---
+        // Recursively clean the data to ensure nested arrays are actually arrays.
+        // This fixes crashes where a backup might have 'paymentDetails: null'
+        
+        const safeOrders = Array.isArray(ordersData) ? ordersData.map(o => ({
+            ...o,
+            // Deep clean paymentDetails
+            paymentDetails: Array.isArray(o.paymentDetails) ? o.paymentDetails : [],
+            // Deep clean attachments
+            attachments: Array.isArray(o.attachments) ? o.attachments : []
+        })) : [];
+
         const safeMessages = Array.isArray(messagesData) ? messagesData : [];
         
+        // Also sanitize settings arrays just in case
+        if (settingsData) {
+            if (!Array.isArray(settingsData.companies)) settingsData.companies = [];
+            if (!Array.isArray(settingsData.companyNames)) settingsData.companyNames = [];
+            if (!Array.isArray(settingsData.fiscalYears)) settingsData.fiscalYears = [];
+            if (!Array.isArray(settingsData.savedContacts)) settingsData.savedContacts = [];
+        }
+
         setSettings(settingsData);
         setOrders(safeOrders);
         setChatMessages(safeMessages); 
@@ -225,21 +243,27 @@ function App() {
       const now = new Date();
       let alertCount = 0;
       list.forEach(order => {
-          order.paymentDetails.forEach(detail => {
-              if (detail.method === PaymentMethod.CHEQUE && detail.chequeDate) {
-                  const dueDate = parsePersianDate(detail.chequeDate);
-                  if (dueDate) {
-                      const diffTime = dueDate.getTime() - now.getTime();
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                      if (diffDays <= 2 && diffDays >= 0) { alertCount++; }
+          // Double check array existence even after sanitization
+          if (order.paymentDetails && Array.isArray(order.paymentDetails)) {
+              order.paymentDetails.forEach(detail => {
+                  if (detail.method === PaymentMethod.CHEQUE && detail.chequeDate) {
+                      const dueDate = parsePersianDate(detail.chequeDate);
+                      if (dueDate) {
+                          const diffTime = dueDate.getTime() - now.getTime();
+                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                          if (diffDays <= 2 && diffDays >= 0) { alertCount++; }
+                      }
                   }
-              }
-          });
+              });
+          }
       });
       if (alertCount > 0) { addAppNotification('هشدار سررسید چک', `${alertCount} چک در ۲ روز آینده سررسید می‌شوند.`); }
   };
 
   const checkForNotifications = (newList: PaymentOrder[], user: User, lastCheckTime: number) => {
+     // Safe guard against non-array input
+     if (!Array.isArray(newList)) return;
+
      const newEvents = newList.filter(o => o.updatedAt && o.updatedAt > lastCheckTime);
      newEvents.forEach(newItem => {
         const status = newItem.status;
