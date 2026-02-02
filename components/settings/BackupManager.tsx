@@ -13,7 +13,7 @@ const BackupManager: React.FC = () => {
     };
 
     const handleRestoreClick = () => {
-        if (confirm('⚠️ هشدار بازگردانی:\n\nآیا مطمئن هستید؟ این عملیات تمام اطلاعات فعلی را پاک کرده و با فایل انتخاب شده جایگزین می‌کند.\n\nنکته: سیستم از «بازگردانی هوشمند» استفاده می‌کند، بنابراین اگر فایل بکاپ قدیمی باشد، مشکلی برای قابلیت‌های جدید پیش نمی‌آید.')) {
+        if (confirm('⚠️ هشدار بازگردانی هوشمند:\n\nآیا مطمئن هستید؟ این عملیات تمام اطلاعات فعلی را با فایل انتخاب شده جایگزین می‌کند.\n\nنکته: سیستم از «بازگردانی هوشمند» استفاده می‌کند، بنابراین اگر فایل بکاپ قدیمی باشد، مشکلی برای قابلیت‌های جدید پیش نمی‌آید و اطلاعات جدید (مثل تنظیمات سال مالی) حفظ می‌شوند.')) {
             fileInputRef.current?.click();
         }
     };
@@ -31,7 +31,7 @@ const BackupManager: React.FC = () => {
             try {
                 const response = await apiCall<{success: boolean}>('/emergency-restore', 'POST', { fileData: base64 });
                 if (response.success) {
-                    alert('✅ بازگردانی با موفقیت انجام شد.\nسیستم رفرش می‌شود.');
+                    alert('✅ بازگردانی هوشمند با موفقیت انجام شد.\nسیستم رفرش می‌شود.');
                     window.location.reload();
                 } else {
                     throw new Error("Restore failed on server");
@@ -46,14 +46,14 @@ const BackupManager: React.FC = () => {
     };
 
     return (
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden animate-fade-in">
+        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden animate-fade-in mb-6">
             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                 <Database size={100}/>
             </div>
             
             <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2 relative z-10 text-lg border-b pb-2">
                 <Database size={24} className="text-blue-600"/> 
-                مدیریت پشتیبان‌گیری و بازیابی
+                مدیریت پشتیبان‌گیری و بازیابی (سیستم هوشمند)
             </h3>
             
             {/* Auto-Backup Status */}
@@ -66,6 +66,8 @@ const BackupManager: React.FC = () => {
                     <p className="text-xs text-green-700 leading-relaxed">
                         سیستم به صورت خودکار <strong>هر ۱ ساعت</strong> یک نسخه پشتیبان تهیه می‌کند. 
                         همچنین بکاپ‌های قدیمی‌تر از ۴۸ ساعت به طور خودکار حذف می‌شوند تا فضای سرور پر نشود.
+                        <br/>
+                        <span className="font-bold mt-1 block text-green-900">ویژگی جدید: بکاپ‌ها مستقل از آپدیت هستند. با خیال راحت آپدیت کنید.</span>
                     </p>
                 </div>
             </div>
@@ -95,7 +97,7 @@ const BackupManager: React.FC = () => {
 
                 {/* Restore Section */}
                 <div className="border-r-0 md:border-r border-gray-100 md:pr-6">
-                    <h4 className="text-sm font-bold text-gray-700 mb-2">بازیابی اطلاعات (Restore)</h4>
+                    <h4 className="text-sm font-bold text-gray-700 mb-2">بازیابی اطلاعات (Smart Restore)</h4>
                     <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} accept=".json,.txt" />
                     
                     <button 
@@ -106,7 +108,7 @@ const BackupManager: React.FC = () => {
                     >
                         {restoring ? <Loader2 size={32} className="animate-spin"/> : <UploadCloud size={32}/>}
                         {restoring ? 'در حال بازگردانی هوشمند...' : 'آپلود فایل بکاپ برای بازگردانی'}
-                        {!restoring && <span className="text-[10px] opacity-70 font-normal">سازگار با تمام نسخه‌های قبلی</span>}
+                        {!restoring && <span className="text-[10px] opacity-70 font-normal">سازگار با تمام نسخه‌های قبلی و بعدی</span>}
                     </button>
                     
                     {message && (
@@ -115,11 +117,6 @@ const BackupManager: React.FC = () => {
                         </div>
                     )}
                 </div>
-            </div>
-            
-            <div className="mt-6 pt-4 border-t border-gray-100 text-[10px] text-gray-400 flex items-center gap-1">
-                <AlertTriangle size={12}/>
-                توجه: فایل‌های بکاپ در پوشه <code>/backups</code> سرور نیز به صورت فیزیکی موجود هستند.
             </div>
         </div>
     );

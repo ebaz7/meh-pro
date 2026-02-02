@@ -141,6 +141,7 @@ const getDb = () => {
         
         // --- SMART MERGE: Preserve Defaults for Missing Keys ---
         // This fixes the issue where Warehouse data disappears if the key was missing in a corrupt save
+        // Also fixes "raw" warehouse data by ensuring arrays exist
         const safeDB = { ...DEFAULT_DB, ...parsed };
 
         // Ensure Root Arrays exist (Warehouse Fix)
@@ -152,16 +153,13 @@ const getDb = () => {
 
         arrayKeys.forEach(key => {
             if (!Array.isArray(safeDB[key])) {
-                logToFile(`Warning: Fixed broken array for key: ${key}`);
+                // logToFile(`Warning: Fixed broken array for key: ${key}`);
                 safeDB[key] = []; 
             }
         });
 
-        // Ensure Settings Object exists
+        // Ensure Settings Object exists and merge deep settings
         if (!safeDB.settings) safeDB.settings = { ...DEFAULT_DB.settings };
-        
-        // Deep Merge Settings (Preserve new config keys like dailySecurityMeta)
-        // This ensures if we restore an old backup, new settings keys aren't lost
         safeDB.settings = { ...DEFAULT_DB.settings, ...safeDB.settings };
 
         return safeDB;
@@ -205,7 +203,7 @@ const scheduleAutoBackup = () => {
             
             if (fs.existsSync(DB_FILE)) {
                 fs.copyFileSync(DB_FILE, backupPath);
-                logToFile(`[AutoBackup] Created: ${backupPath}`);
+                // logToFile(`[AutoBackup] Created: ${backupPath}`);
                 
                 // Cleanup: Keep only last 48 hours of backups to save space
                 const files = fs.readdirSync(BACKUPS_DIR);
@@ -272,6 +270,7 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
 // --- SMART RESTORE ENDPOINT ---
+// This ensures backups are compatible even after updates
 app.post('/api/emergency-restore', (req, res) => {
     try {
         const { fileData } = req.body;
@@ -289,7 +288,7 @@ app.post('/api/emergency-restore', (req, res) => {
         }
 
         // --- SMART MERGE LOGIC ---
-        // 1. Start with fresh DEFAULT_DB (Latest Structure)
+        // 1. Start with fresh DEFAULT_DB (Latest Structure containing new fields)
         const finalDB = JSON.parse(JSON.stringify(DEFAULT_DB));
 
         // 2. Helper to merge arrays safely
@@ -300,6 +299,7 @@ app.post('/api/emergency-restore', (req, res) => {
         };
 
         // 3. Merge Root Arrays (Data)
+        // This keeps data but uses new structure
         mergeArray('orders');
         mergeArray('exitPermits');
         mergeArray('warehouseItems');
@@ -314,7 +314,7 @@ app.post('/api/emergency-restore', (req, res) => {
         mergeArray('securityIncidents');
 
         // 4. Merge Settings (Deep Merge)
-        // This ensures that if the backup lacks 'dailySecurityMeta' or 'fiscalYears', the default values are kept
+        // This ensures that if the backup lacks 'dailySecurityMeta' or 'fiscalYears', the default (new) values are kept
         if (parsedBackup.settings) {
             finalDB.settings = { ...DEFAULT_DB.settings, ...parsedBackup.settings };
             
