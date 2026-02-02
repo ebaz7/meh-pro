@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode, Component } from 'react';
 import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -11,11 +11,10 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null;
 }
 
-// Fix: Explicitly extend React.Component with ErrorBoundaryProps and ErrorBoundaryState to ensure state, setState, and props are correctly inherited
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// FIX: Explicitly extending Component from react to ensure this context is properly typed
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    // Fix: Initialize state property inherited from React.Component
     this.state = {
       hasError: false,
       error: null,
@@ -24,19 +23,17 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    // Update state so the next render will show the fallback UI.
     return { hasError: true, error, errorInfo: null };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log the error for debugging
     console.error("Uncaught error:", error, errorInfo);
-    // Fix: setState is a method provided by React.Component
+    // FIX: Correctly updating state in lifecycle method
     this.setState({ errorInfo });
   }
 
   render() {
-    // Fix: Access state inherited from React.Component
+    // FIX: Accessing state with proper this context
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
@@ -49,7 +46,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
             
             <div className="bg-gray-100 p-3 rounded-lg text-left dir-ltr mb-6 overflow-auto max-h-40">
               <code className="text-xs text-red-600 font-mono break-all">
-                {/* Fix: state.error property access */}
                 {this.state.error?.toString()}
               </code>
             </div>
@@ -66,7 +62,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    // Fix: Access props inherited from React.Component
+    // FIX: Accessing props correctly
     return this.props.children;
   }
 }
