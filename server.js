@@ -6,58 +6,55 @@ import fs from 'fs';
 import path from 'path';
 import compression from 'compression'; 
 import { fileURLToPath } from 'url';
-import cron from 'node-cron'; // For scheduling backups
+import cron from 'node-cron';
 import puppeteer from 'puppeteer';
 import webpush from 'web-push'; 
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// --- 1. HARDCODED ROOT PATH (The Fix) ---
+// This forces the app to look exactly in C:\PaymentSystem
+const ROOT_DIR = "C:\\PaymentSystem";
+
+// Define paths based on the hardcoded root
+const DB_FILE = path.join(ROOT_DIR, 'database.json');
+const BACKUPS_DIR = path.join(ROOT_DIR, 'backups');
+const UPLOADS_DIR = path.join(ROOT_DIR, 'uploads');
+const WAUTH_DIR = path.join(ROOT_DIR, 'wauth');
+const VAPID_FILE = path.join(ROOT_DIR, 'vapid.json');
+const LOG_FILE = path.join(ROOT_DIR, 'server_debug.log');
+
+// --- SIMPLE FILE LOGGER ---
+// Writes errors to a text file so you can see them without a console
+const logToFile = (message) => {
+    const timestamp = new Date().toISOString();
+    const logLine = `[${timestamp}] ${message}\n`;
+    try {
+        fs.appendFileSync(LOG_FILE, logLine);
+        console.log(message);
+    } catch (e) {
+        console.error("Logging failed:", e);
+    }
+};
+
+logToFile(">>> Starting Server...");
+logToFile(`>>> Root Directory: ${ROOT_DIR}`);
+
+// Ensure directories exist
+[UPLOADS_DIR, BACKUPS_DIR, WAUTH_DIR].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+            logToFile(`Created directory: ${dir}`);
+        } catch (e) {
+            logToFile(`Error creating directory ${dir}: ${e.message}`);
+        }
+    }
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SERVER_BUILD_ID = Date.now().toString();
 
-// --- 1. ABSOLUTE PATH CONFIGURATION (CRITICAL FIX) ---
-// This ensures the DB is always read from the application folder, not System32
-const DB_FILE = path.resolve(__dirname, 'database.json');
-const BACKUPS_DIR = path.resolve(__dirname, 'backups');
-const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
-const WAUTH_DIR = path.resolve(__dirname, 'wauth');
-const VAPID_FILE = path.resolve(__dirname, 'vapid.json'); 
-
-// Ensure directories exist
-[UPLOADS_DIR, BACKUPS_DIR, WAUTH_DIR].forEach(dir => {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-});
-
-// --- 2. OFFLINE AUTO-BACKUP SYSTEM ---
-// Runs every 6 hours (0 */6 * * *). Works without internet.
-cron.schedule('0 */6 * * *', () => {
-    try {
-        if (fs.existsSync(DB_FILE)) {
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const backupFilename = `backup-${timestamp}.json`;
-            const backupPath = path.join(BACKUPS_DIR, backupFilename);
-            
-            fs.copyFileSync(DB_FILE, backupPath);
-            console.log(`[Auto-Backup] Saved to: ${backupPath}`);
-
-            // Optional: Keep only last 50 backups to save space
-            const files = fs.readdirSync(BACKUPS_DIR).map(f => ({ 
-                name: f, 
-                time: fs.statSync(path.join(BACKUPS_DIR, f)).mtime.getTime() 
-            })).sort((a, b) => a.time - b.time);
-
-            if (files.length > 50) {
-                fs.unlinkSync(path.join(BACKUPS_DIR, files[0].name));
-            }
-        }
-    } catch (err) {
-        console.error("[Auto-Backup] Failed:", err);
-    }
-});
-
-// --- INTEGRATION IMPORTS (KEPT INTACT) ---
+// --- INTEGRATION IMPORTS ---
 import { initTelegram, notifyNewBijak } from './backend/telegram.js';
 import { initWhatsApp, sendMessage as sendWhatsAppMessage, getStatus as getWhatsAppStatus, logout as logoutWhatsApp, getGroups as getWhatsAppGroups } from './backend/whatsapp.js';
 import { sendBaleMessage, initBaleBot } from './backend/bale.js';
@@ -66,7 +63,7 @@ app.use(cors());
 app.use(compression()); 
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(ROOT_DIR, 'dist')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 // --- WEB PUSH SETUP ---
@@ -79,25 +76,37 @@ try {
         fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
     }
     webpush.setVapidDetails('mailto:admin@example.com', vapidKeys.publicKey, vapidKeys.privateKey);
-} catch (error) { console.error("VAPID Error:", error); }
+} catch (error) { logToFile("VAPID Error: " + error.message); }
 
+// --- DATABASE MANAGEMENT ---
 const getDb = () => {
-    // If DB doesn't exist, create it (should not happen if path is correct)
-    if (!fs.existsSync(DB_FILE)) {
-        console.warn(">>> DATABASE NOT FOUND AT:", DB_FILE);
-        console.warn(">>> Creating new database...");
-        const initial = { 
-            settings: { currentTrackingNumber: 1000, currentExitPermitNumber: 1000, companyNames: [], companies: [] }, 
-            orders: [], exitPermits: [], warehouseItems: [], warehouseTransactions: [], 
-            users: [{ id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم', role: 'admin' }], 
-            messages: [], groups: [], tasks: [], tradeRecords: [], securityLogs: [], personnelDelays: [], securityIncidents: []
-        };
-        fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
-        return initial;
+    try {
+        if (!fs.existsSync(DB_FILE)) {
+            logToFile(">>> Database file not found. Creating new one.");
+            const initial = { 
+                settings: { currentTrackingNumber: 1000, currentExitPermitNumber: 1000, companyNames: [], companies: [] }, 
+                orders: [], exitPermits: [], warehouseItems: [], warehouseTransactions: [], 
+                users: [{ id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم', role: 'admin' }], 
+                messages: [], groups: [], tasks: [], tradeRecords: [], securityLogs: [], personnelDelays: [], securityIncidents: []
+            };
+            fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
+            return initial;
+        }
+        return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    } catch (e) {
+        logToFile("!!! CRITICAL DB ERROR: " + e.message);
+        // Return minimal structure to prevent crash
+        return { orders: [], users: [] }; 
     }
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 };
-const saveDb = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+
+const saveDb = (data) => {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+        logToFile("!!! Error saving DB: " + e.message);
+    }
+};
 
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
     let startNum = 1000;
@@ -132,13 +141,37 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
     return next;
 };
 
+// --- OFFLINE AUTO-BACKUP ---
+cron.schedule('0 */6 * * *', () => {
+    try {
+        if (fs.existsSync(DB_FILE)) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupPath = path.join(BACKUPS_DIR, `backup-${timestamp}.json`);
+            fs.copyFileSync(DB_FILE, backupPath);
+            logToFile(`[Backup] Created: ${backupPath}`);
+            
+            // Clean old backups
+            const files = fs.readdirSync(BACKUPS_DIR).map(f => ({ 
+                name: f, 
+                time: fs.statSync(path.join(BACKUPS_DIR, f)).mtime.getTime() 
+            })).sort((a, b) => a.time - b.time);
+
+            if (files.length > 50) {
+                fs.unlinkSync(path.join(BACKUPS_DIR, files[0].name));
+            }
+        }
+    } catch (err) {
+        logToFile("[Backup] Failed: " + err.message);
+    }
+});
+
 // --- INITIALIZE BOTS ---
 const db = getDb();
-if (db.settings?.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { console.error("Telegram Error:", e.message); }
-if (db.settings?.baleBotToken) try { initBaleBot(db.settings.baleBotToken); } catch (e) { console.error("Bale Error:", e.message); }
+if (db.settings?.telegramBotToken) try { initTelegram(db.settings.telegramBotToken); } catch (e) { logToFile("Telegram Error: " + e.message); }
+if (db.settings?.baleBotToken) try { initBaleBot(db.settings.baleBotToken); } catch (e) { logToFile("Bale Error: " + e.message); }
 
 setTimeout(() => { 
-    try { initWhatsApp(WAUTH_DIR); } catch(e) { console.error("WA Init Error:", e); } 
+    try { initWhatsApp(WAUTH_DIR); } catch(e) { logToFile("WA Init Error: " + e.message); } 
 }, 5000);
 
 // --- API ROUTES ---
@@ -161,10 +194,12 @@ app.post('/api/subscribe', (req, res) => {
 app.post('/api/send-whatsapp', async (req, res) => {
     try {
         const { number, message, mediaData } = req.body;
-        const db = getDb();
-        try { await sendWhatsAppMessage(number, message, mediaData); } catch (e) { console.error("WA Send Error:", e); }
+        await sendWhatsAppMessage(number, message, mediaData);
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        logToFile("WA Send Error: " + e.message);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 app.post('/api/upload', (req, res) => {
@@ -252,10 +287,14 @@ app.post('/api/login', (req, res) => { const u=getDb().users.find(x=>x.username=
 app.get('/api/settings', (req, res) => res.json(getDb().settings));
 app.post('/api/settings', (req, res) => { const db = getDb(); db.settings = { ...db.settings, ...req.body }; saveDb(db); res.json(db.settings); });
 
-app.get('*', (req, res) => { const p = path.join(__dirname, 'dist', 'index.html'); if(fs.existsSync(p)) res.sendFile(p); else res.send('Build first'); });
+// Catch-all to serve React app
+app.get('*', (req, res) => { 
+    const p = path.join(ROOT_DIR, 'dist', 'index.html'); 
+    if(fs.existsSync(p)) res.sendFile(p); 
+    else res.send('Build first'); 
+});
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n>>> Server running on port ${PORT}`);
-    console.log(`>>> Database path: ${DB_FILE}`);
-    console.log(`>>> Auto-backup active (Every 6 hours)`);
+    logToFile(`\n>>> Server running on port ${PORT}`);
+    logToFile(`>>> Serving database from: ${DB_FILE}`);
 });
