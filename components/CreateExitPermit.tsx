@@ -19,15 +19,26 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
     const [destinations, setDestinations] = useState<ExitPermitDestination[]>([{ id: generateUUID(), recipientName: '', address: '', phone: '' }]);
     const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', description: '' });
 
-    // Function to fetch next number
+    // Function to fetch next number - FORCED
     const fetchNextNumber = () => {
         setLoadingNum(true);
-        apiCall<{ nextNumber: number }>('/next-exit-permit-number')
-            .then(res => setPermitNumber(res.nextNumber.toString()))
-            .catch(() => setPermitNumber('1000'))
+        // Add timestamp to prevent caching
+        apiCall<{ nextNumber: number }>(`/next-exit-permit-number?t=${Date.now()}`)
+            .then(res => {
+                if (res && res.nextNumber) {
+                    setPermitNumber(res.nextNumber.toString());
+                } else {
+                    setPermitNumber('1001'); // Fallback only if API fails completely
+                }
+            })
+            .catch((err) => {
+                console.error("Number Fetch Error", err);
+                setPermitNumber('1001');
+            })
             .finally(() => setLoadingNum(false));
     };
 
+    // Force fetch on mount
     useEffect(() => { 
         fetchNextNumber();
     }, []);
