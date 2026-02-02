@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { login } from '../services/authService';
-import { getServerHost, setServerHost } from '../services/apiService';
+import { getServerHost, setServerHost, apiCall } from '../services/apiService';
 import { User } from '../types';
-import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, Globe, CheckCircle2, XCircle } from 'lucide-react';
+import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, Globe, CheckCircle2, XCircle, Database, UploadCloud } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 interface LoginProps {
@@ -19,6 +19,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [showServerConfig, setShowServerConfig] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
   const [isNative, setIsNative] = useState(false);
+  
+  // Restore DB State
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
   
   // Connection Test State
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
@@ -133,9 +138,50 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       alert('تنظیمات سرور ذخیره شد.');
   };
 
+  const handleRestoreFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (!confirm('⚠️ هشدار جدی:\nآیا مطمئن هستید که می‌خواهید این فایل را بازگردانی کنید؟\nتمام اطلاعات فعلی سیستم با اطلاعات این فایل جایگزین خواهد شد و این عملیات غیرقابل بازگشت است.')) {
+          e.target.value = '';
+          return;
+      }
+
+      setRestoring(true);
+      const reader = new FileReader();
+      
+      reader.onload = async (ev) => {
+          const base64 = ev.target?.result as string;
+          try {
+              // Using a direct fetch here to ensure we use the configured server host if native
+              const response = await apiCall<{success: boolean}>('/emergency-restore', 'POST', { fileData: base64 });
+              
+              if (response.success) {
+                  alert('✅ دیتابیس با موفقیت بازگردانی شد.\nصفحه رفرش می‌شود.');
+                  window.location.reload();
+              } else {
+                  throw new Error("Server returned false");
+              }
+          } catch (error: any) {
+              alert('خطا در بازگردانی دیتابیس: ' + (error.message || 'Unknown Error'));
+          } finally {
+              setRestoring(false);
+              setShowRestoreModal(false);
+          }
+      };
+      
+      reader.onerror = () => {
+          alert('خطا در خواندن فایل');
+          setRestoring(false);
+      };
+
+      reader.readAsDataURL(file);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 relative font-sans">
       
+      {/* Settings Button */}
       <button 
         onClick={() => setShowServerConfig(!showServerConfig)} 
         className="absolute top-6 right-6 p-3 bg-white rounded-full shadow-md text-gray-500 hover:text-blue-600 transition-colors z-10"
@@ -143,6 +189,57 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       >
         <Settings size={24} />
       </button>
+
+      {/* Database Restore Button (New) */}
+      <button 
+        onClick={() => setShowRestoreModal(true)} 
+        className="absolute top-6 left-6 p-3 bg-white rounded-full shadow-md text-amber-500 hover:text-amber-700 transition-colors z-10"
+        title="بازگردانی دیتابیس (اضطراری)"
+      >
+        <Database size={24} />
+      </button>
+
+      {/* Restore Modal */}
+      {showRestoreModal && (
+          <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+                  <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600">
+                      <Database size={32}/>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">بازگردانی دیتابیس</h3>
+                  <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                      اگر فایل پشتیبان (backup) دارید، می‌توانید آن را اینجا آپلود کنید تا سیستم به حالت قبل برگردد.<br/>
+                      <span className="text-red-500 font-bold">توجه: اطلاعات فعلی حذف خواهد شد.</span>
+                  </p>
+                  
+                  <input 
+                      type="file" 
+                      ref={restoreFileInputRef} 
+                      className="hidden" 
+                      accept=".json,.txt" // Assuming simple JSON restore for now based on server implementation
+                      onChange={handleRestoreFileChange}
+                  />
+                  
+                  <div className="space-y-3">
+                      <button 
+                          onClick={() => restoreFileInputRef.current?.click()} 
+                          disabled={restoring}
+                          className="w-full bg-amber-500 text-white py-3 rounded-xl font-bold hover:bg-amber-600 flex items-center justify-center gap-2 shadow-lg shadow-amber-200"
+                      >
+                          {restoring ? <Loader2 size={20} className="animate-spin"/> : <UploadCloud size={20}/>}
+                          {restoring ? 'در حال بازگردانی...' : 'انتخاب فایل بکاپ'}
+                      </button>
+                      <button 
+                          onClick={() => setShowRestoreModal(false)} 
+                          disabled={restoring}
+                          className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200"
+                      >
+                          انصراف
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 relative overflow-hidden animate-fade-in">
         

@@ -251,6 +251,41 @@ app.post('/api/upload', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// --- EMERGENCY RESTORE ENDPOINT ---
+app.post('/api/emergency-restore', (req, res) => {
+    try {
+        const { fileData } = req.body;
+        if (!fileData) {
+            return res.status(400).json({ success: false, error: 'No file data provided' });
+        }
+
+        // Clean base64 header if present
+        const base64Data = fileData.replace(/^data:.*?;base64,/, "");
+        const jsonContent = Buffer.from(base64Data, 'base64').toString('utf-8');
+
+        // Validate JSON
+        const parsed = JSON.parse(jsonContent);
+        if (!parsed.users || !parsed.settings) {
+             return res.status(400).json({ success: false, error: 'Invalid backup file format' });
+        }
+
+        // Create a safety backup before overwriting
+        if (fs.existsSync(DB_FILE)) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre-restore-${timestamp}.json`));
+        }
+
+        // Write new DB
+        fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2));
+        logToFile(`>>> DATABASE RESTORED VIA EMERGENCY API`);
+
+        res.json({ success: true });
+    } catch (e) {
+        logToFile(`Emergency Restore Failed: ${e.message}`);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.post('/api/render-pdf', async (req, res) => { 
     let browser = null;
     try { 
