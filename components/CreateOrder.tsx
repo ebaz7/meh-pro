@@ -5,7 +5,7 @@ import { saveOrder, getNextTrackingNumber, uploadFile, getSettings, saveSettings
 import { enhanceDescription } from '../services/geminiService';
 import { apiCall } from '../services/apiService';
 import { jalaliToGregorian, getCurrentShamsiDate, formatCurrency, generateUUID, normalizeInputNumber, formatNumberString, deformatNumberString, formatDate } from '../constants';
-import { Wand2, Save, Loader2, Plus, Trash2, Paperclip, X, Hash, UploadCloud, Building2, BrainCircuit, AlertTriangle, Calendar, Landmark, CreditCard, Edit, ArrowRightLeft, MapPin } from 'lucide-react';
+import { Wand2, Save, Loader2, Plus, Trash2, Paperclip, X, Hash, UploadCloud, Building2, BrainCircuit, AlertTriangle, Calendar, Landmark, CreditCard, Edit, ArrowRightLeft, MapPin, RefreshCcw } from 'lucide-react';
 import { getUsers } from '../services/authService';
 
 interface CreateOrderProps {
@@ -20,6 +20,7 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
   const [shamsiDate, setShamsiDate] = useState({ year: currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
   const [formData, setFormData] = useState({ payee: '', description: '', });
   const [trackingNumber, setTrackingNumber] = useState<string>('');
+  const [loadingNum, setLoadingNum] = useState(false); // Add loading state
   const [payingCompany, setPayingCompany] = useState('');
   
   const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
@@ -72,6 +73,15 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
   const [newBankName, setNewBankName] = useState('');
   const [newBankAccount, setNewBankAccount] = useState('');
 
+  // Function to fetch next number
+  const fetchNextNumber = (company?: string) => {
+    setLoadingNum(true);
+    getNextTrackingNumber(company)
+        .then(num => setTrackingNumber(num.toString()))
+        .catch(() => setTrackingNumber('1000'))
+        .finally(() => setLoadingNum(false));
+  };
+
   useEffect(() => {
       getSettings().then((s) => {
           setSettings(s);
@@ -83,8 +93,10 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
           setPayingCompany(defCompany);
           
           updateBanksForCompany(defCompany, s);
+          
+          // Initial fetch with default company
+          fetchNextNumber(defCompany);
       });
-      getNextTrackingNumber().then(num => setTrackingNumber(num.toString()));
   }, []);
 
   const updateBanksForCompany = (companyName: string, currentSettings: SystemSettings) => {
@@ -102,6 +114,9 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
       setPayingCompany(newVal);
       if (settings) updateBanksForCompany(newVal, settings);
       setNewLine(prev => ({ ...prev, bankName: '' })); // Reset selected bank on company change
+      
+      // Re-fetch number for the selected company
+      fetchNextNumber(newVal);
   };
 
   const openAddBankModal = () => {
@@ -329,7 +344,21 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
         <div className="p-6 border-b border-gray-100 flex items-center gap-3"><div className="bg-green-50 p-2 rounded-lg text-green-600"><Plus size={24} /></div><h2 className="text-xl font-bold text-gray-800">ثبت دستور پرداخت جدید</h2></div>
         <form onSubmit={handleSubmit} className="p-6 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2"><label className="text-sm font-medium text-gray-700 flex items-center gap-2"><Hash size={16}/> شماره دستور پرداخت</label><input required type="number" className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-50 font-mono font-bold text-blue-600 dir-ltr text-left" value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} onKeyDown={handleKeyDown} /></div>
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2"><Hash size={16}/> شماره دستور پرداخت</label>
+                    <div className="relative">
+                        <input required type="number" className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-50 font-mono font-bold text-blue-600 dir-ltr text-left" value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} onKeyDown={handleKeyDown} />
+                        <button 
+                            type="button"
+                            onClick={() => fetchNextNumber(payingCompany)} 
+                            disabled={loadingNum}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-white rounded-full text-blue-500 hover:bg-blue-50 transition-colors"
+                            title="بروزرسانی شماره از سرور"
+                        >
+                            <RefreshCcw size={16} className={loadingNum ? 'animate-spin' : ''}/>
+                        </button>
+                    </div>
+                </div>
                 <div className="space-y-2"><label className="text-sm font-medium text-gray-700">گیرنده وجه (ذینفع)</label><input required type="text" className="w-full border border-gray-300 rounded-xl px-4 py-3" placeholder="نام شخص یا شرکت..." value={formData.payee} onChange={e => setFormData({ ...formData, payee: e.target.value })} onKeyDown={handleKeyDown} /></div>
                 <div className="space-y-2"><label className="text-sm font-medium text-gray-700 flex items-center gap-2"><Building2 size={16}/> شرکت پرداخت کننده</label><select className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white" value={payingCompany} onChange={handleCompanyChange} onKeyDown={handleKeyDown}><option value="">-- انتخاب کنید --</option>{availableCompanies.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 <div className="space-y-2"><label className="text-sm font-medium text-gray-700 flex items-center gap-2"><Calendar size={16} />تاریخ پرداخت (شمسی)</label><div className="grid grid-cols-3 gap-2"><select className="border border-gray-300 rounded-xl px-2 py-3 bg-white" value={shamsiDate.day} onChange={e => setShamsiDate({...shamsiDate, day: Number(e.target.value)})}>{days.map(d => <option key={d} value={d}>{d}</option>)}</select><select className="border border-gray-300 rounded-xl px-2 py-3 bg-white" value={shamsiDate.month} onChange={e => setShamsiDate({...shamsiDate, month: Number(e.target.value)})}>{MONTHS.map((m, idx) => <option key={idx} value={idx + 1}>{m}</option>)}</select><select className="border border-gray-300 rounded-xl px-2 py-3 bg-white" value={shamsiDate.year} onChange={e => setShamsiDate({...shamsiDate, year: Number(e.target.value)})}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div></div>

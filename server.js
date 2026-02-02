@@ -362,10 +362,13 @@ app.post('/api/login', safeHandler((req, res) => {
 
 // --- ORDERS ---
 app.get('/api/orders', safeHandler((req, res) => res.json(getDb().orders || [])));
+
 app.post('/api/orders', safeHandler((req, res) => { 
     const db = getDb(); 
     const order = req.body; 
     order.id = Date.now().toString(); 
+    
+    // Use robust logic to find next tracking number
     order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', db.settings.activeFiscalYearId, order.payingCompany);
     
     // Auto-update global setting counter
@@ -377,8 +380,21 @@ app.post('/api/orders', safeHandler((req, res) => {
     saveDb(db); 
     res.json(db.orders); 
 }));
+
 app.put('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders); } else res.sendStatus(404); }));
 app.delete('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); }));
+
+// --- NEW ENDPOINT FOR NEXT TRACKING NUMBER ---
+app.get('/api/next-tracking-number', safeHandler((req, res) => {
+    const db = getDb();
+    const company = req.query.company || db.settings.defaultCompany;
+    // Explicitly call logic to find next number
+    const nextNum = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', db.settings.activeFiscalYearId, company);
+    
+    logToFile(`Next Payment Order Number Requested. Calculated: ${nextNum}. (Company: ${company || 'None'})`);
+    
+    res.json({ nextTrackingNumber: nextNum });
+}));
 
 // --- EXIT PERMITS ---
 app.get('/api/exit-permits', safeHandler((req, res) => res.json(getDb().exitPermits || [])));
@@ -408,8 +424,6 @@ app.get('/api/next-exit-permit-number', safeHandler((req, res) => {
     const company = db.settings.defaultCompany;
     // Explicitly call logic to find next number
     const nextNum = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
-    
-    logToFile(`Next Exit Number Requested. Calculated: ${nextNum}. (ActiveFY: ${db.settings.activeFiscalYearId || 'None'}, SettingsStart: ${db.settings.currentExitPermitNumber})`);
     
     res.json({ nextNumber: nextNum });
 }));

@@ -78,7 +78,17 @@ export const updateSecurityIncident = async (incident: SecurityIncident): Promis
 export const deleteSecurityIncident = async (id: string): Promise<SecurityIncident[]> => { return await apiCall<SecurityIncident[]>(`/security/incidents/${id}`, 'DELETE'); };
 export const getSettings = async (): Promise<SystemSettings> => { return await apiCall<SystemSettings>('/settings'); };
 export const saveSettings = async (settings: SystemSettings): Promise<SystemSettings> => { return await apiCall<SystemSettings>('/settings', 'POST', settings); };
-export const getNextTrackingNumber = async (): Promise<number> => { try { const response = await apiCall<{ nextTrackingNumber: number }>('/next-tracking-number'); return response.nextTrackingNumber; } catch (e) { return 1001; } };
+
+// Updated: Accepts optional company parameter
+export const getNextTrackingNumber = async (company?: string): Promise<number> => { 
+    try { 
+        const url = company ? `/next-tracking-number?company=${encodeURIComponent(company)}` : '/next-tracking-number';
+        const response = await apiCall<{ nextTrackingNumber: number }>(url); 
+        return response.nextTrackingNumber; 
+    } catch (e) { 
+        return 1001; 
+    } 
+};
 
 // Chat Exports
 export const getMessages = async (): Promise<ChatMessage[]> => { const res = await apiCall<ChatMessage[]>('/chat'); return safeArray(res); };
