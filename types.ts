@@ -287,6 +287,7 @@ export interface ExitPermit {
   id: string;
   permitNumber: number;
   date: string;
+  company?: string;
   requester: string;
   items: ExitPermitItem[];
   destinations: ExitPermitDestination[];
@@ -604,6 +605,15 @@ export interface InspectionData {
     inspectionCompany?: string;
 }
 
+// Added missing trade-related interfaces
+export interface TradeTransaction {
+    id: string;
+    date: string;
+    amount: number;
+    bank: string;
+    description: string;
+}
+
 export interface WarehouseReceipt {
     id: string;
     number: string;
@@ -637,7 +647,7 @@ export interface GreenLeafCustomsDuty {
 
 export interface GreenLeafGuarantee {
     id: string;
-    relatedDutyId?: string;
+    relatedDutyId: string;
     guaranteeNumber: string;
     chequeNumber?: string;
     chequeBank?: string;
@@ -701,14 +711,6 @@ export interface AgentData {
     payments: AgentPayment[];
 }
 
-export interface TradeTransaction {
-    id: string;
-    date: string;
-    amount: number;
-    bank: string;
-    description: string;
-}
-
 export interface TradeRecord {
     id: string;
     fileNumber: string;
@@ -722,7 +724,6 @@ export interface TradeRecord {
     freightCost: number;
     status: 'Active' | 'Completed';
     isArchived?: boolean;
-    isPriority?: boolean;
     stages: Record<string, TradeStageData>;
     startDate: string;
     createdAt: number;
@@ -733,6 +734,7 @@ export interface TradeRecord {
     currencyAllocationType?: string;
     allocationCurrencyRank?: 'Type1' | 'Type2';
     operatingBank?: string;
+    isPriority?: boolean;
     licenseData?: { transactions: TradeTransaction[] };
     insuranceData?: {
         policyNumber: string;

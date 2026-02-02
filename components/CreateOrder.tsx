@@ -20,17 +20,15 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
   const [shamsiDate, setShamsiDate] = useState({ year: currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
   const [formData, setFormData] = useState({ payee: '', description: '', });
   const [trackingNumber, setTrackingNumber] = useState<string>('');
-  const [loadingNum, setLoadingNum] = useState(false); // Add loading state
+  const [loadingNum, setLoadingNum] = useState(false); 
   const [payingCompany, setPayingCompany] = useState('');
   
   const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
-  const [availableBanks, setAvailableBanks] = useState<string[]>([]); // Strings for dropdown options
+  const [availableBanks, setAvailableBanks] = useState<string[]>([]); 
   const [paymentLines, setPaymentLines] = useState<PaymentDetail[]>([]);
   
-  // NEW: Editing state for lines
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
 
-  // Updated NewLine State including SATNA fields and Internal Transfer
   const [newLine, setNewLine] = useState<{ 
       method: PaymentMethod; 
       amount: string; 
@@ -43,7 +41,7 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
       paymentId: string;
       destinationAccount: string;
       destinationOwner: string;
-      destinationBranch: string; // New field
+      destinationBranch: string; 
   }>({ 
       method: PaymentMethod.TRANSFER, 
       amount: '', 
@@ -65,27 +63,26 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
   const [analysisResult, setAnalysisResult] = useState<{score: number, recommendation: string, reasons: string[]} | null>(null);
   const [uploading, setUploading] = useState(false);
   
-  // Auto Send Logic
   const [settings, setSettings] = useState<SystemSettings | null>(null);
 
-  // Add Bank Modal State
   const [showAddBankModal, setShowAddBankModal] = useState(false);
   const [newBankName, setNewBankName] = useState('');
   const [newBankAccount, setNewBankAccount] = useState('');
 
-  // Function to fetch next number
+  // Function to fetch next number - EXPLICITLY PER COMPANY
   const fetchNextNumber = (company?: string) => {
     setLoadingNum(true);
     getNextTrackingNumber(company)
-        .then(num => setTrackingNumber(num.toString()))
-        .catch(() => setTrackingNumber('1000'))
+        .then(num => {
+            setTrackingNumber(num.toString());
+        })
+        .catch(() => setTrackingNumber('1001'))
         .finally(() => setLoadingNum(false));
   };
 
   useEffect(() => {
       getSettings().then((s) => {
           setSettings(s);
-          // Prefer 'companies' array if available for names
           const names = s.companies?.map(c => c.name) || s.companyNames || [];
           setAvailableCompanies(names);
           
@@ -93,8 +90,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
           setPayingCompany(defCompany);
           
           updateBanksForCompany(defCompany, s);
-          
-          // Initial fetch with default company
           fetchNextNumber(defCompany);
       });
   }, []);
@@ -102,10 +97,9 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
   const updateBanksForCompany = (companyName: string, currentSettings: SystemSettings) => {
       const company = currentSettings.companies?.find(c => c.name === companyName);
       if (company && company.banks && company.banks.length > 0) {
-          // Format: "BankName - AccountNum"
           setAvailableBanks(company.banks.map(b => `${b.bankName}${b.accountNumber ? ` - ${b.accountNumber}` : ''}`));
       } else {
-          setAvailableBanks([]); // Reset if no banks found for this company
+          setAvailableBanks([]); 
       }
   };
 
@@ -113,9 +107,7 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
       const newVal = e.target.value;
       setPayingCompany(newVal);
       if (settings) updateBanksForCompany(newVal, settings);
-      setNewLine(prev => ({ ...prev, bankName: '' })); // Reset selected bank on company change
-      
-      // Re-fetch number for the selected company
+      setNewLine(prev => ({ ...prev, bankName: '' })); 
       fetchNextNumber(newVal);
   };
 
@@ -137,7 +129,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
       };
       const comboName = `${newBankObj.bankName}${newBankObj.accountNumber ? ` - ${newBankObj.accountNumber}` : ''}`;
 
-      // Update Settings structure
       const updatedCompanies = (settings.companies || []).map(c => {
           if (c.name === payingCompany) {
               return { ...c, banks: [...(c.banks || []), newBankObj] };
@@ -179,7 +170,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
       const amt = deformatNumberString(newLine.amount); 
       if (!amt) return; 
 
-      // SATNA / PAYA Validation
       if (newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.PAYA) {
           const sheba = normalizeInputNumber(newLine.sheba).replace(/[^0-9]/g, '');
           if (sheba.length !== 24) {
@@ -196,27 +186,19 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
           bankName: (newLine.method === PaymentMethod.TRANSFER || newLine.method === PaymentMethod.CHEQUE || newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.INTERNAL_TRANSFER) ? newLine.bankName : undefined, 
           description: newLine.description, 
           chequeDate: newLine.method === PaymentMethod.CHEQUE ? `${newLine.chequeDate.y}/${newLine.chequeDate.m}/${newLine.chequeDate.d}` : undefined,
-          
-          // SATNA Fields
           sheba: (newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.PAYA) ? normalizeInputNumber(newLine.sheba).replace(/[^0-9]/g, '') : undefined,
           recipientBank: (newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.PAYA) ? newLine.recipientBank : undefined,
           paymentId: (newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.PAYA) ? newLine.paymentId : undefined,
-          
-          // Destination Owner is now used for both Internal and Sheba
           destinationOwner: (newLine.method === PaymentMethod.INTERNAL_TRANSFER || newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.PAYA) ? newLine.destinationOwner : undefined,
-
-          // Internal Transfer Fields
           destinationAccount: newLine.method === PaymentMethod.INTERNAL_TRANSFER ? normalizeInputNumber(newLine.destinationAccount) : undefined,
           destinationBranch: newLine.method === PaymentMethod.INTERNAL_TRANSFER ? newLine.destinationBranch : undefined,
       }; 
       
       if (editingLineId) {
-          // Replace existing
           setPaymentLines(paymentLines.map(p => p.id === editingLineId ? detail : p));
           setEditingLineId(null);
       } else {
           setPaymentLines([...paymentLines, detail]); 
-          // Auto Append description logic (For ALL methods)
           if(newLine.description) {
               setFormData(p => ({
                   ...p, 
@@ -242,7 +224,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
   };
 
   const handleEditLine = (line: PaymentDetail) => {
-      // Parse cheque date if exists
       let cDate = { year: currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day };
       if (line.chequeDate) {
           const parts = line.chequeDate.split('/');
@@ -295,13 +276,12 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
         };
         await saveOrder(newOrder); 
         
-        // --- BACKGROUND PROCESSING (INSTANT UI RESPONSE) ---
         const event = new CustomEvent('QUEUE_WHATSAPP_JOB', { 
             detail: { order: newOrder, type: 'create' } 
         });
         window.dispatchEvent(event);
 
-        onSuccess(); // Close form immediately
+        onSuccess(); 
 
     } catch (error) { 
         alert("خطا در ثبت دستور پرداخت"); 
@@ -314,7 +294,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in relative">
-        {/* ADD BANK MODAL */}
         {showAddBankModal && (
             <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
                 <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 animate-scale-in">
@@ -377,7 +356,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
                     </div>
                 </div>
 
-                {/* Analysis Result Display */}
                 {analysisResult && (
                     <div className={`mb-4 p-3 rounded-xl border flex items-start gap-3 animate-fade-in ${analysisResult.score >= 80 ? 'bg-green-50 border-green-200 text-green-800' : analysisResult.score >= 50 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
                         {analysisResult.score >= 50 ? <BrainCircuit className="shrink-0 mt-0.5" size={20}/> : <AlertTriangle className="shrink-0 mt-0.5" size={20}/>}
@@ -395,7 +373,7 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
                         <select className="w-full border rounded-lg p-2 text-sm bg-white" value={newLine.method} onChange={e => setNewLine({ ...newLine, method: e.target.value as PaymentMethod })}>
                             <option value={PaymentMethod.TRANSFER}>{PaymentMethod.TRANSFER}</option>
                             <option value={PaymentMethod.CHEQUE}>{PaymentMethod.CHEQUE}</option>
-                            <option value={PaymentMethod.SHEBA}>{PaymentMethod.SHEBA}</option> {/* MERGED */}
+                            <option value={PaymentMethod.SHEBA}>{PaymentMethod.SHEBA}</option> 
                             <option value={PaymentMethod.INTERNAL_TRANSFER}>{PaymentMethod.INTERNAL_TRANSFER}</option>
                             <option value={PaymentMethod.CASH}>{PaymentMethod.CASH}</option>
                             <option value={PaymentMethod.POS}>{PaymentMethod.POS}</option>
@@ -403,7 +381,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
                     </div>
                     <div className="md:col-span-3 space-y-1"><label className="text-xs text-gray-500">مبلغ (ریال)</label><input type="text" inputMode="numeric" className="w-full border rounded-lg p-2 text-sm dir-ltr text-left font-mono font-bold" placeholder="0" value={formatNumberString(newLine.amount)} onChange={e => setNewLine({ ...newLine, amount: normalizeInputNumber(e.target.value).replace(/[^0-9]/g, '') })} onKeyDown={handleKeyDown}/></div>
                     
-                    {/* Dynamic Fields based on Type */}
                     {(newLine.method === PaymentMethod.CHEQUE || newLine.method === PaymentMethod.TRANSFER || newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.INTERNAL_TRANSFER) ? (
                         <>
                             {newLine.method === PaymentMethod.CHEQUE && <div className="md:col-span-2 space-y-1"><label className="text-xs text-gray-500">شماره چک</label><input type="text" inputMode="numeric" className="w-full border rounded-lg p-2 text-sm font-mono" value={newLine.chequeNumber} onChange={e => setNewLine({ ...newLine, chequeNumber: normalizeInputNumber(e.target.value).replace(/[^0-9]/g, '') })} onKeyDown={handleKeyDown}/></div>}
@@ -415,7 +392,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
                         </>
                     ) : <div className="md:col-span-4 hidden md:block"></div>}
 
-                    {/* SHEBA Specific Fields (Satna/Paya) */}
                     {(newLine.method === PaymentMethod.SHEBA || newLine.method === PaymentMethod.SATNA || newLine.method === PaymentMethod.PAYA) && (
                         <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-4 gap-3 bg-purple-50 p-2 rounded-lg border border-purple-200 mt-1">
                             <div className="space-y-1 md:col-span-2">
@@ -440,7 +416,6 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
                         </div>
                     )}
 
-                    {/* INTERNAL TRANSFER Fields - UPDATED */}
                     {newLine.method === PaymentMethod.INTERNAL_TRANSFER && (
                         <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-3 bg-indigo-50 p-2 rounded-lg border border-indigo-200 mt-1">
                             <div className="space-y-1">

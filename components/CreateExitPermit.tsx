@@ -1,16 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { ExitPermit, ExitPermitStatus, User, ExitPermitItem, ExitPermitDestination, UserRole } from '../types';
-import { saveExitPermit } from '../services/storageService';
+import { ExitPermit, ExitPermitStatus, User, ExitPermitItem, ExitPermitDestination, UserRole, SystemSettings } from '../types';
+import { saveExitPermit, getSettings } from '../services/storageService';
 import { generateUUID, getCurrentShamsiDate, jalaliToGregorian } from '../constants';
 import { apiCall } from '../services/apiService';
-import { Save, Loader2, Truck, Package, MapPin, Hash, Plus, Trash2, ArrowLeft, ArrowRight, CheckCircle2, Calendar, RefreshCcw, User as UserIcon } from 'lucide-react';
+import { Save, Loader2, Truck, Package, MapPin, Hash, Plus, Trash2, ArrowLeft, ArrowRight, CheckCircle2, Calendar, RefreshCcw, User as UserIcon, Building2 } from 'lucide-react';
 
 const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> = ({ onSuccess, currentUser }) => {
     const [step, setStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [permitNumber, setPermitNumber] = useState('');
     const [loadingNum, setLoadingNum] = useState(false);
+    const [selectedCompany, setSelectedCompany] = useState('');
+    const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
     
     const currentShamsi = getCurrentShamsiDate();
     const [shamsiDate, setShamsiDate] = useState({ year: currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
@@ -19,32 +21,43 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
     const [destinations, setDestinations] = useState<ExitPermitDestination[]>([{ id: generateUUID(), recipientName: '', address: '', phone: '' }]);
     const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', description: '' });
 
-    // Function to fetch next number - FORCED
-    const fetchNextNumber = () => {
+    // Initial load for companies
+    useEffect(() => {
+        getSettings().then(s => {
+            const names = s.companies?.map(c => c.name) || s.companyNames || [];
+            setAvailableCompanies(names);
+            if (s.defaultCompany) {
+                setSelectedCompany(s.defaultCompany);
+                fetchNextNumber(s.defaultCompany);
+            }
+        });
+    }, []);
+
+    // Function to fetch next number - PER COMPANY
+    const fetchNextNumber = (company?: string) => {
+        if (!company) return;
         setLoadingNum(true);
-        // Add timestamp to prevent caching
-        apiCall<{ nextNumber: number }>(`/next-exit-permit-number?t=${Date.now()}`)
+        apiCall<{ nextNumber: number }>(`/next-exit-permit-number?company=${encodeURIComponent(company)}&t=${Date.now()}`)
             .then(res => {
                 if (res && res.nextNumber) {
                     setPermitNumber(res.nextNumber.toString());
                 } else {
-                    setPermitNumber('1001'); // Fallback only if API fails completely
+                    setPermitNumber('1001');
                 }
             })
-            .catch((err) => {
-                console.error("Number Fetch Error", err);
-                setPermitNumber('1001');
-            })
+            .catch(() => setPermitNumber('1001'))
             .finally(() => setLoadingNum(false));
     };
 
-    // Force fetch on mount
-    useEffect(() => { 
-        fetchNextNumber();
-    }, []);
+    const handleCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = e.target.value;
+        setSelectedCompany(val);
+        fetchNextNumber(val);
+    };
 
     const handleSubmit = async () => {
         if (!permitNumber) return alert('شماره مجوز الزامی است');
+        if (!selectedCompany) return alert('انتخاب شرکت الزامی است');
         if (items.some(i => !i.goodsName || !i.cartonCount)) return alert('اطلاعات کالا ناقص است');
         if (destinations.some(d => !d.recipientName)) return alert('اطلاعات گیرنده ناقص است');
 
@@ -54,6 +67,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
             const newPermit: ExitPermit = {
                 id: generateUUID(),
                 permitNumber: Number(permitNumber),
+                company: selectedCompany,
                 date: isoDate,
                 requester: currentUser.fullName,
                 items,
@@ -79,7 +93,6 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
 
     return (
         <div className="max-w-3xl mx-auto bg-white md:rounded-[2.5rem] shadow-none md:shadow-2xl md:shadow-blue-100 overflow-hidden animate-fade-in border-0 md:border border-gray-100 min-h-screen md:min-h-0">
-            {/* Steps Header */}
             <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-6 text-white sticky top-0 z-10 md:static">
                 <div className="flex justify-between items-center mb-6">
                     <div>
@@ -102,25 +115,35 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                     <div className="space-y-6 animate-slide-up">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
+                                <label className="text-sm font-black text-gray-700 flex items-center gap-2"><Building2 size={18} className="text-blue-500"/> شرکت صادر کننده</label>
+                                <select 
+                                    className="w-full border-2 border-gray-200 rounded-2xl p-4 bg-white font-bold focus:border-blue-500 outline-none transition-all"
+                                    value={selectedCompany}
+                                    onChange={handleCompanyChange}
+                                >
+                                    <option value="">-- انتخاب شرکت --</option>
+                                    {availableCompanies.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
                                 <label className="text-sm font-black text-gray-700 flex items-center gap-2"><Hash size={18} className="text-blue-500"/> شماره سند</label>
                                 <div className="relative">
-                                    <input type="number" className="w-full border-2 border-gray-200 rounded-2xl p-4 pl-12 bg-white font-mono font-bold text-xl text-blue-600 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all outline-none" value={permitNumber} onChange={e => setPermitNumber(e.target.value)} />
+                                    <input type="number" className="w-full border-2 border-gray-200 rounded-2xl p-4 pl-12 bg-gray-50 font-mono font-bold text-xl text-blue-600 focus:border-blue-500 outline-none transition-all" value={permitNumber} onChange={e => setPermitNumber(e.target.value)} />
                                     <button 
-                                        onClick={fetchNextNumber} 
-                                        disabled={loadingNum}
+                                        onClick={() => fetchNextNumber(selectedCompany)} 
+                                        disabled={loadingNum || !selectedCompany}
                                         className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-blue-50 rounded-xl text-blue-600 hover:bg-blue-100 transition-colors"
                                     >
                                         <RefreshCcw size={18} className={loadingNum ? 'animate-spin' : ''}/>
                                     </button>
                                 </div>
-                                <p className="text-[10px] text-gray-400 bg-gray-50 px-2 py-1 rounded-lg inline-block">شماره خودکار از سرور</p>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-gray-700 flex items-center gap-2"><Calendar size={18} className="text-blue-500"/> تاریخ خروج</label>
                                 <div className="grid grid-cols-3 gap-2">
-                                    <input type="number" className="border-2 border-gray-200 rounded-2xl p-3 text-center font-bold text-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all" placeholder="روز" value={shamsiDate.day} onChange={e => setShamsiDate({...shamsiDate, day: +e.target.value})} />
-                                    <input type="number" className="border-2 border-gray-200 rounded-2xl p-3 text-center font-bold text-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all" placeholder="ماه" value={shamsiDate.month} onChange={e => setShamsiDate({...shamsiDate, month: +e.target.value})} />
-                                    <input type="number" className="border-2 border-gray-200 rounded-2xl p-3 text-center font-bold text-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all" placeholder="سال" value={shamsiDate.year} onChange={e => setShamsiDate({...shamsiDate, year: +e.target.value})} />
+                                    <input type="number" className="border-2 border-gray-200 rounded-2xl p-3 text-center font-bold text-lg focus:border-blue-500 outline-none transition-all" placeholder="روز" value={shamsiDate.day} onChange={e => setShamsiDate({...shamsiDate, day: +e.target.value})} />
+                                    <input type="number" className="border-2 border-gray-200 rounded-2xl p-3 text-center font-bold text-lg focus:border-blue-500 outline-none transition-all" placeholder="ماه" value={shamsiDate.month} onChange={e => setShamsiDate({...shamsiDate, month: +e.target.value})} />
+                                    <input type="number" className="border-2 border-gray-200 rounded-2xl p-3 text-center font-bold text-lg focus:border-blue-500 outline-none transition-all" placeholder="سال" value={shamsiDate.year} onChange={e => setShamsiDate({...shamsiDate, year: +e.target.value})} />
                                 </div>
                             </div>
                         </div>
@@ -200,7 +223,6 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                     </div>
                 )}
 
-                {/* Fixed Mobile Footer Navigation */}
                 <div className="fixed md:static bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 md:p-0 md:bg-transparent md:border-0 md:mt-8 z-20 safe-pb">
                     <div className="flex gap-3">
                         {step > 1 && (
@@ -210,7 +232,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                         )}
                         <button 
                             onClick={step === 3 ? handleSubmit : () => setStep(s => s + 1)} 
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !selectedCompany}
                             className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-blue-200 hover:shadow-blue-300 transition-all flex items-center justify-center gap-2 disabled:opacity-70 active:scale-95"
                         >
                             {isSubmitting ? <Loader2 className="animate-spin" /> : (step === 3 ? 'ثبت نهایی' : 'مرحله بعد')}
