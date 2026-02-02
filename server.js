@@ -192,24 +192,17 @@ const scheduleAutoBackup = () => {
 scheduleAutoBackup();
 
 
-// --- HELPER FOR NEXT NUMBER ---
+// --- HELPER FOR NEXT NUMBER (FIXED LOGIC) ---
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
-    // 1. Determine Default Start Number from Global Settings
     let startNum = 1000;
-    
-    if (type === 'payment') startNum = db.settings.currentTrackingNumber || 1000;
-    else if (type === 'exit') startNum = db.settings.currentExitPermitNumber || 1000;
-    else if (type === 'bijak') {
-        const sequences = db.settings.warehouseSequences || {};
-        const safeCompany = companyName ? companyName.trim() : '';
-        startNum = sequences[safeCompany] || 1000;
-    }
+    const safeCompany = companyName ? companyName.trim() : (db.settings.defaultCompany || '');
+    const activeFiscalYearId = fiscalYearId || db.settings.activeFiscalYearId;
 
-    // 2. Override with Fiscal Year specific if exists
-    if (fiscalYearId && companyName && db.settings.fiscalYears) {
-        const activeYear = db.settings.fiscalYears.find(y => y.id === fiscalYearId);
-        if (activeYear && activeYear.companySequences) {
-            const seqConfig = activeYear.companySequences[companyName];
+    // 1. Priority: Check Active Fiscal Year Settings
+    if (activeFiscalYearId && db.settings.fiscalYears) {
+        const activeYear = db.settings.fiscalYears.find(y => y.id === activeFiscalYearId);
+        if (activeYear && activeYear.companySequences && safeCompany) {
+            const seqConfig = activeYear.companySequences[safeCompany];
             if (seqConfig) {
                 if (type === 'payment' && seqConfig.startTrackingNumber) startNum = seqConfig.startTrackingNumber;
                 else if (type === 'exit' && seqConfig.startExitPermitNumber) startNum = seqConfig.startExitPermitNumber;
@@ -217,29 +210,35 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
             }
         }
     }
-    
-    // 3. Find Max in Existing Data
+
+    // 2. Fallback: Check General Settings (if not found in Fiscal Year)
+    if (startNum === 1000) {
+        if (type === 'payment' && db.settings.currentTrackingNumber) startNum = db.settings.currentTrackingNumber;
+        else if (type === 'exit' && db.settings.currentExitPermitNumber) startNum = db.settings.currentExitPermitNumber;
+        else if (type === 'bijak' && db.settings.warehouseSequences && safeCompany) {
+            startNum = db.settings.warehouseSequences[safeCompany] || 1000;
+        }
+    }
+
+    // 3. Final Check: Find Max in Database to avoid collision
     const safeArr = Array.isArray(arr) ? arr : [];
     const existingNumbers = safeArr.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
     
-    // If we have existing numbers, take max(last_used + 1, startNum)
-    // If no existing numbers, use startNum directly
-    let next = startNum;
     if (existingNumbers.length > 0) {
          const maxExisting = existingNumbers[existingNumbers.length - 1];
+         // If the database has a higher number than the settings start number, use DB + 1
          if (maxExisting >= startNum) {
-             next = maxExisting + 1;
+             return maxExisting + 1;
          }
     }
     
-    return next;
+    return startNum;
 };
 
 // --- ROUTES ---
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
 // --- SMART RESTORE ENDPOINT ---
-// This ensures ALL MENUS including EXIT PERMITS are restored
 app.post('/api/emergency-restore', (req, res) => {
     try {
         const { fileData } = req.body;
@@ -256,23 +255,14 @@ app.post('/api/emergency-restore', (req, res) => {
             fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre_restore_${Date.now()}.json`));
         }
 
-        // 2. Initialize with FRESH structure to support updates
+        // 2. Initialize with FRESH structure
         const finalDB = JSON.parse(JSON.stringify(DEFAULT_DB));
 
         // 3. Restore Data Arrays (Explicit List)
         const restoreList = [
-            'orders',                   // Payments
-            'exitPermits',              // Exits (IMPORTANT: Included)
-            'warehouseItems',           // Warehouse Items
-            'warehouseTransactions',    // Bijaks
-            'users',                    // Users
-            'messages',                 // Chat
-            'groups',                   // Chat Groups
-            'tasks',                    // Tasks
-            'tradeRecords',             // Trade
-            'securityLogs',             // Security
-            'personnelDelays',          // Security
-            'securityIncidents'         // Security
+            'orders', 'exitPermits', 'warehouseItems', 'warehouseTransactions', 'users', 
+            'messages', 'groups', 'tasks', 'tradeRecords', 'securityLogs', 
+            'personnelDelays', 'securityIncidents'
         ];
 
         restoreList.forEach(key => {
@@ -281,14 +271,9 @@ app.post('/api/emergency-restore', (req, res) => {
             }
         });
 
-        // 4. Merge Settings (Keep new keys, overwrite old values)
+        // 4. Merge Settings
         if (parsedBackup.settings) {
-            finalDB.settings = { 
-                ...DEFAULT_DB.settings,   
-                ...parsedBackup.settings  
-            };
-            
-            // Safety check for arrays
+            finalDB.settings = { ...DEFAULT_DB.settings, ...parsedBackup.settings };
             ['companies', 'companyNames', 'fiscalYears', 'savedContacts'].forEach(key => {
                  if (!Array.isArray(finalDB.settings[key])) finalDB.settings[key] = [];
             });
@@ -296,7 +281,6 @@ app.post('/api/emergency-restore', (req, res) => {
 
         saveDb(finalDB);
         logToFile(`>>> DATABASE SMART RESTORE SUCCESSFUL (Merged ${Object.keys(parsedBackup).length} keys)`);
-        
         res.json({ success: true });
     } catch (e) {
         logToFile(`Restore Failed: ${e.message}`);
@@ -313,6 +297,21 @@ app.get('/api/full-backup', async (req, res) => {
         res.json(db); 
     } catch (e) {
         res.status(500).send("Backup Error");
+    }
+});
+
+// --- WHATSAPP RESTART ROUTE ---
+app.post('/api/whatsapp/restart', async (req, res) => {
+    try {
+        if (integrations.restartSession) {
+            await integrations.restartSession(WAUTH_DIR);
+            res.json({ success: true, message: "WhatsApp session restarting..." });
+        } else {
+            res.status(500).json({ success: false, error: "WhatsApp module not loaded" });
+        }
+    } catch (e) {
+        logToFile(`WA Restart Error: ${e.message}`);
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
@@ -339,7 +338,7 @@ app.post('/api/orders', safeHandler((req, res) => {
     order.id = Date.now().toString(); 
     order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', db.settings.activeFiscalYearId, order.payingCompany);
     
-    // Update Counter
+    // Auto-update global setting counter just in case
     if (!db.settings.activeFiscalYearId) {
          db.settings.currentTrackingNumber = order.trackingNumber;
     }
@@ -358,16 +357,12 @@ app.post('/api/exit-permits', safeHandler((req, res) => {
     const permit = req.body; 
     const company = db.settings.defaultCompany; 
     
-    // 1. Calculate next number based on settings
+    // 1. Calculate next number using robust logic
     const nextNum = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
     permit.permitNumber = nextNum;
     
-    // 2. Update the counter in settings so next one increments
+    // 2. Update global counter as fallback
     if (!db.settings.activeFiscalYearId) {
-        db.settings.currentExitPermitNumber = nextNum;
-    } else {
-        // If fiscal year is active, we should technically update that sequence, 
-        // but for simplicity and safety, we also update global as fallback
         db.settings.currentExitPermitNumber = nextNum;
     }
 
@@ -381,6 +376,7 @@ app.delete('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb()
 app.get('/api/next-exit-permit-number', safeHandler((req, res) => {
     const db = getDb();
     const company = db.settings.defaultCompany;
+    // Utilize the robust function for the API call too
     const nextNum = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
     res.json({ nextNumber: nextNum });
 }));

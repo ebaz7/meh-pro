@@ -18,8 +18,11 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
     const [destinations, setDestinations] = useState<ExitPermitDestination[]>([{ id: generateUUID(), recipientName: '', address: '', phone: '' }]);
     const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', description: '' });
 
-    // Fetch next number from server (which now checks fiscal year/settings)
+    // Fetch next number from server
     useEffect(() => { 
+        // NOTE: We don't have the company selected yet (assuming default company). 
+        // If your app supports multi-company exit permits in the future, 
+        // you should pass `?company=XYZ` to this API after user selects company.
         apiCall<{ nextNumber: number }>('/next-exit-permit-number')
             .then(res => setPermitNumber(res.nextNumber.toString()))
             .catch(() => setPermitNumber('1000'));

@@ -168,3 +168,27 @@ export const sendMessage = async (number, text, mediaData) => {
         await client.sendMessage(chatId, media, { caption: text || '' });
     } else if (text) await client.sendMessage(chatId, text);
 };
+
+// --- NEW RESTART FUNCTION ---
+export const restartSession = async (authDir) => {
+    console.log(">>> FORCE RESTARTING WHATSAPP SESSION...");
+    try {
+        if (client) {
+            await client.destroy();
+            client = null;
+        }
+        isReady = false;
+        qrCode = null;
+        clientInfo = null;
+        
+        // Short delay to ensure cleanup
+        setTimeout(() => {
+            initWhatsApp(authDir);
+        }, 1000);
+        
+    } catch (e) {
+        console.error("Restart Failed:", e);
+        // Try re-init anyway
+        initWhatsApp(authDir);
+    }
+};

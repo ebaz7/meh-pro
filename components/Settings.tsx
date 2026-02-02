@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { SystemSettings, Company, Contact, CompanyBank, User, PrintTemplate } from '../types';
-import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, WifiOff, Info } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Loader2, Database, Bell, Plus, Trash2, Building, ShieldCheck, Landmark, AppWindow, BellRing, BellOff, Send, Image as ImageIcon, Pencil, X, Check, MessageCircle, RefreshCw, Users, FolderSync, Smartphone, Link, Truck, DownloadCloud, UploadCloud, Warehouse, FileText, Container, LayoutTemplate, WifiOff, Info, RefreshCcw } from 'lucide-react';
 import { apiCall } from '../services/apiService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp } from '../services/notificationService';
 import { getUsers } from '../services/authService';
@@ -118,6 +118,7 @@ const Settings: React.FC = () => {
 
   const [whatsappStatus, setWhatsappStatus] = useState<{ready: boolean, qr: string | null, user: string | null} | null>(null);
   const [refreshingWA, setRefreshingWA] = useState(false);
+  const [restartingWA, setRestartingWA] = useState(false); // NEW
   
   // Contact States
   const [contactName, setContactName] = useState('');
@@ -195,6 +196,22 @@ const Settings: React.FC = () => {
   const handleWhatsappLogout = async () => {
       if(!confirm('آیا مطمئن هستید؟')) return;
       try { await apiCall('/whatsapp/logout', 'POST'); setTimeout(checkWhatsappStatus, 2000); } catch (e) { alert('خطا'); }
+  };
+  
+  // NEW FORCE RESTART HANDLER
+  const handleWhatsappRestart = async () => {
+      if (!confirm('آیا می‌خواهید سرویس واتساپ را بازنشانی کنید؟ این کار اتصال فعلی را قطع و یک QR کد جدید تولید می‌کند.')) return;
+      setRestartingWA(true);
+      try {
+          await apiCall('/whatsapp/restart', 'POST');
+          alert('درخواست بازنشانی ارسال شد. لطفاً چند لحظه صبر کنید تا QR کد جدید ظاهر شود.');
+          // Poll immediately
+          setTimeout(checkWhatsappStatus, 3000);
+      } catch (e) {
+          alert('خطا در بازنشانی سرویس');
+      } finally {
+          setRestartingWA(false);
+      }
   };
 
   const handleFetchGroups = async () => {
@@ -279,7 +296,7 @@ const Settings: React.FC = () => {
       } catch (e) { setMessage('خطا ❌'); } finally { setLoading(false); } 
   };
 
-  // --- CONTACTS LOGIC UPDATED ---
+  // ... (Keep existing contact handlers) ...
   const handleAddOrUpdateContact = () => { 
       if (!contactName.trim() || !contactNumber.trim()) return; 
       
@@ -354,7 +371,6 @@ const Settings: React.FC = () => {
   const handleEditTemplate = (t: PrintTemplate) => { setEditingTemplate(t); setShowDesigner(true); };
   const handleDeleteTemplate = (id: string) => { if(!confirm('حذف قالب؟')) return; const updated = (settings.printTemplates || []).filter(t => t.id !== id); setSettings({ ...settings, printTemplates: updated }); };
 
-  // New handler for role permissions
   const handleUpdateSettings = (newSettings: SystemSettings) => {
       setSettings(newSettings);
   };
@@ -462,7 +478,20 @@ const Settings: React.FC = () => {
                                                 <li>دکمه Link a Device را بزنید</li>
                                                 <li>کد QR روبرو را اسکن کنید</li>
                                             </ol>
-                                            <button type="button" onClick={checkWhatsappStatus} className="mt-4 text-blue-600 text-xs font-bold hover:underline">بروزرسانی وضعیت</button>
+                                            <div className="flex gap-2 mt-4">
+                                                <button type="button" onClick={checkWhatsappStatus} className="text-blue-600 text-xs font-bold hover:underline">بروزرسانی وضعیت</button>
+                                                
+                                                {/* NEW FORCE RESTART BUTTON */}
+                                                <button 
+                                                    type="button" 
+                                                    onClick={handleWhatsappRestart} 
+                                                    disabled={restartingWA}
+                                                    className="flex items-center gap-1 text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-bold transition-colors"
+                                                >
+                                                    {restartingWA ? <Loader2 size={12} className="animate-spin"/> : <RefreshCcw size={12}/>}
+                                                    بازنشانی و دریافت QR جدید
+                                                </button>
+                                            </div>
                                         </div>
                                     </>
                                 )}
@@ -535,6 +564,7 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                     
+                    {/* ... (Other categories unchanged) ... */}
                     {activeCategory === 'warehouse' && (
                         <div className="space-y-6 animate-fade-in">
                             <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Warehouse size={20}/> تنظیمات انبار</h3>
