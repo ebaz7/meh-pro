@@ -169,26 +169,32 @@ export const sendMessage = async (number, text, mediaData) => {
     } else if (text) await client.sendMessage(chatId, text);
 };
 
-// --- NEW RESTART FUNCTION ---
+// --- NEW RESTART FUNCTION (HARDENED) ---
 export const restartSession = async (authDir) => {
     console.log(">>> FORCE RESTARTING WHATSAPP SESSION...");
     try {
         if (client) {
-            await client.destroy();
+            // Add try catch to destroy as it might fail if already destroyed or initializing
+            try {
+                await client.destroy();
+            } catch (destErr) {
+                console.warn("Client destroy warning:", destErr.message);
+            }
             client = null;
         }
+        
         isReady = false;
         qrCode = null;
         clientInfo = null;
         
-        // Short delay to ensure cleanup
+        // Wait a bit for filesystem locks to release
         setTimeout(() => {
             initWhatsApp(authDir);
-        }, 1000);
+        }, 2000);
         
     } catch (e) {
-        console.error("Restart Failed:", e);
-        // Try re-init anyway
-        initWhatsApp(authDir);
+        console.error("Restart Critical Failure:", e);
+        // Force re-init as last resort
+        setTimeout(() => initWhatsApp(authDir), 3000);
     }
 };

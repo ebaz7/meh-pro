@@ -71,15 +71,26 @@ const PORT = process.env.PORT || 3000;
 const SERVER_BUILD_ID = Date.now().toString();
 
 // --- INTEGRATION IMPORTS (WRAPPED SAFE) ---
-let integrations = {};
-try {
-    const telegram = await import('./backend/telegram.js');
-    const whatsapp = await import('./backend/whatsapp.js');
-    const bale = await import('./backend/bale.js');
-    integrations = { ...telegram, ...whatsapp, ...bale };
-} catch (e) {
-    logToFile("Integration Import Warning: " + e.message);
-}
+// We use a global object to store loaded modules
+let integrations = {
+    whatsapp: null,
+    telegram: null,
+    bale: null
+};
+
+(async () => {
+    try {
+        integrations.telegram = await import('./backend/telegram.js');
+    } catch (e) { logToFile("Telegram Import Warning: " + e.message); }
+    
+    try {
+        integrations.whatsapp = await import('./backend/whatsapp.js');
+    } catch (e) { logToFile("WhatsApp Import Warning: " + e.message); }
+    
+    try {
+        integrations.bale = await import('./backend/bale.js');
+    } catch (e) { logToFile("Bale Import Warning: " + e.message); }
+})();
 
 app.use(cors()); 
 app.use(compression()); 
@@ -89,7 +100,6 @@ app.use(express.static(path.join(ROOT_DIR, 'dist')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 // --- DEFAULT DB STRUCTURE (The Source of Truth) ---
-// This is the TEMPLATE for all versions.
 const DEFAULT_DB = { 
     settings: { 
         currentTrackingNumber: 1000, 
@@ -138,7 +148,6 @@ const getDb = () => {
         const parsed = JSON.parse(data);
         if (!parsed.users) throw new Error("Invalid DB Structure");
         
-        // Auto-heal on load
         return { ...DEFAULT_DB, ...parsed };
 
     } catch (e) {
@@ -169,7 +178,6 @@ const scheduleAutoBackup = () => {
             if (fs.existsSync(DB_FILE)) {
                 fs.copyFileSync(DB_FILE, backupPath);
                 
-                // Cleanup: Keep only last 48 hours of backups
                 const files = fs.readdirSync(BACKUPS_DIR);
                 const nowMs = Date.now();
                 const retentionMs = 48 * 60 * 60 * 1000; 
@@ -194,45 +202,57 @@ scheduleAutoBackup();
 
 // --- HELPER FOR NEXT NUMBER (FIXED LOGIC) ---
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
-    let startNum = 1000;
+    let settingStartNum = 1000;
     const safeCompany = companyName ? companyName.trim() : (db.settings.defaultCompany || '');
     const activeFiscalYearId = fiscalYearId || db.settings.activeFiscalYearId;
-
-    // 1. Priority: Check Active Fiscal Year Settings
+    
+    // --- 1. DETERMINE THE CONFIGURED START NUMBER ---
+    
+    // A. Check Fiscal Year Specific Config
+    let fiscalFound = false;
     if (activeFiscalYearId && db.settings.fiscalYears) {
         const activeYear = db.settings.fiscalYears.find(y => y.id === activeFiscalYearId);
         if (activeYear && activeYear.companySequences && safeCompany) {
             const seqConfig = activeYear.companySequences[safeCompany];
             if (seqConfig) {
-                if (type === 'payment' && seqConfig.startTrackingNumber) startNum = seqConfig.startTrackingNumber;
-                else if (type === 'exit' && seqConfig.startExitPermitNumber) startNum = seqConfig.startExitPermitNumber;
-                else if (type === 'bijak' && seqConfig.startBijakNumber) startNum = seqConfig.startBijakNumber;
+                if (type === 'payment' && seqConfig.startTrackingNumber) { settingStartNum = parseInt(seqConfig.startTrackingNumber); fiscalFound = true; }
+                else if (type === 'exit' && seqConfig.startExitPermitNumber) { settingStartNum = parseInt(seqConfig.startExitPermitNumber); fiscalFound = true; }
+                else if (type === 'bijak' && seqConfig.startBijakNumber) { settingStartNum = parseInt(seqConfig.startBijakNumber); fiscalFound = true; }
             }
         }
     }
 
-    // 2. Fallback: Check General Settings (if not found in Fiscal Year)
-    if (startNum === 1000) {
-        if (type === 'payment' && db.settings.currentTrackingNumber) startNum = db.settings.currentTrackingNumber;
-        else if (type === 'exit' && db.settings.currentExitPermitNumber) startNum = db.settings.currentExitPermitNumber;
+    // B. Check General Settings (Only if Fiscal not found)
+    if (!fiscalFound) {
+        if (type === 'payment' && db.settings.currentTrackingNumber) settingStartNum = parseInt(db.settings.currentTrackingNumber);
+        else if (type === 'exit' && db.settings.currentExitPermitNumber) settingStartNum = parseInt(db.settings.currentExitPermitNumber);
         else if (type === 'bijak' && db.settings.warehouseSequences && safeCompany) {
-            startNum = db.settings.warehouseSequences[safeCompany] || 1000;
+            settingStartNum = parseInt(db.settings.warehouseSequences[safeCompany]) || 1000;
         }
     }
+    
+    // Ensure we have a valid number
+    if (isNaN(settingStartNum) || settingStartNum < 1) settingStartNum = 1000;
 
-    // 3. Final Check: Find Max in Database to avoid collision
+    // --- 2. CHECK DATABASE FOR HIGHEST EXISTING NUMBER ---
     const safeArr = Array.isArray(arr) ? arr : [];
-    const existingNumbers = safeArr.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    let maxExisting = 0;
     
-    if (existingNumbers.length > 0) {
-         const maxExisting = existingNumbers[existingNumbers.length - 1];
-         // If the database has a higher number than the settings start number, use DB + 1
-         if (maxExisting >= startNum) {
-             return maxExisting + 1;
-         }
+    safeArr.forEach(o => {
+        const num = parseInt(o[key]);
+        if (!isNaN(num) && num > maxExisting) {
+            maxExisting = num;
+        }
+    });
+    
+    // --- 3. DETERMINE NEXT NUMBER ---
+    // If the DB has a number higher than or equal to the setting, increment DB max.
+    // Otherwise, use the setting (it acts as a floor).
+    if (maxExisting >= settingStartNum) {
+        return maxExisting + 1;
+    } else {
+        return settingStartNum;
     }
-    
-    return startNum;
 };
 
 // --- ROUTES ---
@@ -250,15 +270,12 @@ app.post('/api/emergency-restore', (req, res) => {
 
         if (!parsedBackup.users) return res.status(400).json({ success: false, error: 'Invalid backup: No users found' });
 
-        // 1. Backup current state
         if (fs.existsSync(DB_FILE)) {
             fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre_restore_${Date.now()}.json`));
         }
 
-        // 2. Initialize with FRESH structure
         const finalDB = JSON.parse(JSON.stringify(DEFAULT_DB));
 
-        // 3. Restore Data Arrays (Explicit List)
         const restoreList = [
             'orders', 'exitPermits', 'warehouseItems', 'warehouseTransactions', 'users', 
             'messages', 'groups', 'tasks', 'tradeRecords', 'securityLogs', 
@@ -271,7 +288,6 @@ app.post('/api/emergency-restore', (req, res) => {
             }
         });
 
-        // 4. Merge Settings
         if (parsedBackup.settings) {
             finalDB.settings = { ...DEFAULT_DB.settings, ...parsedBackup.settings };
             ['companies', 'companyNames', 'fiscalYears', 'savedContacts'].forEach(key => {
@@ -288,7 +304,6 @@ app.post('/api/emergency-restore', (req, res) => {
     }
 });
 
-// Full Backup Download
 app.get('/api/full-backup', async (req, res) => {
     try {
         const db = getDb();
@@ -303,11 +318,26 @@ app.get('/api/full-backup', async (req, res) => {
 // --- WHATSAPP RESTART ROUTE ---
 app.post('/api/whatsapp/restart', async (req, res) => {
     try {
-        if (integrations.restartSession) {
-            await integrations.restartSession(WAUTH_DIR);
+        // Try to find the function in the loaded module or the integrations object
+        const waModule = integrations.whatsapp;
+        
+        if (waModule && typeof waModule.restartSession === 'function') {
+            await waModule.restartSession(WAUTH_DIR);
             res.json({ success: true, message: "WhatsApp session restarting..." });
         } else {
-            res.status(500).json({ success: false, error: "WhatsApp module not loaded" });
+            // Re-import attempt
+            try {
+                 const newWa = await import('./backend/whatsapp.js');
+                 if (newWa && typeof newWa.restartSession === 'function') {
+                     await newWa.restartSession(WAUTH_DIR);
+                     integrations.whatsapp = newWa;
+                     return res.json({ success: true, message: "WhatsApp re-imported and restarting..." });
+                 }
+            } catch(reImportErr) {
+                logToFile(`WA Re-import failed: ${reImportErr.message}`);
+            }
+            
+            res.status(500).json({ success: false, error: "WhatsApp module not loaded or function missing" });
         }
     } catch (e) {
         logToFile(`WA Restart Error: ${e.message}`);
@@ -338,7 +368,7 @@ app.post('/api/orders', safeHandler((req, res) => {
     order.id = Date.now().toString(); 
     order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', db.settings.activeFiscalYearId, order.payingCompany);
     
-    // Auto-update global setting counter just in case
+    // Auto-update global setting counter
     if (!db.settings.activeFiscalYearId) {
          db.settings.currentTrackingNumber = order.trackingNumber;
     }
@@ -376,8 +406,11 @@ app.delete('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb()
 app.get('/api/next-exit-permit-number', safeHandler((req, res) => {
     const db = getDb();
     const company = db.settings.defaultCompany;
-    // Utilize the robust function for the API call too
+    // Explicitly call logic to find next number
     const nextNum = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
+    
+    logToFile(`Next Exit Number Requested. Calculated: ${nextNum}. (ActiveFY: ${db.settings.activeFiscalYearId || 'None'}, SettingsStart: ${db.settings.currentExitPermitNumber})`);
+    
     res.json({ nextNumber: nextNum });
 }));
 

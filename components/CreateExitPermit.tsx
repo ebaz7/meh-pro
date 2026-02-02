@@ -4,12 +4,13 @@ import { ExitPermit, ExitPermitStatus, User, ExitPermitItem, ExitPermitDestinati
 import { saveExitPermit } from '../services/storageService';
 import { generateUUID, getCurrentShamsiDate, jalaliToGregorian } from '../constants';
 import { apiCall } from '../services/apiService';
-import { Save, Loader2, Truck, Package, MapPin, Hash, Plus, Trash2, ArrowLeft, ArrowRight, CheckCircle2, Calendar } from 'lucide-react';
+import { Save, Loader2, Truck, Package, MapPin, Hash, Plus, Trash2, ArrowLeft, ArrowRight, CheckCircle2, Calendar, RefreshCcw } from 'lucide-react';
 
 const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> = ({ onSuccess, currentUser }) => {
     const [step, setStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [permitNumber, setPermitNumber] = useState('');
+    const [loadingNum, setLoadingNum] = useState(false);
     
     const currentShamsi = getCurrentShamsiDate();
     const [shamsiDate, setShamsiDate] = useState({ year: currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
@@ -18,14 +19,18 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
     const [destinations, setDestinations] = useState<ExitPermitDestination[]>([{ id: generateUUID(), recipientName: '', address: '', phone: '' }]);
     const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', description: '' });
 
-    // Fetch next number from server
-    useEffect(() => { 
-        // NOTE: We don't have the company selected yet (assuming default company). 
-        // If your app supports multi-company exit permits in the future, 
-        // you should pass `?company=XYZ` to this API after user selects company.
+    // Function to fetch next number
+    const fetchNextNumber = () => {
+        setLoadingNum(true);
         apiCall<{ nextNumber: number }>('/next-exit-permit-number')
             .then(res => setPermitNumber(res.nextNumber.toString()))
-            .catch(() => setPermitNumber('1000'));
+            .catch(() => setPermitNumber('1000'))
+            .finally(() => setLoadingNum(false));
+    };
+
+    // Fetch next number from server on mount
+    useEffect(() => { 
+        fetchNextNumber();
     }, []);
 
     const handleSubmit = async () => {
@@ -83,7 +88,17 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-gray-700 flex items-center gap-2"><Hash size={16} className="text-blue-500"/> شماره سند خروج</label>
-                                <input type="number" className="w-full border-2 border-gray-100 rounded-2xl p-4 bg-gray-50 font-mono font-bold text-xl text-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none" value={permitNumber} onChange={e => setPermitNumber(e.target.value)} />
+                                <div className="relative">
+                                    <input type="number" className="w-full border-2 border-gray-100 rounded-2xl p-4 bg-gray-50 font-mono font-bold text-xl text-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none" value={permitNumber} onChange={e => setPermitNumber(e.target.value)} />
+                                    <button 
+                                        onClick={fetchNextNumber} 
+                                        disabled={loadingNum}
+                                        className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-white rounded-full text-blue-500 hover:bg-blue-50 transition-colors"
+                                        title="بروزرسانی شماره از سرور"
+                                    >
+                                        <RefreshCcw size={16} className={loadingNum ? 'animate-spin' : ''}/>
+                                    </button>
+                                </div>
                                 <p className="text-[10px] text-gray-400">شماره به صورت خودکار از تنظیمات سیستم/سال مالی خوانده شده است.</p>
                             </div>
                             <div className="space-y-2">
