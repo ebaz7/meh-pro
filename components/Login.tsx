@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { login } from '../services/authService';
 import { getServerHost, setServerHost, apiCall } from '../services/apiService';
 import { User } from '../types';
-import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, Globe, CheckCircle2, XCircle, Database, UploadCloud, AlertTriangle } from 'lucide-react';
+import { LogIn, KeyRound, Loader2, Settings, Server, Wifi, WifiOff, Save, RefreshCw, Globe, CheckCircle2, XCircle, Database, UploadCloud } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 interface LoginProps {
@@ -30,19 +30,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [testMessage, setTestMessage] = useState('');
 
   useEffect(() => {
-    const savedUsername = localStorage.getItem('saved_username');
-    if (savedUsername) setUsername(savedUsername);
-    
-    const native = Capacitor.isNativePlatform();
-    setIsNative(native);
+    try {
+        const savedUsername = localStorage.getItem('saved_username');
+        if (savedUsername) setUsername(savedUsername);
+        
+        const native = Capacitor.isNativePlatform();
+        setIsNative(native);
 
-    // Load existing host
-    const host = getServerHost();
-    setServerUrl(host);
+        // Load existing host
+        const host = getServerHost();
+        setServerUrl(host);
 
-    // If native and no host, force config screen
-    if (native && !host) {
-        setShowServerConfig(true);
+        // If native and no host, force config screen
+        if (native && !host) {
+            setShowServerConfig(true);
+        }
+    } catch(e) {
+        console.error("Login Init Error", e);
     }
   }, []);
 

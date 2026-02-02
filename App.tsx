@@ -146,7 +146,7 @@ function App() {
   const playNotificationSound = () => { 
       try { 
           // Offline-safe beep sound (Base64)
-          const beep = "data:audio/wav;base64,UklGRl9vT1dAVEfmt"; // Shortened for brevity, use a real short beep base64 in production
+          const beep = "data:audio/wav;base64,UklGRl9vT1dAVEfmt"; 
           const audio = new Audio(beep); 
           audio.volume = 1.0; 
           audio.play().catch(e => console.log("Audio blocked")); 
@@ -291,69 +291,71 @@ function App() {
   const [warehouseInitialTab, setWarehouseInitialTab] = useState<'dashboard' | 'approvals'>('dashboard');
   const handleGoToWarehouseApprovals = () => { setWarehouseInitialTab('approvals'); setActiveTab('warehouse'); };
 
-  if (!currentUser) return <Login onLogin={handleLogin} />;
-
   return (
     <ErrorBoundary>
-        <Layout 
-        activeTab={activeTab} 
-        setActiveTab={(t) => { setActiveTab(t); if(t!=='warehouse') setWarehouseInitialTab('dashboard'); if(t!=='manage-exit') setExitPermitStatusFilter(null); if(t!=='manage') setDashboardStatusFilter(null); }} 
-        currentUser={currentUser} 
-        onLogout={handleLogout} 
-        notifications={notifications} 
-        clearNotifications={() => setNotifications([])}
-        onAddNotification={addAppNotification}
-        onRemoveNotification={removeNotification}
-        >
-        
-        <NotificationController currentUser={currentUser} />
-
-        {toast && toast.show && (
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] bg-white border-l-4 border-blue-600 shadow-2xl rounded-lg p-4 flex items-start gap-4 min-w-[300px] max-w-sm animate-slide-down" onClick={closeToast}>
-                <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Bell size={20} className="animate-pulse" /></div>
-                <div className="flex-1">
-                    <h4 className="font-bold text-gray-800 text-sm mb-1">{toast.title}</h4>
-                    <p className="text-xs text-gray-600 leading-relaxed">{toast.message}</p>
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); closeToast(); }} className="text-gray-400 hover:text-red-500"><X size={16} /></button>
-            </div>
-        )}
-
-        {backgroundJobs.length > 0 && (
-            <div className="hidden-print-export" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
-                <div id={`bg-print-voucher-${backgroundJobs[0].order.id}`}>
-                    <PrintVoucher order={backgroundJobs[0].order} embed settings={settings || undefined} />
-                </div>
-            </div>
-        )}
-
-        {loading && orders.length === 0 ? ( 
-            <div className="flex h-[50vh] items-center justify-center text-blue-600 flex-col gap-3">
-                <Loader2 size={48} className="animate-spin" />
-                <span className="text-sm font-bold animate-pulse">در حال دریافت اطلاعات...</span>
-            </div> 
+        {!currentUser ? (
+            <Login onLogin={handleLogin} />
         ) : (
-            <>
-                {activeTab === 'dashboard' && <Dashboard orders={orders} settings={settings} currentUser={currentUser} onViewArchive={handleViewArchive} onFilterByStatus={handleDashboardFilter} onGoToPaymentApprovals={handleGoToPaymentApprovals} onGoToExitApprovals={handleGoToExitApprovals} onGoToBijakApprovals={handleGoToWarehouseApprovals} />}
-                {activeTab === 'create' && <CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} />}
-                {activeTab === 'manage' && <ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} />}
-                {activeTab === 'create-exit' && <CreateExitPermit onSuccess={() => setActiveTab('manage-exit')} currentUser={currentUser} />}
-                {activeTab === 'manage-exit' && <ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} />}
-                {activeTab === 'warehouse' && <WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} />}
-                {activeTab === 'trade' && <TradeModule currentUser={currentUser} />}
-                {activeTab === 'users' && <ManageUsers />}
-                {activeTab === 'settings' && <Settings />}
-                {activeTab === 'security' && <SecurityModule currentUser={currentUser} />}
-                {activeTab === 'chat' && (
-                    <ChatRoom 
-                        currentUser={currentUser} 
-                        preloadedMessages={chatMessages}
-                        onRefresh={() => loadData(true)} 
-                    />
-                )} 
-            </>
+            <Layout 
+            activeTab={activeTab} 
+            setActiveTab={(t) => { setActiveTab(t); if(t!=='warehouse') setWarehouseInitialTab('dashboard'); if(t!=='manage-exit') setExitPermitStatusFilter(null); if(t!=='manage') setDashboardStatusFilter(null); }} 
+            currentUser={currentUser} 
+            onLogout={handleLogout} 
+            notifications={notifications} 
+            clearNotifications={() => setNotifications([])}
+            onAddNotification={addAppNotification}
+            onRemoveNotification={removeNotification}
+            >
+            
+            <NotificationController currentUser={currentUser} />
+
+            {toast && toast.show && (
+                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] bg-white border-l-4 border-blue-600 shadow-2xl rounded-lg p-4 flex items-start gap-4 min-w-[300px] max-w-sm animate-slide-down" onClick={closeToast}>
+                    <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Bell size={20} className="animate-pulse" /></div>
+                    <div className="flex-1">
+                        <h4 className="font-bold text-gray-800 text-sm mb-1">{toast.title}</h4>
+                        <p className="text-xs text-gray-600 leading-relaxed">{toast.message}</p>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); closeToast(); }} className="text-gray-400 hover:text-red-500"><X size={16} /></button>
+                </div>
+            )}
+
+            {backgroundJobs.length > 0 && (
+                <div className="hidden-print-export" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
+                    <div id={`bg-print-voucher-${backgroundJobs[0].order.id}`}>
+                        <PrintVoucher order={backgroundJobs[0].order} embed settings={settings || undefined} />
+                    </div>
+                </div>
+            )}
+
+            {loading && orders.length === 0 ? ( 
+                <div className="flex h-[50vh] items-center justify-center text-blue-600 flex-col gap-3">
+                    <Loader2 size={48} className="animate-spin" />
+                    <span className="text-sm font-bold animate-pulse">در حال دریافت اطلاعات...</span>
+                </div> 
+            ) : (
+                <>
+                    {activeTab === 'dashboard' && <Dashboard orders={orders} settings={settings} currentUser={currentUser} onViewArchive={handleViewArchive} onFilterByStatus={handleDashboardFilter} onGoToPaymentApprovals={handleGoToPaymentApprovals} onGoToExitApprovals={handleGoToExitApprovals} onGoToBijakApprovals={handleGoToWarehouseApprovals} />}
+                    {activeTab === 'create' && <CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} />}
+                    {activeTab === 'manage' && <ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} />}
+                    {activeTab === 'create-exit' && <CreateExitPermit onSuccess={() => setActiveTab('manage-exit')} currentUser={currentUser} />}
+                    {activeTab === 'manage-exit' && <ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} />}
+                    {activeTab === 'warehouse' && <WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} />}
+                    {activeTab === 'trade' && <TradeModule currentUser={currentUser} />}
+                    {activeTab === 'users' && <ManageUsers />}
+                    {activeTab === 'settings' && <Settings />}
+                    {activeTab === 'security' && <SecurityModule currentUser={currentUser} />}
+                    {activeTab === 'chat' && (
+                        <ChatRoom 
+                            currentUser={currentUser} 
+                            preloadedMessages={chatMessages}
+                            onRefresh={() => loadData(true)} 
+                        />
+                    )} 
+                </>
+            )}
+            </Layout>
         )}
-        </Layout>
     </ErrorBoundary>
   );
 }
