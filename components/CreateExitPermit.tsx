@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { ExitPermit, ExitPermitStatus, User, ExitPermitItem, ExitPermitDestination, UserRole } from '../types';
-import { saveExitPermit, getNextExitPermitNumber } from '../services/storageService';
+import { saveExitPermit } from '../services/storageService';
 import { generateUUID, getCurrentShamsiDate, jalaliToGregorian } from '../constants';
-// Fixed: Added Calendar to imports
+import { apiCall } from '../services/apiService';
 import { Save, Loader2, Truck, Package, MapPin, Hash, Plus, Trash2, ArrowLeft, ArrowRight, CheckCircle2, Calendar } from 'lucide-react';
 
 const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> = ({ onSuccess, currentUser }) => {
@@ -18,7 +18,12 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
     const [destinations, setDestinations] = useState<ExitPermitDestination[]>([{ id: generateUUID(), recipientName: '', address: '', phone: '' }]);
     const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', description: '' });
 
-    useEffect(() => { getNextExitPermitNumber().then(num => setPermitNumber(num.toString())); }, []);
+    // Fetch next number from server (which now checks fiscal year settings)
+    useEffect(() => { 
+        apiCall<{ nextNumber: number }>('/next-exit-permit-number')
+            .then(res => setPermitNumber(res.nextNumber.toString()))
+            .catch(() => setPermitNumber('1000'));
+    }, []);
 
     const handleSubmit = async () => {
         if (!permitNumber) return alert('شماره مجوز الزامی است');
@@ -76,6 +81,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-gray-700 flex items-center gap-2"><Hash size={16} className="text-blue-500"/> شماره سند خروج</label>
                                 <input type="number" className="w-full border-2 border-gray-100 rounded-2xl p-4 bg-gray-50 font-mono font-bold text-xl text-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none" value={permitNumber} onChange={e => setPermitNumber(e.target.value)} />
+                                <p className="text-[10px] text-gray-400">شماره به صورت خودکار از تنظیمات سیستم/سال مالی خوانده شده است.</p>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-gray-700 flex items-center gap-2"><Calendar size={16} className="text-blue-500"/> تاریخ خروج</label>

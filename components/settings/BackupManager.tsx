@@ -6,14 +6,36 @@ import { apiCall } from '../../services/apiService';
 const BackupManager: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [restoring, setRestoring] = useState(false);
+    const [downloading, setDownloading] = useState(false);
     const [message, setMessage] = useState('');
 
-    const handleDownloadBackup = (includeFiles: boolean) => {
-        window.location.href = `/api/full-backup?includeFiles=${includeFiles}`;
+    const handleDownloadBackup = async (includeFiles: boolean) => {
+        setDownloading(true);
+        try {
+            // Using FETCH instead of window.location for better reliability and control
+            const response = await fetch(`/api/full-backup?includeFiles=${includeFiles}`);
+            
+            if (!response.ok) throw new Error("Download failed");
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `payment_system_backup_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+        } catch (e) {
+            alert("خطا در دانلود بکاپ. لطفا مجدد تلاش کنید.");
+        } finally {
+            setDownloading(false);
+        }
     };
 
     const handleRestoreClick = () => {
-        if (confirm('⚠️ هشدار بازگردانی هوشمند:\n\nآیا مطمئن هستید؟ این عملیات تمام اطلاعات فعلی را با فایل انتخاب شده جایگزین می‌کند.\n\nنکته: سیستم از «بازگردانی هوشمند» استفاده می‌کند، بنابراین اگر فایل بکاپ قدیمی باشد، مشکلی برای قابلیت‌های جدید پیش نمی‌آید و اطلاعات جدید (مثل تنظیمات سال مالی) حفظ می‌شوند.')) {
+        if (confirm('⚠️ هشدار بازگردانی هوشمند:\n\nآیا مطمئن هستید؟ این عملیات تمام اطلاعات فعلی را با فایل انتخاب شده جایگزین می‌کند.\n\nنکته: سیستم از «بازگردانی هوشمند» استفاده می‌کند، بنابراین اگر فایل بکاپ قدیمی باشد، مشکلی برای قابلیت‌های جدید (مثل انبار، بازرگانی، انتظامات) پیش نمی‌آید و دیتای آنها حفظ می‌شود.')) {
             fileInputRef.current?.click();
         }
     };
@@ -79,18 +101,26 @@ const BackupManager: React.FC = () => {
                     <button 
                         type="button" 
                         onClick={() => handleDownloadBackup(false)} 
+                        disabled={downloading}
                         className="w-full flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-3 rounded-xl text-sm font-bold transition-colors border border-gray-200"
                     >
-                        <span className="flex items-center gap-2"><DownloadCloud size={18} className="text-blue-600"/> دانلود دیتابیس (JSON)</span>
+                        <span className="flex items-center gap-2">
+                            {downloading ? <Loader2 size={18} className="animate-spin"/> : <DownloadCloud size={18} className="text-blue-600"/>} 
+                            دانلود کامل دیتابیس (JSON)
+                        </span>
                         <span className="text-[10px] bg-white px-2 py-0.5 rounded border">سریع</span>
                     </button>
                     
                     <button 
                         type="button" 
                         onClick={() => handleDownloadBackup(true)} 
+                        disabled={downloading}
                         className="w-full flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-3 rounded-xl text-sm font-bold transition-colors border border-gray-200"
                     >
-                        <span className="flex items-center gap-2"><DownloadCloud size={18} className="text-purple-600"/> دانلود کامل (با تصاویر)</span>
+                        <span className="flex items-center gap-2">
+                             {downloading ? <Loader2 size={18} className="animate-spin"/> : <DownloadCloud size={18} className="text-purple-600"/>}
+                             دانلود کامل (با تصاویر)
+                        </span>
                         <span className="text-[10px] bg-white px-2 py-0.5 rounded border">حجیم</span>
                     </button>
                 </div>
@@ -108,7 +138,7 @@ const BackupManager: React.FC = () => {
                     >
                         {restoring ? <Loader2 size={32} className="animate-spin"/> : <UploadCloud size={32}/>}
                         {restoring ? 'در حال بازگردانی هوشمند...' : 'آپلود فایل بکاپ برای بازگردانی'}
-                        {!restoring && <span className="text-[10px] opacity-70 font-normal">سازگار با تمام نسخه‌های قبلی و بعدی</span>}
+                        {!restoring && <span className="text-[10px] opacity-70 font-normal">شامل تمام منوها و تنظیمات قبلی</span>}
                     </button>
                     
                     {message && (
@@ -117,6 +147,11 @@ const BackupManager: React.FC = () => {
                         </div>
                     )}
                 </div>
+            </div>
+            
+            <div className="mt-6 pt-4 border-t border-gray-100 text-[10px] text-gray-400 flex items-center gap-1">
+                <AlertTriangle size={12}/>
+                توجه: بکاپ شامل تمامی بخش‌ها (پرداخت، انبار، بازرگانی، انتظامات و کاربران) می‌باشد.
             </div>
         </div>
     );

@@ -89,6 +89,7 @@ app.use(express.static(path.join(ROOT_DIR, 'dist')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 // --- DEFAULT DB STRUCTURE (The Source of Truth) ---
+// This structure ensures all menus exist even if restoring old backups
 const DEFAULT_DB = { 
     settings: { 
         currentTrackingNumber: 1000, 
@@ -140,11 +141,10 @@ const getDb = () => {
         if (!parsed.users) throw new Error("Invalid DB Structure");
         
         // --- SMART MERGE: Preserve Defaults for Missing Keys ---
-        // This fixes the issue where Warehouse data disappears if the key was missing in a corrupt save
-        // Also fixes "raw" warehouse data by ensuring arrays exist
+        // Ensure ALL root arrays exist (Prevents "undefined" errors in UI)
         const safeDB = { ...DEFAULT_DB, ...parsed };
 
-        // Ensure Root Arrays exist (Warehouse Fix)
+        // Force ensure array types
         const arrayKeys = [
             'orders', 'exitPermits', 'warehouseItems', 'warehouseTransactions', 
             'users', 'messages', 'groups', 'tasks', 'tradeRecords', 
@@ -153,7 +153,6 @@ const getDb = () => {
 
         arrayKeys.forEach(key => {
             if (!Array.isArray(safeDB[key])) {
-                // logToFile(`Warning: Fixed broken array for key: ${key}`);
                 safeDB[key] = []; 
             }
         });
@@ -175,7 +174,6 @@ const getDb = () => {
         } catch (renameErr) {
             logToFile(`Failed to rename corrupt DB: ${renameErr.message}`);
         }
-        // Return default so server starts
         return DEFAULT_DB; 
     }
 };
@@ -193,8 +191,6 @@ const saveDb = (data) => {
 // --- AUTOMATIC BACKUP SYSTEM (HOURLY) ---
 const scheduleAutoBackup = () => {
     logToFile(">>> Initializing Auto-Backup System (Every Hour)");
-    
-    // Run every hour: '0 * * * *'
     cron.schedule('0 * * * *', () => {
         try {
             const now = new Date();
@@ -203,12 +199,11 @@ const scheduleAutoBackup = () => {
             
             if (fs.existsSync(DB_FILE)) {
                 fs.copyFileSync(DB_FILE, backupPath);
-                // logToFile(`[AutoBackup] Created: ${backupPath}`);
                 
-                // Cleanup: Keep only last 48 hours of backups to save space
+                // Cleanup: Keep only last 48 hours of backups
                 const files = fs.readdirSync(BACKUPS_DIR);
                 const nowMs = Date.now();
-                const retentionMs = 48 * 60 * 60 * 1000; // 48 Hours
+                const retentionMs = 48 * 60 * 60 * 1000; 
                 
                 files.forEach(file => {
                     if (file.startsWith('auto_backup_')) {
@@ -225,8 +220,6 @@ const scheduleAutoBackup = () => {
         }
     });
 };
-
-// Start Backup Scheduler
 scheduleAutoBackup();
 
 
@@ -236,6 +229,8 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
     try {
         const safeArr = Array.isArray(arr) ? arr : [];
         const safeCompany = companyName ? companyName.trim() : '';
+        
+        // 1. Check Fiscal Year Settings
         if (fiscalYearId && safeCompany && db.settings.fiscalYears) {
             const activeYear = db.settings.fiscalYears.find(y => y.id === fiscalYearId);
             if (activeYear && activeYear.companySequences) {
@@ -247,6 +242,7 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
                 }
             }
         } else {
+            // 2. Fallback to Global Settings
             if (type === 'payment') startNum = db.settings.currentTrackingNumber || 1000;
             else if (type === 'exit') startNum = db.settings.currentExitPermitNumber || 1000;
             else if (type === 'bijak') {
@@ -254,12 +250,19 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
                 startNum = sequences[safeCompany] || 1000;
             }
         }
-        const filtered = safeCompany ? safeArr.filter(item => {
-            const itemComp = (type === 'payment' ? item.payingCompany : (type === 'bijak' ? item.company : item.companyName));
-            return itemComp && itemComp.trim() === safeCompany;
-        }) : safeArr;
-        const existing = filtered.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
-        let next = existing.length > 0 ? Math.max(existing[existing.length - 1] + 1, startNum) : startNum;
+        
+        // 3. Find Max in Existing Data (to prevent duplicates)
+        // Only consider items from the same company if fiscal year logic applies, otherwise global max
+        // For simplicity and safety, we look for the max existing number that is >= startNum
+        const existing = safeArr.map(o => Number(o[key])).filter(n => !isNaN(n)).sort((a, b) => a - b);
+        
+        let next = startNum;
+        if (existing.length > 0) {
+             const maxExisting = existing[existing.length - 1];
+             if (maxExisting >= startNum) {
+                 next = maxExisting + 1;
+             }
+        }
         return next;
     } catch (e) {
         return 1001; 
@@ -270,7 +273,6 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
 // --- SMART RESTORE ENDPOINT ---
-// This ensures backups are compatible even after updates
 app.post('/api/emergency-restore', (req, res) => {
     try {
         const { fileData } = req.body;
@@ -287,8 +289,8 @@ app.post('/api/emergency-restore', (req, res) => {
             fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre_restore_${Date.now()}.json`));
         }
 
-        // --- SMART MERGE LOGIC ---
-        // 1. Start with fresh DEFAULT_DB (Latest Structure containing new fields)
+        // --- SMART MERGE LOGIC (CRITICAL FOR UPDATES) ---
+        // 1. Start with fresh DEFAULT_DB (This has all new fields from update)
         const finalDB = JSON.parse(JSON.stringify(DEFAULT_DB));
 
         // 2. Helper to merge arrays safely
@@ -298,8 +300,7 @@ app.post('/api/emergency-restore', (req, res) => {
             }
         };
 
-        // 3. Merge Root Arrays (Data)
-        // This keeps data but uses new structure
+        // 3. Merge ALL Data Arrays (Old + New Support)
         mergeArray('orders');
         mergeArray('exitPermits');
         mergeArray('warehouseItems');
@@ -314,11 +315,11 @@ app.post('/api/emergency-restore', (req, res) => {
         mergeArray('securityIncidents');
 
         // 4. Merge Settings (Deep Merge)
-        // This ensures that if the backup lacks 'dailySecurityMeta' or 'fiscalYears', the default (new) values are kept
+        // Keep new settings keys (like dailySecurityMeta) even if backup doesn't have them
         if (parsedBackup.settings) {
             finalDB.settings = { ...DEFAULT_DB.settings, ...parsedBackup.settings };
             
-            // Re-ensure settings arrays are arrays (just in case backup has nulls)
+            // Re-ensure arrays
             ['companies', 'companyNames', 'fiscalYears', 'savedContacts'].forEach(key => {
                  if (!Array.isArray(finalDB.settings[key])) finalDB.settings[key] = [];
             });
@@ -338,14 +339,13 @@ app.get('/api/full-backup', async (req, res) => {
     try {
         const db = getDb();
         res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Disposition', `attachment; filename=payment_system_full_backup_${Date.now()}.json`);
-        res.json(db);
+        res.setHeader('Content-Disposition', `attachment; filename=backup_${Date.now()}.json`);
+        res.json(db); // Sends complete DB object
     } catch (e) {
         res.status(500).send("Backup Error");
     }
 });
 
-// Safe Route Wrapper
 const safeHandler = (fn) => (req, res) => {
     try {
         fn(req, res);
@@ -367,7 +367,14 @@ app.post('/api/orders', safeHandler((req, res) => {
     const db = getDb(); 
     const order = req.body; 
     order.id = Date.now().toString(); 
-    order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', db.settings.activeFiscalYearId, order.payingCompany); 
+    // Use Fiscal Year Numbering
+    order.trackingNumber = findNextNumberByFiscalYear(db, db.orders, 'trackingNumber', 'payment', db.settings.activeFiscalYearId, order.payingCompany);
+    
+    // Update global counter if no fiscal year specific
+    if (!db.settings.activeFiscalYearId) {
+         db.settings.currentTrackingNumber = order.trackingNumber;
+    }
+
     db.orders.unshift(order); 
     saveDb(db); 
     res.json(db.orders); 
@@ -375,11 +382,25 @@ app.post('/api/orders', safeHandler((req, res) => {
 app.put('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders); } else res.sendStatus(404); }));
 app.delete('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); }));
 
-// --- EXIT PERMITS ---
+// --- EXIT PERMITS (Numbering Fix) ---
 app.get('/api/exit-permits', safeHandler((req, res) => res.json(getDb().exitPermits || [])));
 app.post('/api/exit-permits', safeHandler((req, res) => { 
     const db = getDb(); 
     const permit = req.body; 
+    
+    // 1. Calculate Number using Fiscal Year logic
+    // Note: 'permit.recipientName' is usually not the company, we need 'payingCompany' equivalent. 
+    // But Exit Permits don't strictly have a 'payingCompany' field in standard form, usually the sender is the default company.
+    // We assume the system default company or if user provided one.
+    const company = db.settings.defaultCompany; // Default context for numbering
+    
+    permit.permitNumber = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
+    
+    // 2. Update Counters
+    if (!db.settings.activeFiscalYearId) {
+        db.settings.currentExitPermitNumber = permit.permitNumber;
+    }
+
     db.exitPermits.push(permit); 
     saveDb(db); 
     res.json(db.exitPermits); 
@@ -387,7 +408,15 @@ app.post('/api/exit-permits', safeHandler((req, res) => {
 app.put('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.exitPermits.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.exitPermits[idx]={...db.exitPermits[idx],...req.body}; saveDb(db); res.json(db.exitPermits); } else res.sendStatus(404); }));
 app.delete('/api/exit-permits/:id', safeHandler((req, res) => { const db=getDb(); db.exitPermits=db.exitPermits.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.exitPermits); }));
 
-// --- WAREHOUSE (FIXED & PROTECTED) ---
+// --- EXIT PERMIT NUMBER PREVIEW ---
+app.get('/api/next-exit-permit-number', safeHandler((req, res) => {
+    const db = getDb();
+    const company = db.settings.defaultCompany;
+    const nextNum = findNextNumberByFiscalYear(db, db.exitPermits, 'permitNumber', 'exit', db.settings.activeFiscalYearId, company);
+    res.json({ nextNumber: nextNum });
+}));
+
+// --- WAREHOUSE ---
 app.get('/api/warehouse/items', safeHandler((req, res) => res.json(getDb().warehouseItems || [])));
 app.post('/api/warehouse/items', safeHandler((req, res) => { const db=getDb(); db.warehouseItems.push(req.body); saveDb(db); res.json(db.warehouseItems); }));
 app.put('/api/warehouse/items/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.warehouseItems.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.warehouseItems[idx]={...db.warehouseItems[idx], ...req.body}; saveDb(db); res.json(db.warehouseItems); } else res.sendStatus(404); }));
