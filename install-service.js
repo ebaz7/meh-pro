@@ -1,54 +1,91 @@
 
 import { Service } from 'node-windows';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import readline from 'readline';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// چک کردن اینکه آیا دیتابیس در این پوشه هست یا نه
-const dbPath = path.join(__dirname, 'database.json');
-if (!fs.existsSync(dbPath)) {
-    console.warn('⚠️ هشدار: فایل database.json در این پوشه یافت نشد.');
-    console.log('سرویس نصب می‌شود، اما مطمئن شوید فایل را در مسیر زیر کپی کرده‌اید:');
-    console.log(dbPath);
-} else {
-    console.log('✅ فایل دیتابیس با موفقیت شناسایی شد و آماده بازیابی است.');
-}
-
-const svc = new Service({
-  name: 'PaymentOrderPro',
-  description: 'سیستم مدیریت پرداخت و انبارداری - با قابلیت بک‌آپ خودکار',
-  script: path.join(__dirname, 'server.js'),
-  workingDirectory: __dirname,
-  env: [
-    { name: "NODE_ENV", value: "production" },
-    { name: "PORT", value: "3000" }
-  ]
+// 1. Create Readline interface for User Input
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
 });
 
-svc.on('install', function() {
-  console.log('--------------------------------------------------');
-  console.log('سرویس با موفقیت نصب شد.');
-  console.log('بک‌آپ خودکار فعال گردید.');
-  console.log('برنامه از طریق http://localhost:3000 در دسترس است.');
-  console.log('--------------------------------------------------');
-  svc.start();
-});
+console.log("---------------------------------------------------------");
+console.log("   Payment System - Windows Service Installer            ");
+console.log("---------------------------------------------------------");
 
-svc.on('alreadyinstalled', function() {
-    console.log('سرویس از قبل نصب شده است. در حال بازنشانی...');
-    svc.uninstall();
-});
+// 2. Ask for Port (Default 80 for ArvanCloud Compatibility)
+rl.question('Please enter the port number (Press Enter for 80): ', (inputPort) => {
+  // If user types nothing, use 80. If they type something, use that.
+  const port = inputPort.trim() || '80';
+  console.log(`> Using Port: ${port}`);
 
-svc.on('uninstall', function() {
-    console.log('نسخه قبلی حذف شد. نصب نسخه جدید...');
-    svc.install();
-});
+  // 3. Create/Update .env file
+  const envContent = `PORT=${port}\n`;
+  try {
+    fs.writeFileSync(path.join(__dirname, '.env'), envContent);
+    console.log('> Saved configuration to .env file.');
+  } catch (err) {
+    console.error('> Error writing .env file:', err);
+    rl.close();
+    return;
+  }
 
-if (svc.exists) {
-    svc.uninstall();
-} else {
-    svc.install();
-}
+  // 4. Configure Service
+  // CRITICAL FIX: Use a local directory for Puppeteer Chrome inside the project
+  // This ensures the 'Local System' account can find the browser.
+  const puppeteerCache = path.join(__dirname, '.puppeteer');
+
+  const svc = new Service({
+    name: 'PaymentSystem',
+    description: 'Payment Order Management System Web Server',
+    script: path.join(__dirname, 'server.js'),
+    workingDirectory: __dirname, // *** IMPORTANT: Ensures DB is found relative to the script ***
+    env: [{
+      name: "PORT",
+      value: port
+    }, {
+      name: "PUPPETEER_CACHE_DIR",
+      value: puppeteerCache
+    }]
+  });
+
+  // 5. Listen for events
+  svc.on('install', function() {
+    console.log('> Service installed successfully!');
+    console.log('> Starting service...');
+    svc.start();
+  });
+
+  svc.on('alreadyinstalled', function() {
+    console.log('\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    console.log(' WARNING: The service "PaymentSystem" is ALREADY INSTALLED!');
+    console.log('------------------------------------------------------------');
+    console.log(' TO FIX PATH ISSUES OR CHANGE PORT:');
+    console.log(' 1. Run: node uninstall-service.js');
+    console.log(' 2. Run this script again: node install-service.js');
+    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n');
+    // We try to start it anyway, but configuration might be stale
+    svc.start(); 
+  });
+
+  svc.on('start', function() {
+    console.log(`> Service started! App is running on http://localhost:${port}`);
+    console.log('> You can now close this window.');
+    rl.close();
+  });
+
+  svc.on('error', function(e) {
+    console.error('> Error:', e);
+    rl.close();
+  });
+
+  // 6. Install
+  console.log('> Installing Windows Service...');
+  console.log(`> Service Working Directory: ${__dirname}`);
+  svc.install();
+});
