@@ -187,15 +187,19 @@ function App() {
     try {
         const [ordersData, settingsData, messagesData] = await Promise.all([getOrders(), getSettings(), getMessages()]);
         
+        // --- SAFE GUARD: Ensure arrays are arrays ---
+        const safeOrders = Array.isArray(ordersData) ? ordersData : [];
+        const safeMessages = Array.isArray(messagesData) ? messagesData : [];
+        
         setSettings(settingsData);
-        setOrders(ordersData);
-        setChatMessages(messagesData || []); 
+        setOrders(safeOrders);
+        setChatMessages(safeMessages); 
         
         const lastCheck = parseInt(localStorage.getItem(NOTIFICATION_CHECK_KEY) || '0');
-        checkForNotifications(ordersData, currentUser, lastCheck);
+        checkForNotifications(safeOrders, currentUser, lastCheck);
         
-        if (messagesData && messagesData.length > 0) {
-            const lastMsg = messagesData[messagesData.length - 1];
+        if (safeMessages && safeMessages.length > 0) {
+            const lastMsg = safeMessages[safeMessages.length - 1];
             if (lastChatMsgIdRef.current && lastMsg.id !== lastChatMsgIdRef.current && lastMsg.senderUsername !== currentUser.username) {
                 if (activeTab !== 'chat') {
                     let body = lastMsg.message || 'فایل ضمیمه';
@@ -206,7 +210,7 @@ function App() {
             lastChatMsgIdRef.current = lastMsg.id;
         }
 
-        if (isFirstLoad.current) { checkChequeAlerts(ordersData); }
+        if (isFirstLoad.current) { checkChequeAlerts(safeOrders); }
         
         localStorage.setItem(NOTIFICATION_CHECK_KEY, Date.now().toString());
         isFirstLoad.current = false;

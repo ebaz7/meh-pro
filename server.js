@@ -92,10 +92,36 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 
 // --- DEFAULT DB STRUCTURE ---
 const DEFAULT_DB = { 
-    settings: { currentTrackingNumber: 1000, currentExitPermitNumber: 1000, companyNames: [], companies: [], fiscalYears: [] }, 
-    orders: [], exitPermits: [], warehouseItems: [], warehouseTransactions: [], 
+    settings: { 
+        currentTrackingNumber: 1000, 
+        currentExitPermitNumber: 1000, 
+        companyNames: [], 
+        companies: [], 
+        fiscalYears: [],
+        rolePermissions: {},
+        customRoles: [],
+        operatingBankNames: [],
+        commodityGroups: [],
+        warehouseSequences: {},
+        companyNotifications: {},
+        insuranceCompanies: [],
+        printTemplates: [],
+        dailySecurityMeta: {},
+        savedContacts: [],
+        bankNames: []
+    }, 
+    orders: [], 
+    exitPermits: [], 
+    warehouseItems: [], 
+    warehouseTransactions: [], 
     users: [{ id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم', role: 'admin' }], 
-    messages: [], groups: [], tasks: [], tradeRecords: [], securityLogs: [], personnelDelays: [], securityIncidents: []
+    messages: [], 
+    groups: [], 
+    tasks: [], 
+    tradeRecords: [], 
+    securityLogs: [], 
+    personnelDelays: [], 
+    securityIncidents: []
 };
 
 // --- FAIL-SAFE DATABASE LOADER ---
@@ -115,7 +141,14 @@ const getDb = () => {
         const parsed = JSON.parse(data);
         if (!parsed.users) throw new Error("Invalid DB Structure");
         
-        return parsed;
+        // Merge with Default to ensure all fields exist (Fixes crash on old DBs)
+        // We verify array integrity here too
+        const safeDB = { ...DEFAULT_DB, ...parsed };
+        if (!Array.isArray(safeDB.orders)) safeDB.orders = [];
+        if (!Array.isArray(safeDB.exitPermits)) safeDB.exitPermits = [];
+        // ... extend check if needed, but 'emergency-restore' does full sanitization
+        
+        return safeDB;
 
     } catch (e) {
         logToFile(`!!! CRITICAL DB CORRUPTION: ${e.message}`);
@@ -149,7 +182,6 @@ const saveDb = (data) => {
 
 const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyName) => {
     let startNum = 1000;
-    // Basic fallback logic for numbering to prevent crashes
     try {
         const safeCompany = companyName ? companyName.trim() : '';
         if (fiscalYearId && safeCompany && db.settings.fiscalYears) {
@@ -178,14 +210,14 @@ const findNextNumberByFiscalYear = (db, arr, key, type, fiscalYearId, companyNam
         let next = existing.length > 0 ? Math.max(existing[existing.length - 1] + 1, startNum) : startNum;
         return next;
     } catch (e) {
-        return 1001; // Absolute fallback
+        return 1001; 
     }
 };
 
 // --- ROUTES ---
 app.get('/api/version', (req, res) => res.json({ version: SERVER_BUILD_ID }));
 
-// Emergency Restore
+// Emergency Restore with STRICT TYPE SANITIZATION
 app.post('/api/emergency-restore', (req, res) => {
     try {
         const { fileData } = req.body;
@@ -195,15 +227,59 @@ app.post('/api/emergency-restore', (req, res) => {
         const jsonContent = Buffer.from(base64Data, 'base64').toString('utf-8');
         const parsed = JSON.parse(jsonContent);
 
-        if (!parsed.users) return res.status(400).json({ success: false, error: 'Invalid backup' });
+        if (!parsed.users) return res.status(400).json({ success: false, error: 'Invalid backup structure' });
 
-        // Backup current (even if empty)
+        // Backup current state
         if (fs.existsSync(DB_FILE)) {
             fs.copyFileSync(DB_FILE, path.join(BACKUPS_DIR, `pre_restore_${Date.now()}.json`));
         }
 
-        saveDb(parsed);
-        logToFile(`>>> DATABASE RESTORED SUCCESSFULLY`);
+        // --- STRICT SANITIZATION ---
+        // Ensures that even if the backup has nulls where arrays should be, we fix it.
+        const ensureArray = (val) => Array.isArray(val) ? val : [];
+        const ensureObject = (val) => (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
+
+        const finalDB = { ...DEFAULT_DB };
+
+        // 1. Merge Root Arrays
+        finalDB.orders = ensureArray(parsed.orders || finalDB.orders);
+        finalDB.exitPermits = ensureArray(parsed.exitPermits || finalDB.exitPermits);
+        finalDB.warehouseItems = ensureArray(parsed.warehouseItems || finalDB.warehouseItems);
+        finalDB.warehouseTransactions = ensureArray(parsed.warehouseTransactions || finalDB.warehouseTransactions);
+        finalDB.users = ensureArray(parsed.users || finalDB.users);
+        finalDB.messages = ensureArray(parsed.messages || finalDB.messages);
+        finalDB.groups = ensureArray(parsed.groups || finalDB.groups);
+        finalDB.tasks = ensureArray(parsed.tasks || finalDB.tasks);
+        finalDB.tradeRecords = ensureArray(parsed.tradeRecords || finalDB.tradeRecords);
+        finalDB.securityLogs = ensureArray(parsed.securityLogs || finalDB.securityLogs);
+        finalDB.personnelDelays = ensureArray(parsed.personnelDelays || finalDB.personnelDelays);
+        finalDB.securityIncidents = ensureArray(parsed.securityIncidents || finalDB.securityIncidents);
+
+        // 2. Merge Settings
+        if (parsed.settings) {
+            finalDB.settings = { ...DEFAULT_DB.settings, ...parsed.settings };
+            
+            // Fix Settings Arrays
+            finalDB.settings.companies = ensureArray(finalDB.settings.companies);
+            finalDB.settings.companyNames = ensureArray(finalDB.settings.companyNames);
+            finalDB.settings.fiscalYears = ensureArray(finalDB.settings.fiscalYears);
+            finalDB.settings.printTemplates = ensureArray(finalDB.settings.printTemplates);
+            finalDB.settings.customRoles = ensureArray(finalDB.settings.customRoles);
+            finalDB.settings.savedContacts = ensureArray(finalDB.settings.savedContacts);
+            finalDB.settings.bankNames = ensureArray(finalDB.settings.bankNames);
+            finalDB.settings.operatingBankNames = ensureArray(finalDB.settings.operatingBankNames);
+            finalDB.settings.commodityGroups = ensureArray(finalDB.settings.commodityGroups);
+            finalDB.settings.insuranceCompanies = ensureArray(finalDB.settings.insuranceCompanies);
+            
+            // Fix Settings Objects
+            finalDB.settings.rolePermissions = ensureObject(finalDB.settings.rolePermissions);
+            finalDB.settings.warehouseSequences = ensureObject(finalDB.settings.warehouseSequences);
+            finalDB.settings.companyNotifications = ensureObject(finalDB.settings.companyNotifications);
+            finalDB.settings.dailySecurityMeta = ensureObject(finalDB.settings.dailySecurityMeta);
+        }
+
+        saveDb(finalDB);
+        logToFile(`>>> DATABASE RESTORED & SANITIZED SUCCESSFULLY`);
         res.json({ success: true });
     } catch (e) {
         logToFile(`Restore Failed: ${e.message}`);
@@ -240,7 +316,7 @@ app.post('/api/orders', safeHandler((req, res) => {
 app.put('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); const idx=db.orders.findIndex(x=>x.id===req.params.id); if(idx!==-1){ db.orders[idx]={...db.orders[idx],...req.body}; saveDb(db); res.json(db.orders); } else res.sendStatus(404); }));
 app.delete('/api/orders/:id', safeHandler((req, res) => { const db=getDb(); db.orders=db.orders.filter(x=>x.id!==req.params.id); saveDb(db); res.json(db.orders); }));
 
-// ... Other routes minimal implementation to ensure boot ...
+// Minimal routes for boot
 app.get('/api/settings', safeHandler((req, res) => res.json(getDb().settings)));
 app.post('/api/settings', safeHandler((req, res) => { const db = getDb(); db.settings = { ...db.settings, ...req.body }; saveDb(db); res.json(db.settings); }));
 app.get('/api/users', safeHandler((req, res) => res.json(getDb().users || [])));
