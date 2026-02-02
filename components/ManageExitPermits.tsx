@@ -6,7 +6,7 @@ import { formatDate } from '../constants';
 import { 
     Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, 
     Package, Archive, ListChecks, Filter, AlertTriangle, FastForward,
-    ChevronLeft, UserCheck, ShieldCheck, MapPin
+    ChevronLeft, UserCheck, ShieldCheck, MapPin, MoreVertical, RefreshCw
 } from 'lucide-react';
 import PrintExitPermit from './PrintExitPermit';
 import WarehouseFinalizeModal from './WarehouseFinalizeModal'; 
@@ -26,7 +26,6 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         setLoading(true);
         try {
             const data = await getExitPermits();
-            // Ensure data is array before sorting
             const safeData = Array.isArray(data) ? data : [];
             setPermits(safeData.sort((a, b) => b.createdAt - a.createdAt));
         } catch (e) {
@@ -37,7 +36,6 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         }
     };
 
-    // منطق تاییدات طبق اولویت
     const getActionRequired = (p: ExitPermit): string | null => {
         const role = currentUser.role;
         const isAdmin = role === UserRole.ADMIN;
@@ -69,7 +67,6 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
 
         setProcessingId(p.id);
         try {
-            // FIX: Explicitly typing nextStatus as ExitPermitStatus to avoid narrowing issues
             let nextStatus: ExitPermitStatus = p.status;
             let extra: any = {};
 
@@ -117,150 +114,162 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
     };
 
     const handleQuickArchive = async (p: ExitPermit) => {
-        if (!confirm('⚠️ بایگانی سریع برای داده‌های قدیمی است. این سند مستقیماً بدون تاییدات دیگر به بایگانی می‌رود. ادامه می‌دهید؟')) return;
+        if (!confirm('⚠️ بایگانی سریع برای داده‌های قدیمی است. ادامه می‌دهید؟')) return;
         setProcessingId(p.id);
         try {
             await updateExitPermitStatus(p.id, ExitPermitStatus.EXITED, currentUser, { exitTime: 'بایگانی سریع' });
             await loadData();
-            alert('سند با موفقیت بایگانی شد.');
         } finally {
             setProcessingId(null);
         }
     };
 
-    // SAFE ARRAY CHECK FOR FILTER
     const safePermits = Array.isArray(permits) ? permits : [];
-
     const filteredPermits = safePermits.filter(p => {
         const searchStr = `${p.permitNumber} ${p.recipientName} ${p.goodsName}`.toLowerCase();
         if (searchTerm && !searchStr.includes(searchTerm.toLowerCase())) return false;
-
         const isArchived = p.status === ExitPermitStatus.EXITED || p.status === ExitPermitStatus.REJECTED;
-
         if (activeTab === 'ARCHIVE') return isArchived;
         if (activeTab === 'MY_TURN') return !isArchived && getActionRequired(p) !== null;
         if (activeTab === 'ALL_ACTIVE') return !isArchived;
-
         return true;
     });
 
-    const getStepProgress = (status: ExitPermitStatus) => {
-        const steps = [ExitPermitStatus.PENDING_CEO, ExitPermitStatus.PENDING_FACTORY, ExitPermitStatus.PENDING_WAREHOUSE, ExitPermitStatus.PENDING_SECURITY, ExitPermitStatus.EXITED];
-        const currentIndex = steps.indexOf(status);
-        return ((currentIndex) / (steps.length - 1)) * 100;
+    const getStatusConfig = (status: ExitPermitStatus) => {
+        switch(status) {
+            case ExitPermitStatus.PENDING_CEO: return { color: 'text-purple-600', bg: 'bg-purple-50', label: 'مدیرعامل' };
+            case ExitPermitStatus.PENDING_FACTORY: return { color: 'text-orange-600', bg: 'bg-orange-50', label: 'کارخانه' };
+            case ExitPermitStatus.PENDING_WAREHOUSE: return { color: 'text-blue-600', bg: 'bg-blue-50', label: 'انبار' };
+            case ExitPermitStatus.PENDING_SECURITY: return { color: 'text-pink-600', bg: 'bg-pink-50', label: 'انتظامات' };
+            case ExitPermitStatus.EXITED: return { color: 'text-green-600', bg: 'bg-green-50', label: 'خارج شده' };
+            case ExitPermitStatus.REJECTED: return { color: 'text-red-600', bg: 'bg-red-50', label: 'رد شده' };
+            default: return { color: 'text-gray-600', bg: 'bg-gray-50', label: status };
+        }
     };
 
     return (
-        <div className="space-y-6 animate-fade-in pb-24">
-            {/* Header & Tabs */}
-            <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="bg-orange-100 p-2.5 rounded-2xl text-orange-600 shadow-inner">
-                        <Truck size={28} />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-black text-gray-800">سیستم خروج بار</h2>
-                        <p className="text-xs text-gray-500">تاییدات زنجیره‌ای و هوشمند</p>
-                    </div>
-                </div>
-
-                <div className="flex bg-gray-100 p-1.5 rounded-2xl w-full md:w-auto">
-                    <button onClick={() => setActiveTab('MY_TURN')} className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'MY_TURN' ? 'bg-white shadow-md text-blue-600' : 'text-gray-500 hover:bg-gray-200'}`}>
-                        نوبت تایید من
-                    </button>
-                    <button onClick={() => setActiveTab('ALL_ACTIVE')} className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ALL_ACTIVE' ? 'bg-white shadow-md text-gray-800' : 'text-gray-500 hover:bg-gray-200'}`}>
-                        همه فعال
-                    </button>
-                    <button onClick={() => setActiveTab('ARCHIVE')} className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ARCHIVE' ? 'bg-white shadow-md text-green-600' : 'text-gray-500 hover:bg-gray-200'}`}>
-                        بایگانی نهایی
+        <div className="space-y-4 pb-20 md:pb-0 animate-fade-in">
+            {/* Sticky Header */}
+            <div className="sticky top-0 bg-gray-50/95 backdrop-blur-sm pt-2 pb-2 z-30 space-y-3">
+                <div className="flex justify-between items-center px-1">
+                    <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                        <div className="bg-white p-2 rounded-xl shadow-sm"><Truck size={20} className="text-orange-600"/></div>
+                        مدیریت خروج
+                    </h2>
+                    <button onClick={loadData} className="p-2 bg-white rounded-full shadow-sm text-gray-500 hover:text-blue-600">
+                        <RefreshCw size={18} className={loading ? "animate-spin" : ""}/>
                     </button>
                 </div>
 
-                <div className="relative w-full md:w-64">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all" placeholder="جستجو شماره یا گیرنده..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                {/* Tabs - Horizontal Scroll */}
+                <div className="flex gap-2 overflow-x-auto pb-1 px-1 no-scrollbar">
+                    <button onClick={() => setActiveTab('MY_TURN')} className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${activeTab === 'MY_TURN' ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-white text-gray-600 border border-gray-100'}`}>
+                        نوبت من ({safePermits.filter(p => !isArchived(p.status) && getActionRequired(p)).length})
+                    </button>
+                    <button onClick={() => setActiveTab('ALL_ACTIVE')} className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${activeTab === 'ALL_ACTIVE' ? 'bg-orange-600 text-white shadow-orange-200' : 'bg-white text-gray-600 border border-gray-100'}`}>
+                        جریان فعال
+                    </button>
+                    <button onClick={() => setActiveTab('ARCHIVE')} className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${activeTab === 'ARCHIVE' ? 'bg-green-600 text-white shadow-green-200' : 'bg-white text-gray-600 border border-gray-100'}`}>
+                        بایگانی
+                    </button>
+                </div>
+
+                {/* Search */}
+                <div className="relative mx-1">
+                    <input 
+                        className="w-full pl-10 pr-4 py-3 bg-white border-none rounded-2xl text-sm shadow-sm focus:ring-2 focus:ring-blue-500 transition-all placeholder-gray-400" 
+                        placeholder="جستجو شماره، گیرنده، کالا..." 
+                        value={searchTerm} 
+                        onChange={e => setSearchTerm(e.target.value)} 
+                    />
+                    <Search className="absolute left-3 top-3.5 text-gray-400" size={18} />
                 </div>
             </div>
 
             {/* Content List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {loading ? (
-                    <div className="col-span-full py-20 flex flex-col items-center gap-4 text-gray-400">
-                        <Loader2 className="animate-spin" size={48} />
-                        <span className="font-bold">در حال بارگذاری لیست...</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-1">
+                {loading && filteredPermits.length === 0 ? (
+                    <div className="col-span-full py-10 flex flex-col items-center gap-3 text-gray-400">
+                        <Loader2 className="animate-spin text-blue-500" size={32} />
+                        <span className="text-xs font-medium">در حال دریافت اطلاعات...</span>
                     </div>
                 ) : filteredPermits.length === 0 ? (
-                    <div className="col-span-full py-20 flex flex-col items-center gap-4 text-gray-400 bg-white rounded-3xl border-2 border-dashed border-gray-200">
-                        <Filter size={64} className="opacity-10" />
-                        <span className="font-bold text-lg">سندی یافت نشد</span>
-                        <p className="text-sm">موردی برای نمایش در این بخش وجود ندارد.</p>
+                    <div className="col-span-full py-16 flex flex-col items-center gap-4 text-gray-400 bg-white/50 rounded-3xl border-2 border-dashed border-gray-200 m-2">
+                        <Filter size={48} className="opacity-20" />
+                        <span className="font-bold text-sm">موردی یافت نشد</span>
                     </div>
                 ) : (
                     filteredPermits.map(p => {
                         const action = getActionRequired(p);
-                        const progress = getStepProgress(p.status);
+                        const statusConfig = getStatusConfig(p.status);
                         
                         return (
-                            <div key={p.id} className={`bg-white rounded-3xl border-2 p-5 shadow-sm transition-all group relative overflow-hidden ${action ? 'border-blue-500 ring-4 ring-blue-50' : 'border-gray-100 hover:border-blue-200'}`}>
-                                {/* Header of card */}
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] font-black text-gray-400 font-mono tracking-tighter bg-gray-50 px-2 py-0.5 rounded-full w-fit">#{p.permitNumber}</span>
-                                        <h3 className="font-black text-gray-800 text-lg mt-1 line-clamp-1">{p.recipientName}</h3>
+                            <div key={p.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 relative overflow-hidden transition-transform active:scale-[0.99]">
+                                {/* Status Indicator Strip */}
+                                <div className={`absolute top-0 left-0 bottom-0 w-1.5 ${statusConfig.bg.replace('bg-', 'bg-').replace('50', '500')}`}></div>
+                                
+                                <div className="pl-3">
+                                    {/* Header: ID & Status */}
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black text-gray-500 font-mono bg-gray-100 px-2 py-0.5 rounded-lg">#{p.permitNumber}</span>
+                                            <span className="text-[10px] text-gray-400">{formatDate(p.date)}</span>
+                                        </div>
+                                        <div className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${statusConfig.bg} ${statusConfig.color}`}>
+                                            {statusConfig.label}
+                                        </div>
                                     </div>
-                                    <div className={`px-3 py-1 rounded-xl text-[10px] font-black border ${p.status === ExitPermitStatus.EXITED ? 'bg-green-50 text-green-700 border-green-200' : p.status === ExitPermitStatus.REJECTED ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                                        {p.status}
-                                    </div>
-                                </div>
 
-                                {/* Items summary */}
-                                <div className="bg-gray-50 rounded-2xl p-3 mb-4 space-y-2 border border-gray-100">
-                                    <div className="flex items-center gap-2 text-gray-700 font-bold text-xs">
-                                        <Package size={14} className="text-blue-500" />
-                                        {/* Safer item access */}
-                                        <span className="truncate">{(Array.isArray(p.items) && p.items.length > 0) ? p.items.map(i=>i.goodsName).join(', ') : p.goodsName}</span>
+                                    {/* Main Info */}
+                                    <div className="mb-3">
+                                        <h3 className="font-bold text-gray-800 text-base line-clamp-1 mb-1">{p.recipientName}</h3>
+                                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                                            <Package size={12} className="text-blue-500"/>
+                                            <span className="truncate max-w-[200px]">{(Array.isArray(p.items) && p.items.length > 0) ? p.items.map(i=>i.goodsName).join(', ') : p.goodsName}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex justify-between items-center text-[10px] text-gray-500 border-t border-gray-200 pt-2">
-                                        <div className="flex items-center gap-1"><UserCheck size={10}/> <span>{p.requester}</span></div>
-                                        <div className="font-mono">{formatDate(p.date)}</div>
-                                    </div>
-                                </div>
 
-                                {/* Progress Bar */}
-                                <div className="mb-6 px-1">
-                                    <div className="flex justify-between text-[8px] font-black text-gray-400 mb-1 px-1">
-                                        <span>ثبت</span>
-                                        <span>مدیرعامل</span>
-                                        <span>توزین</span>
-                                        <span>خروج</span>
+                                    {/* Details Grid */}
+                                    <div className="grid grid-cols-2 gap-2 mb-4 bg-gray-50 rounded-xl p-2.5">
+                                        <div className="flex flex-col">
+                                            <span className="text-[9px] text-gray-400">تعداد کل</span>
+                                            <span className="text-xs font-bold text-gray-700">{p.cartonCount || 0} <span className="text-[9px] font-normal">کارتن</span></span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[9px] text-gray-400">وزن کل</span>
+                                            <span className="text-xs font-bold text-gray-700">{p.weight || 0} <span className="text-[9px] font-normal">KG</span></span>
+                                        </div>
+                                        {p.driverName && (
+                                            <div className="col-span-2 flex items-center gap-1 border-t border-gray-200 pt-2 mt-1">
+                                                <Truck size={12} className="text-gray-400"/>
+                                                <span className="text-[10px] font-bold text-gray-600 truncate">{p.driverName} - {p.plateNumber}</span>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden flex">
-                                        <div className={`h-full transition-all duration-700 ${p.status === ExitPermitStatus.REJECTED ? 'bg-red-500 w-full' : 'bg-blue-500'}`} style={{ width: `${progress}%` }}></div>
-                                    </div>
-                                </div>
 
-                                {/* Action Buttons */}
-                                <div className="flex gap-2 relative z-10">
-                                    <button onClick={() => setViewPermit(p)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95">
-                                        <Eye size={16} /> مشاهده
-                                    </button>
-                                    
-                                    {action && !processingId && (
-                                        <button onClick={() => handleApprove(p)} className="flex-[1.5] bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl text-xs font-black shadow-lg shadow-blue-200 flex items-center justify-center gap-1.5 transition-all active:scale-95 animate-pulse">
-                                            <CheckCircle size={16} /> {action}
+                                    {/* Action Buttons */}
+                                    <div className="flex gap-2 items-center">
+                                        <button onClick={() => setViewPermit(p)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors">
+                                            <Eye size={14} /> مشاهده
                                         </button>
-                                    )}
+                                        
+                                        {action && !processingId && (
+                                            <button onClick={() => handleApprove(p)} className="flex-[1.5] bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-bold shadow-md shadow-blue-200 flex items-center justify-center gap-1 transition-colors animate-pulse">
+                                                <CheckCircle size={14} /> {action.replace('تایید', '')}
+                                            </button>
+                                        )}
 
-                                    {currentUser.role === UserRole.ADMIN && !isArchived(p.status) && (
-                                        <button onClick={() => handleQuickArchive(p)} className="p-3 bg-green-50 text-green-600 hover:bg-green-100 rounded-2xl transition-all" title="بایگانی سریع (برای داده‌های قدیمی)">
-                                            <FastForward size={18} />
-                                        </button>
-                                    )}
+                                        {currentUser.role === UserRole.ADMIN && !isArchived(p.status) && (
+                                            <button onClick={() => handleQuickArchive(p)} className="p-2.5 bg-gray-100 text-gray-400 hover:text-green-600 rounded-xl transition-colors">
+                                                <FastForward size={16} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {processingId === p.id && (
-                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-20">
-                                        <Loader2 className="animate-spin text-blue-600" size={32} />
+                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px] flex items-center justify-center z-20">
+                                        <Loader2 className="animate-spin text-blue-600" size={24} />
                                     </div>
                                 )}
                             </div>

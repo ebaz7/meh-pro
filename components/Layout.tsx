@@ -372,24 +372,27 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
           <div className="p-4 border-t border-slate-700"><button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-slate-700 rounded-lg transition-colors"><LogOut size={20} /><span>خروج از سیستم</span></button></div>
       </aside>
       
-      {/* Mobile Drawer (Full Menu) */}
+      {/* Mobile Drawer (Refined Design) */}
       {showMobileMenu && (
           <div className="fixed inset-0 z-[60] md:hidden animate-fade-in">
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowMobileMenu(false)}></div>
-              <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto animate-slide-up pb-24">
-                  {/* MODIFIED HEADER: Added Logout Button here */}
-                  <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
-                      <div className="flex items-center gap-2">
-                          <button onClick={handleLogout} className="p-2 bg-red-50 text-red-600 rounded-full flex items-center gap-1">
-                              <LogOut size={16} />
-                              <span className="text-xs font-bold">خروج</span>
-                          </button>
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setShowMobileMenu(false)}></div>
+              <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[2rem] max-h-[85vh] overflow-y-auto animate-slide-up pb-safe shadow-2xl flex flex-col">
+                  {/* Header */}
+                  <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-[2rem]">
+                      <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold border border-blue-200 shadow-sm">
+                              {currentUser.fullName.charAt(0)}
+                          </div>
+                          <div>
+                              <div className="font-black text-gray-800 text-sm">منوی کاربری</div>
+                              <div className="text-[10px] text-gray-500">{currentUser.fullName}</div>
+                          </div>
                       </div>
-                      <h3 className="font-black text-lg text-gray-800 absolute left-1/2 transform -translate-x-1/2">منوی کامل</h3>
-                      <button onClick={() => setShowMobileMenu(false)} className="p-2 bg-gray-100 rounded-full"><X size={20}/></button>
+                      <button onClick={() => setShowMobileMenu(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><X size={20}/></button>
                   </div>
                   
-                  <div className="p-4 grid grid-cols-2 gap-3">
+                  {/* Grid Menu */}
+                  <div className="p-5 grid grid-cols-3 gap-3">
                       {navItems.map((item) => {
                           const Icon = item.icon;
                           const isActive = activeTab === item.id;
@@ -397,30 +400,37 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
                               <button 
                                 key={item.id} 
                                 onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${isActive ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-gray-50 text-gray-700 border-gray-100 hover:bg-gray-100'}`}
+                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border aspect-square transition-all active:scale-95 ${isActive ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-200' : 'bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-100'}`}
                               >
-                                  <Icon size={28} strokeWidth={1.5} />
-                                  <span className="text-xs font-bold">{item.label}</span>
+                                  <Icon size={24} strokeWidth={isActive ? 2.5 : 1.5} />
+                                  <span className="text-[10px] font-bold text-center leading-tight">{item.label}</span>
                               </button>
                           );
                       })}
-                      {/* Removed Logout from grid to avoid accidental clicks */}
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="mt-auto p-5 border-t bg-gray-50/50 pb-8">
+                      <button onClick={handleLogout} className="w-full p-4 bg-white border border-red-100 text-red-600 rounded-2xl flex items-center justify-center gap-2 font-bold shadow-sm active:bg-red-50 transition-colors">
+                          <LogOut size={20} />
+                          خروج از حساب کاربری
+                      </button>
                   </div>
               </div>
           </div>
       )}
 
       {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center py-3 pb-safe z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-around items-center py-2 pb-safe z-50 shadow-[0_-4px_20px_-1px_rgba(0,0,0,0.05)]">
         {bottomNavItems.map((item) => { 
             const Icon = item.icon; 
             return (
                 <button 
                     key={item.id} 
                     onClick={() => setActiveTab(item.id)} 
-                    className={`flex flex-col items-center gap-1 ${activeTab === item.id ? 'text-blue-600' : 'text-gray-400'}`}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${activeTab === item.id ? 'text-blue-600 bg-blue-50/50' : 'text-gray-400'}`}
                 >
-                    <Icon size={24} strokeWidth={activeTab === item.id ? 2.5 : 2} />
+                    <Icon size={24} strokeWidth={activeTab === item.id ? 2.5 : 2} className={activeTab === item.id ? 'drop-shadow-sm' : ''} />
                     <span className="text-[10px] font-bold">{item.label}</span>
                 </button>
             ); 
@@ -429,34 +439,33 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, curr
         {/* Menu Button */}
         <button 
             onClick={() => setShowMobileMenu(true)} 
-            className={`flex flex-col items-center gap-1 ${showMobileMenu ? 'text-blue-600' : 'text-gray-400'}`}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${showMobileMenu ? 'text-blue-600 bg-blue-50/50' : 'text-gray-400'}`}
         >
             <Menu size={24} strokeWidth={showMobileMenu ? 2.5 : 2} />
-            <span className="text-[10px] font-bold">سایر</span>
+            <span className="text-[10px] font-bold">بیشتر</span>
         </button>
       </div>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-[100dvh] overflow-hidden relative min-w-0">
         {/* Mobile Header */}
-        <header className="bg-white shadow-sm p-4 md:hidden no-print flex items-center justify-between shrink-0 relative z-40 safe-pt">
+        <header className="bg-white shadow-sm p-4 md:hidden no-print flex items-center justify-between shrink-0 relative z-40 safe-pt sticky top-0">
             <div className="flex items-center gap-3">
-                {activeTab !== 'dashboard' && (<button onClick={() => setActiveTab('dashboard')} className="p-1.5 -mr-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight size={24} /></button>)}
+                {activeTab !== 'dashboard' && (<button onClick={() => setActiveTab('dashboard')} className="p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"><ChevronRight size={24} /></button>)}
                 <div className="flex items-center gap-2" onClick={() => setShowProfileModal(true)}>
-                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm border border-blue-200">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-blue-200">
                         {currentUser.fullName.charAt(0)}
                     </div>
                     <div>
-                        <h1 className="font-bold text-gray-800 text-sm">{navItems.find(i => i.id === activeTab)?.label || 'سیستم مالی'}</h1>
-                        <div className="text-[10px] text-gray-500">{currentUser.fullName}</div>
+                        <h1 className="font-black text-gray-800 text-sm tracking-tight">{navItems.find(i => i.id === activeTab)?.label || 'سیستم مالی'}</h1>
                     </div>
                 </div>
             </div>
             <div className="flex items-center gap-2">
                 <div className="relative notification-trigger" ref={mobileNotifRef}>
-                    <button onClick={() => setShowNotifDropdown(!showNotifDropdown)} className="relative p-2 rounded-full hover:bg-gray-100">
-                        <Bell size={24} className="text-gray-600" />
-                        {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white"></span>}
+                    <button onClick={() => setShowNotifDropdown(!showNotifDropdown)} className="relative p-2.5 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                        <Bell size={20} className="text-gray-600" />
+                        {unreadCount > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
                     </button>
                     {showNotifDropdown && <NotificationDropdown />}
                 </div>
